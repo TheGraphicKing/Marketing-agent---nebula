@@ -63,14 +63,14 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
             email, 
             password, 
             firstName, 
-            company: { name: companyName, industry: 'Other' } 
+            companyName 
         });
       }
 
       if (response.token && response.user) {
-        localStorage.setItem('authToken', response.token);
+        // Token is already saved by apiService
         onLoginSuccess(response.user);
-        navigate('/');
+        navigate('/dashboard');
       } else {
         setError("Authentication failed. Please try again.");
       }

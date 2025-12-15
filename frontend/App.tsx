@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import ChatBot from './components/ChatBot';
+import LandingPage from './pages/LandingPage';
 import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
@@ -40,7 +42,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken');
+    apiService.logout();
     setUser(null);
   };
 
@@ -59,9 +61,15 @@ const App: React.FC = () => {
   return (
     <Router>
       <Routes>
+        {/* Landing Page - shown when not logged in */}
+        <Route 
+          path="/" 
+          element={!user ? <LandingPage /> : <Navigate to="/dashboard" replace />} 
+        />
+        
         <Route 
           path="/login" 
-          element={!user ? <Auth onLoginSuccess={handleLoginSuccess} /> : <Navigate to="/" replace />} 
+          element={!user ? <Auth onLoginSuccess={handleLoginSuccess} /> : <Navigate to="/dashboard" replace />} 
         />
         
         {/* Onboarding Route - Protected but outside main Layout if needed, or redirect check */}
@@ -72,7 +80,7 @@ const App: React.FC = () => {
                     !user.onboardingCompleted ? (
                         <Onboarding onComplete={handleOnboardingComplete} />
                     ) : (
-                        <Navigate to="/" replace />
+                        <Navigate to="/dashboard" replace />
                     )
                 ) : (
                     <Navigate to="/login" replace />
@@ -82,19 +90,19 @@ const App: React.FC = () => {
 
         {/* Protected Routes wrapped in Layout */}
         <Route
-          path="*"
+          path="/*"
           element={
             user ? (
               user.onboardingCompleted ? (
                 <Layout user={user} onLogout={handleLogout}>
                     <Routes>
-                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/competitors" element={<Competitors />} />
                     <Route path="/influencers" element={<Influencers />} />
                     <Route path="/connect-socials" element={<ConnectSocials />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="/settings" element={<Settings user={user} onUserUpdate={setUser} />} />
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
                     </Routes>
                 </Layout>
               ) : (
@@ -106,6 +114,9 @@ const App: React.FC = () => {
           }
         />
       </Routes>
+      
+      {/* Floating ChatBot - appears on all pages */}
+      <ChatBot />
     </Router>
   );
 };

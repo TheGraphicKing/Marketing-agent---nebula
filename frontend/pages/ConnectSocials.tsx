@@ -1,21 +1,70 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { SocialConnection } from '../types';
-import { Loader2, RefreshCw, Check, X, Instagram, Facebook, Twitter, Linkedin, Youtube, Video, AlertCircle, ShieldCheck, Ghost, MessageCircle, Pin } from 'lucide-react';
+import { Loader2, RefreshCw, Check, X, Instagram, Facebook, Twitter, Linkedin, Youtube, Video, AlertCircle, ShieldCheck, Ghost, MessageCircle, Pin, ExternalLink } from 'lucide-react';
 
 const ConnectSocials: React.FC = () => {
+  const location = useLocation();
   const [socials, setSocials] = useState<SocialConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
-  // Simulation State
+  // Simulation State for non-YouTube platforms
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [showFakeAuthWindow, setShowFakeAuthWindow] = useState(false);
   const [authStep, setAuthStep] = useState(0); // 0: loading, 1: consent, 2: success
   const [usernameInput, setUsernameInput] = useState('');
+  
+  // YouTube loading state
+  const [youtubeLoading, setYoutubeLoading] = useState(false);
 
   useEffect(() => {
     loadSocials();
-  }, []);
+    
+    // Check URL params for OAuth callback results
+    const searchParams = new URLSearchParams(location.search);
+    const youtubeStatus = searchParams.get('youtube');
+    const channelName = searchParams.get('channel');
+    const error = searchParams.get('error');
+    
+    if (youtubeStatus === 'connected' && channelName) {
+      setNotification({
+        type: 'success',
+        message: `YouTube channel "${decodeURIComponent(channelName)}" connected successfully!`
+      });
+      // Clear URL params
+      window.history.replaceState({}, '', window.location.pathname);
+      // Reload socials to show updated status
+      setTimeout(() => loadSocials(), 500);
+    } else if (error) {
+      let errorMessage = 'Failed to connect YouTube.';
+      switch (error) {
+        case 'access_denied':
+          errorMessage = 'You denied access to your YouTube account.';
+          break;
+        case 'no_channel':
+          errorMessage = 'No YouTube channel found for this Google account.';
+          break;
+        case 'token_exchange_failed':
+          errorMessage = 'Failed to authenticate with Google. Please try again.';
+          break;
+        case 'invalid_state':
+          errorMessage = 'Authentication session expired. Please try again.';
+          break;
+      }
+      setNotification({ type: 'error', message: errorMessage });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [location.search]);
+
+  // Auto-dismiss notifications
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   const loadSocials = async () => {
     try {
@@ -28,22 +77,40 @@ const ConnectSocials: React.FC = () => {
     }
   };
 
-  const initiateConnection = (platform: string) => {
-      setConnectingPlatform(platform);
-      setShowFakeAuthWindow(true);
-      setAuthStep(0);
-      setUsernameInput('');
-      
-      // Simulate redirection delay
-      setTimeout(() => setAuthStep(1), 1200);
+  const initiateConnection = async (platform: string) => {
+    // For YouTube, use real OAuth
+    if (platform === 'YouTube') {
+      setYoutubeLoading(true);
+      try {
+        const response = await apiService.getYouTubeAuthUrl();
+        if (response.success && response.authUrl) {
+          // Redirect to Google OAuth
+          window.location.href = response.authUrl;
+        } else {
+          setNotification({ type: 'error', message: 'Failed to initiate YouTube connection.' });
+        }
+      } catch (error: any) {
+        setNotification({ type: 'error', message: error.message || 'Failed to connect to YouTube.' });
+        setYoutubeLoading(false);
+      }
+      return;
+    }
+    
+    // For other platforms, use simulated OAuth
+    setConnectingPlatform(platform);
+    setShowFakeAuthWindow(true);
+    setAuthStep(0);
+    setUsernameInput('');
+    
+    // Simulate redirection delay
+    setTimeout(() => setAuthStep(1), 1200);
   };
 
   const confirmFakeAuth = async () => {
-      if (!usernameInput && authStep === 1) return; // Require input simulation
+      if (!usernameInput && authStep === 1) return;
       
-      setAuthStep(2); // Connecting state inside modal
+      setAuthStep(2);
       
-      // Simulate API call to backend exchange token
       await new Promise(r => setTimeout(r, 1500));
       
       const newUsername = usernameInput.startsWith('@') ? usernameInput : `@${usernameInput}`;
@@ -61,7 +128,18 @@ const ConnectSocials: React.FC = () => {
   };
 
   const handleDisconnect = async (platform: string) => {
-      setSocials(socials.map(s => s.platform === platform ? { ...s, connected: false } : s));
+    if (platform === 'YouTube') {
+      try {
+        await apiService.disconnectYouTube();
+        setNotification({ type: 'success', message: 'YouTube disconnected successfully.' });
+        loadSocials();
+      } catch (error: any) {
+        setNotification({ type: 'error', message: error.message || 'Failed to disconnect YouTube.' });
+      }
+      return;
+    }
+    
+    setSocials(socials.map(s => s.platform === platform ? { ...s, connected: false } : s));
   };
 
   const getIcon = (platform: string) => {
@@ -106,6 +184,27 @@ const ConnectSocials: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto relative">
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 max-w-md p-4 rounded-lg shadow-lg border animate-in slide-in-from-top-2 duration-300 flex items-start gap-3 ${
+          notification.type === 'success' 
+            ? 'bg-green-50 border-green-200 text-green-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {notification.type === 'success' ? (
+            <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1">
+            <p className="font-medium text-sm">{notification.message}</p>
+          </div>
+          <button onClick={() => setNotification(null)} className="text-current opacity-50 hover:opacity-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="mb-8 flex justify-between items-end">
         <div>
             <h1 className="text-2xl font-bold text-slate-900">Connect Socials</h1>
@@ -125,6 +224,13 @@ const ConnectSocials: React.FC = () => {
                       </div>
                   )}
                   
+                  {/* Real OAuth badge for YouTube */}
+                  {social.platform === 'YouTube' && !social.connected && (
+                      <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-br-lg flex items-center gap-1">
+                          <ExternalLink className="w-2.5 h-2.5" /> REAL OAUTH
+                      </div>
+                  )}
+                  
                   <div className="flex items-start gap-4 mb-4">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${getBgColor(social.platform)}`}>
                           {getCustomIcon(social.platform)}
@@ -135,6 +241,14 @@ const ConnectSocials: React.FC = () => {
                               <p className="text-xs text-slate-500 font-medium truncate">{social.username}</p>
                           ) : (
                               <p className="text-xs text-slate-400">Not connected</p>
+                          )}
+                          {/* Show YouTube stats if connected */}
+                          {social.platform === 'YouTube' && social.connected && (social as any).channelData && (
+                              <div className="flex gap-2 mt-1.5 text-[10px] text-slate-400">
+                                  <span>{Number((social as any).channelData.subscriberCount).toLocaleString()} subs</span>
+                                  <span>•</span>
+                                  <span>{Number((social as any).channelData.videoCount).toLocaleString()} videos</span>
+                              </div>
                           )}
                       </div>
                   </div>
@@ -155,9 +269,16 @@ const ConnectSocials: React.FC = () => {
                       ) : (
                           <button 
                             onClick={() => initiateConnection(social.platform)}
-                            className="w-full py-2.5 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
+                            disabled={social.platform === 'YouTube' && youtubeLoading}
+                            className="w-full py-2.5 bg-slate-900 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-wait text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
                           >
-                             Connect {social.platform}
+                             {social.platform === 'YouTube' && youtubeLoading ? (
+                               <>
+                                 <Loader2 className="w-3 h-3 animate-spin" /> Connecting...
+                               </>
+                             ) : (
+                               <>Connect {social.platform}</>
+                             )}
                           </button>
                       )}
                   </div>

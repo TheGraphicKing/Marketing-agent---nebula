@@ -3,6 +3,7 @@ export interface BusinessProfile {
   website: string;
   industry: string;
   niche: string;
+  businessType: 'B2B' | 'B2C' | 'Both' | '';
   targetAudience: string;
   brandVoice: string; // e.g., Professional, Witty, Empathetic
   marketingGoals: string[]; // e.g., Brand Awareness, Sales, Leads
