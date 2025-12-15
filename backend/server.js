@@ -5,6 +5,11 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const socialRoutes = require('./routes/social');
 const chatRoutes = require('./routes/chat');
+const dashboardRoutes = require('./routes/dashboard');
+const campaignRoutes = require('./routes/campaigns');
+const competitorRoutes = require('./routes/competitors');
+const influencerRoutes = require('./routes/influencers');
+const reminderRoutes = require('./routes/reminders');
 
 const app = express();
 
@@ -28,6 +33,11 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/competitors', competitorRoutes);
+app.use('/api/influencers', influencerRoutes);
+app.use('/api/reminders', reminderRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

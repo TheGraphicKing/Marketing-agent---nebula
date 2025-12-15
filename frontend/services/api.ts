@@ -231,64 +231,142 @@ export const apiService = {
   },
 
   // ============================================
-  // MOCK ENDPOINTS FOR OTHER FEATURES
+  // REAL DASHBOARD ENDPOINTS (AI-POWERED)
   // ============================================
 
   getDashboardOverview: async (): Promise<DashboardData> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    const activeCount = campaigns.filter(c => c.status === 'active' || c.status === 'posted').length;
-    
-    return {
-      overview: {
-        totalCampaigns: campaigns.length,
-        activeCampaigns: activeCount,
-        activeCampaignsChange: 12,
-        totalSpent: campaigns.reduce((acc, curr) => acc + (curr.performance?.spend || 0), 0),
-        brandScore: 75,
-        brandScoreChange: 4.2,
-        engagementRate: 3.8
-      },
-      trends: [
-        { id: '1', title: 'AI in Marketing', description: 'Leveraging AI for personalized content.', category: 'Tech' },
-        { id: '2', title: 'Sustainability', description: 'Green marketing is on the rise.', category: 'Social' },
-        { id: '3', title: 'Short-form Video', description: 'TikTok and Reels dominance continues.', category: 'Media' }
-      ],
-      recentCampaigns: campaigns,
-      suggestedActions: [
-        { id: '1', title: 'Post a story update', type: 'campaign' },
-        { id: '2', title: 'Review competitor ads', type: 'social' }
-      ],
-      competitorActivity: [
-        { id: 'p1', competitorName: 'Rival Co.', content: 'New product alert!', sentiment: 'neutral', postedAt: '2h ago', likes: 50, comments: 2, platform: 'instagram' }
-      ]
-    } as DashboardData;
-  },
-
-  getCampaigns: async (status?: string): Promise<{ campaigns: Campaign[] }> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    if (status) {
-      return { campaigns: campaigns.filter(c => c.status === status) };
+    try {
+      const response = await apiCall<{ success: boolean; data: any }>(
+        '/dashboard/overview',
+        { method: 'GET' },
+        true
+      );
+      
+      if (response.success && response.data) {
+        return {
+          overview: response.data.overview || {
+            totalCampaigns: 0,
+            activeCampaigns: 0,
+            activeCampaignsChange: 0,
+            totalSpent: 0,
+            brandScore: 50,
+            brandScoreChange: 0,
+            engagementRate: 0
+          },
+          trends: response.data.trends || [],
+          recentCampaigns: response.data.recentCampaigns || campaigns,
+          suggestedActions: response.data.suggestedActions || [],
+          competitorActivity: response.data.competitorActivity || [],
+          // Extended AI data
+          campaignIdeas: response.data.campaignIdeas,
+          brandScoreFactors: response.data.brandScoreFactors,
+          personalizedTips: response.data.personalizedTips,
+          businessContext: response.data.businessContext,
+          generatedAt: response.data.generatedAt
+        } as DashboardData;
+      }
+      
+      throw new Error('Invalid response');
+    } catch (error) {
+      console.log('Using fallback dashboard data:', error);
+      // Fallback to mock data if API fails or user not logged in
+      const activeCount = campaigns.filter(c => c.status === 'active' || c.status === 'posted').length;
+      
+      return {
+        overview: {
+          totalCampaigns: campaigns.length,
+          activeCampaigns: activeCount,
+          activeCampaignsChange: 12,
+          totalSpent: campaigns.reduce((acc, curr) => acc + (curr.performance?.spend || 0), 0),
+          brandScore: 75,
+          brandScoreChange: 4.2,
+          engagementRate: 3.8
+        },
+        trends: [
+          { id: '1', title: 'AI in Marketing', description: 'Leveraging AI for personalized content.', category: 'Tech' },
+          { id: '2', title: 'Sustainability', description: 'Green marketing is on the rise.', category: 'Social' },
+          { id: '3', title: 'Short-form Video', description: 'TikTok and Reels dominance continues.', category: 'Media' }
+        ],
+        recentCampaigns: campaigns,
+        suggestedActions: [
+          { id: '1', title: 'Post a story update', type: 'campaign' },
+          { id: '2', title: 'Review competitor ads', type: 'social' }
+        ],
+        competitorActivity: [
+          { id: 'p1', competitorName: 'Rival Co.', content: 'New product alert!', sentiment: 'neutral', postedAt: '2h ago', likes: 50, comments: 2, platform: 'instagram' }
+        ]
+      } as DashboardData;
     }
-    return { campaigns };
   },
 
-  createCampaign: async (data: Partial<Campaign>): Promise<{ success: boolean; campaign: Campaign }> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    const campaignObj: Campaign = {
-      ...data,
-      _id: Math.random().toString(36).substr(2, 9),
-      createdAt: new Date().toISOString(),
-      platforms: data.platforms || ['instagram'],
-      status: data.status || 'draft',
-      performance: { impressions: 0, clicks: 0, ctr: 0, engagement: 0, spend: 0 }
-    } as Campaign;
-    
-    campaigns.unshift(campaignObj);
-    return { success: true, campaign: campaignObj };
+  getCompetitorAnalysis: async (competitors?: string[]): Promise<any> => {
+    try {
+      const queryString = competitors ? `?competitors=${competitors.join(',')}` : '';
+      const response = await apiCall<{ success: boolean; data: any }>(
+        `/dashboard/competitors${queryString}`,
+        { method: 'GET' },
+        true
+      );
+      return response.data;
+    } catch (error) {
+      console.log('Competitor analysis error:', error);
+      return { competitors: [], marketGaps: [], recommendations: [] };
+    }
   },
+
+  getCampaignSuggestions: async (count: number = 3): Promise<any> => {
+    try {
+      const response = await apiCall<{ success: boolean; data: any }>(
+        `/dashboard/campaign-suggestions?count=${count}`,
+        { method: 'GET' },
+        true
+      );
+      return response.data;
+    } catch (error) {
+      console.log('Campaign suggestions error:', error);
+      return { campaigns: [] };
+    }
+  },
+
+  refreshDashboard: async (): Promise<any> => {
+    try {
+      const response = await apiCall<{ success: boolean; data: any }>(
+        '/dashboard/refresh',
+        { method: 'POST' },
+        true
+      );
+      return response.data;
+    } catch (error) {
+      console.log('Dashboard refresh error:', error);
+      return null;
+    }
+  },
+
+  getSynopsis: async (sectionType: string, sectionData: any): Promise<{ synopsis: string; insights: string[]; trend: 'up' | 'down' | 'stable' }> => {
+    try {
+      const response = await apiCall<{ success: boolean; synopsis: string; insights?: string[]; trend?: 'up' | 'down' | 'stable' }>(
+        '/dashboard/synopsis',
+        { method: 'POST', body: JSON.stringify({ section: sectionType, data: sectionData }) },
+        true
+      );
+      return {
+        synopsis: response.synopsis || 'No synopsis available.',
+        insights: response.insights || [],
+        trend: response.trend || 'stable'
+      };
+    } catch (error) {
+      console.log('Synopsis error:', error);
+      return { 
+        synopsis: 'Unable to generate synopsis at this time. Please try again.', 
+        insights: [], 
+        trend: 'stable' 
+      };
+    }
+  },
+
+  // ============================================
+  // AI CAPTION GENERATION
+  // ============================================
 
   generateCaption: async (topic: string): Promise<{ caption: string }> => {
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -360,12 +438,303 @@ export const apiService = {
   },
 
   getCompetitors: async (): Promise<any> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return { competitors: [] };
+    try {
+      // First try to get real data from backend
+      const response = await apiCall<{ success: boolean; posts: any[] }>(
+        '/competitors/posts',
+        { method: 'GET' },
+        true
+      );
+      return { posts: response.posts || [] };
+    } catch (error) {
+      console.log('Using fallback competitor data');
+      // Return empty - will trigger seed on page
+      return { posts: [] };
+    }
+  },
+
+  addCompetitor: async (data: any): Promise<any> => {
+    const response = await apiCall<{ success: boolean; competitor: any }>(
+      '/competitors',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  addCompetitorPost: async (competitorId: string, post: any): Promise<any> => {
+    const response = await apiCall<{ success: boolean; competitor: any }>(
+      `/competitors/${competitorId}/posts`,
+      { method: 'POST', body: JSON.stringify(post) },
+      true
+    );
+    return response;
+  },
+
+  seedCompetitorSamples: async (): Promise<any> => {
+    const response = await apiCall<{ success: boolean; message: string }>(
+      '/competitors/seed-sample',
+      { method: 'POST' },
+      true
+    );
+    return response;
   },
 
   getInfluencers: async (): Promise<any> => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return { influencers: [] };
+    try {
+      const response = await apiCall<{ success: boolean; influencers: any[] }>(
+        '/influencers',
+        { method: 'GET' },
+        true
+      );
+      return { influencers: response.influencers || [] };
+    } catch (error) {
+      console.log('Using fallback influencer data');
+      return { influencers: [] };
+    }
+  },
+
+  addInfluencer: async (data: any): Promise<any> => {
+    const response = await apiCall<{ success: boolean; influencer: any }>(
+      '/influencers',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  recalculateInfluencerScore: async (id: string): Promise<any> => {
+    const response = await apiCall<{ success: boolean; influencer: any }>(
+      `/influencers/${id}/recalculate`,
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  seedInfluencerSamples: async (): Promise<any> => {
+    const response = await apiCall<{ success: boolean; message: string }>(
+      '/influencers/seed-sample',
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  // ============================================
+  // CAMPAIGNS - REAL BACKEND
+  // ============================================
+
+  getCampaigns: async (status?: string): Promise<{ campaigns: Campaign[]; counts?: any }> => {
+    try {
+      const queryString = status && status !== 'all' ? `?status=${status}` : '';
+      const response = await apiCall<{ success: boolean; campaigns: Campaign[]; counts: any }>(
+        `/campaigns${queryString}`,
+        { method: 'GET' },
+        true
+      );
+      return { campaigns: response.campaigns || [], counts: response.counts };
+    } catch (error) {
+      console.log('Using fallback campaign data:', error);
+      return { campaigns };
+    }
+  },
+
+  getCampaign: async (id: string): Promise<{ campaign: Campaign }> => {
+    const response = await apiCall<{ success: boolean; campaign: Campaign }>(
+      `/campaigns/${id}`,
+      { method: 'GET' },
+      true
+    );
+    return { campaign: response.campaign };
+  },
+
+  createCampaign: async (data: Partial<Campaign>): Promise<{ campaign: Campaign }> => {
+    const response = await apiCall<{ success: boolean; campaign: Campaign }>(
+      '/campaigns',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return { campaign: response.campaign };
+  },
+
+  updateCampaign: async (id: string, data: Partial<Campaign>): Promise<{ campaign: Campaign }> => {
+    const response = await apiCall<{ success: boolean; campaign: Campaign }>(
+      `/campaigns/${id}`,
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+    return { campaign: response.campaign };
+  },
+
+  deleteCampaign: async (id: string): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      `/campaigns/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  postCampaign: async (id: string): Promise<{ campaign: Campaign }> => {
+    const response = await apiCall<{ success: boolean; campaign: Campaign }>(
+      `/campaigns/${id}/post`,
+      { method: 'POST' },
+      true
+    );
+    return { campaign: response.campaign };
+  },
+
+  archiveCampaign: async (id: string): Promise<{ campaign: Campaign }> => {
+    const response = await apiCall<{ success: boolean; campaign: Campaign }>(
+      `/campaigns/${id}/archive`,
+      { method: 'POST' },
+      true
+    );
+    return { campaign: response.campaign };
+  },
+
+  scheduleCampaign: async (id: string, startDate: string, postTime: string): Promise<{ campaign: Campaign }> => {
+    const response = await apiCall<{ success: boolean; campaign: Campaign }>(
+      `/campaigns/${id}/schedule`,
+      { method: 'POST', body: JSON.stringify({ startDate, postTime }) },
+      true
+    );
+    return { campaign: response.campaign };
+  },
+
+  getCampaignAnalytics: async (startDate?: string, endDate?: string): Promise<any> => {
+    try {
+      let queryString = '';
+      if (startDate || endDate) {
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        queryString = `?${params.toString()}`;
+      }
+      
+      const response = await apiCall<{ success: boolean; analytics: any }>(
+        `/campaigns/analytics/overview${queryString}`,
+        { method: 'GET' },
+        true
+      );
+      return response.analytics;
+    } catch (error) {
+      console.log('Analytics error:', error);
+      return {
+        totals: { impressions: 0, clicks: 0, engagement: 0, reach: 0, spend: 0 },
+        averages: { ctr: 0, engagementRate: 0 },
+        campaignCount: 0,
+        dailyData: []
+      };
+    }
+  },
+
+  // ============================================
+  // REMINDERS - REAL BACKEND
+  // ============================================
+
+  getReminders: async (startDate?: string, endDate?: string): Promise<{ reminders: any[] }> => {
+    try {
+      let queryString = '';
+      if (startDate || endDate) {
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        queryString = `?${params.toString()}`;
+      }
+      
+      const response = await apiCall<{ success: boolean; reminders: any[] }>(
+        `/reminders${queryString}`,
+        { method: 'GET' },
+        true
+      );
+      return { reminders: response.reminders || [] };
+    } catch (error) {
+      console.log('Reminders error:', error);
+      return { reminders: [] };
+    }
+  },
+
+  getPendingReminders: async (): Promise<{ reminders: any[]; count: number }> => {
+    try {
+      const response = await apiCall<{ success: boolean; reminders: any[]; count: number }>(
+        '/reminders/pending',
+        { method: 'GET' },
+        true
+      );
+      return { reminders: response.reminders || [], count: response.count || 0 };
+    } catch (error) {
+      console.log('Pending reminders error:', error);
+      return { reminders: [], count: 0 };
+    }
+  },
+
+  getCalendarEvents: async (year: number, month: number): Promise<{ events: any[] }> => {
+    try {
+      const response = await apiCall<{ success: boolean; events: any[] }>(
+        `/reminders/calendar/${year}/${month}`,
+        { method: 'GET' },
+        true
+      );
+      return { events: response.events || [] };
+    } catch (error) {
+      console.log('Calendar events error:', error);
+      return { events: [] };
+    }
+  },
+
+  createReminder: async (data: {
+    title: string;
+    description?: string;
+    scheduledFor: string;
+    reminderOffset?: number;
+    type?: string;
+    campaignId?: string;
+    platform?: string;
+    color?: string;
+  }): Promise<{ reminder: any }> => {
+    const response = await apiCall<{ success: boolean; reminder: any }>(
+      '/reminders',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return { reminder: response.reminder };
+  },
+
+  createCampaignReminder: async (campaignId: string, reminderOffset?: number): Promise<{ reminder: any }> => {
+    const response = await apiCall<{ success: boolean; reminder: any }>(
+      `/reminders/from-campaign/${campaignId}`,
+      { method: 'POST', body: JSON.stringify({ reminderOffset: reminderOffset || 30 }) },
+      true
+    );
+    return { reminder: response.reminder };
+  },
+
+  dismissReminder: async (id: string): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      `/reminders/${id}/dismiss`,
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  snoozeReminder: async (id: string, minutes?: number): Promise<{ reminder: any }> => {
+    const response = await apiCall<{ success: boolean; reminder: any }>(
+      `/reminders/${id}/snooze`,
+      { method: 'POST', body: JSON.stringify({ minutes: minutes || 15 }) },
+      true
+    );
+    return { reminder: response.reminder };
+  },
+
+  deleteReminder: async (id: string): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      `/reminders/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+    return response;
   },
 };

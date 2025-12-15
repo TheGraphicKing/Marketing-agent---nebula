@@ -125,6 +125,7 @@ export interface Trend {
   title: string;
   description: string;
   category: string;
+  relevanceScore?: number;
 }
 
 export interface DashboardMetrics {
@@ -135,12 +136,58 @@ export interface DashboardMetrics {
   brandScoreChange: number;
   activeCampaignsChange: number;
   engagementRate: number;
+  connectedPlatforms?: number;
+}
+
+export interface SuggestedAction {
+  id: string;
+  title: string;
+  description?: string;
+  type: 'campaign' | 'social' | 'content';
+  priority?: 'high' | 'medium' | 'low';
+  estimatedImpact?: string;
+}
+
+export interface CampaignIdea {
+  id: string;
+  name: string;
+  tagline?: string;
+  objective: string;
+  platforms: string[];
+  description: string;
+  contentIdeas?: string[];
+  estimatedBudget?: string | { min: number; max: number; currency: string };
+  duration?: string;
+  expectedResults?: string;
+  targetAudience?: string;
+}
+
+export interface BrandScoreFactor {
+  score: number;
+  reason: string;
+}
+
+export interface BrandScoreFactors {
+  engagement?: BrandScoreFactor;
+  consistency?: BrandScoreFactor;
+  audienceGrowth?: BrandScoreFactor;
+  contentQuality?: BrandScoreFactor;
 }
 
 export interface DashboardData {
   overview: DashboardMetrics;
   trends: Trend[];
   recentCampaigns: Campaign[];
-  suggestedActions: { id: string; title: string; type: 'campaign' | 'social' }[];
+  suggestedActions: SuggestedAction[];
   competitorActivity: CompetitorPost[];
+  // AI-generated extended data
+  campaignIdeas?: CampaignIdea[];
+  brandScoreFactors?: BrandScoreFactors;
+  personalizedTips?: string[];
+  businessContext?: {
+    name?: string;
+    industry?: string;
+    targetAudience?: string;
+  };
+  generatedAt?: string;
 }
