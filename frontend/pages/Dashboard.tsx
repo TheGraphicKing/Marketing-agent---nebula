@@ -1,11 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiService } from '../services/api';
-import { DashboardData, Campaign } from '../types';
-import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Info, Activity, Clock, MoreHorizontal, Plus } from 'lucide-react';
+import { DashboardData, Campaign, CompetitorPost } from '../types';
+import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showBrandScoreInfo, setShowBrandScoreInfo] = useState(false);
+  const [competitorIndex, setCompetitorIndex] = useState(0);
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; value: number } | null>(null);
+  
+  // Sample budget data points for the graph
+  const budgetData = [120, 85, 150, 200, 180, 250, data?.overview.totalSpent || 500];
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   
   useEffect(() => {
     const fetchData = async () => {
@@ -21,168 +28,407 @@ const Dashboard: React.FC = () => {
     fetchData();
   }, []);
 
+  const handlePrevCompetitor = () => {
+    if (data?.competitorActivity) {
+      setCompetitorIndex((prev) => (prev === 0 ? data.competitorActivity.length - 1 : prev - 1));
+    }
+  };
+
+  const handleNextCompetitor = () => {
+    if (data?.competitorActivity) {
+      setCompetitorIndex((prev) => (prev === data.competitorActivity.length - 1 ? 0 : prev + 1));
+    }
+  };
+
+  const getActionButton = (actionType: string, title: string) => {
+    const actionMap: Record<string, { label: string; icon: React.ReactNode; onClick: () => void }> = {
+      'post': { label: 'Create Post', icon: <Edit3 className="w-3 h-3" />, onClick: () => window.open('/campaigns?action=create', '_self') },
+      'story': { label: 'Post Story', icon: <Share2 className="w-3 h-3" />, onClick: () => window.open('/campaigns?action=story', '_self') },
+      'review': { label: 'View Ads', icon: <ExternalLink className="w-3 h-3" />, onClick: () => window.open('/competitors', '_self') },
+      'engage': { label: 'Engage', icon: <MessageSquare className="w-3 h-3" />, onClick: () => window.open('/campaigns', '_self') },
+    };
+    
+    // Determine action type from title
+    let type = 'post';
+    if (title.toLowerCase().includes('story')) type = 'story';
+    else if (title.toLowerCase().includes('review') || title.toLowerCase().includes('competitor') || title.toLowerCase().includes('ads')) type = 'review';
+    else if (title.toLowerCase().includes('engage') || title.toLowerCase().includes('comment')) type = 'engage';
+    
+    return actionMap[type] || actionMap['post'];
+  };
+
   if (loading) {
     return <div className="flex h-full items-center justify-center text-slate-400 gap-2"><div className="w-4 h-4 bg-indigo-600 rounded-full animate-bounce"></div> Loading metrics...</div>;
   }
 
+  const currentCompetitor = data?.competitorActivity?.[competitorIndex];
+  const prevCompetitor = data?.competitorActivity?.[(competitorIndex === 0 ? (data.competitorActivity.length - 1) : competitorIndex - 1)];
+  const nextCompetitor = data?.competitorActivity?.[(competitorIndex === (data?.competitorActivity?.length || 1) - 1 ? 0 : competitorIndex + 1)];
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-8 p-1">
+      {/* Header - More minimal */}
       <div className="flex justify-between items-center">
         <div>
-            <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-            <p className="text-slate-500">Overview of your marketing performance.</p>
+            <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">Dashboard</h1>
+            <p className="text-slate-400 text-sm mt-0.5">Overview of your marketing performance.</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 flex items-center gap-2 shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-lg px-4 py-2 text-sm font-medium text-slate-600 flex items-center gap-2 shadow-sm hover:border-slate-300 transition-colors cursor-pointer">
             Last 7 Days
-            <ChevronRight className="w-4 h-4 rotate-90" />
+            <ChevronRight className="w-4 h-4 rotate-90 text-slate-400" />
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Active Campaigns Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start mb-4">
-                <span className="text-slate-500 font-medium text-sm">Active Campaigns</span>
-                <div className="p-1.5 bg-slate-50 rounded-md">
-                    <Activity className="w-4 h-4 text-indigo-600" />
+      {/* Stats Grid - More refined spacing */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Active Campaigns Card - Cleaner */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 hover:border-slate-200 transition-all duration-200">
+            <div className="flex justify-between items-start mb-6">
+                <span className="text-slate-400 font-medium text-xs uppercase tracking-wider">Active Campaigns</span>
+                <div className="p-2 bg-indigo-50 rounded-lg">
+                    <Activity className="w-4 h-4 text-indigo-500" />
                 </div>
             </div>
-            <div className="text-4xl font-bold text-slate-900 mb-6">{data?.overview.activeCampaigns}</div>
-            <div className="flex justify-between items-center">
-                <span className="bg-green-100 text-green-600 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+            <div className="text-5xl font-bold text-slate-800 mb-8 tracking-tight">{data?.overview.activeCampaigns}</div>
+            <div className="flex justify-between items-center pt-4 border-t border-slate-50">
+                <span className="bg-emerald-50 text-emerald-600 text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
                     <ArrowUpRight className="w-3 h-3" /> {data?.overview.activeCampaignsChange}%
                 </span>
-                <span className="text-xs text-slate-400">vs last period</span>
+                <span className="text-xs text-slate-300">vs last period</span>
             </div>
         </div>
 
-        {/* Budget Spent Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative hover:shadow-md transition-shadow">
+        {/* Budget Spent Card - Interactive Graph */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 hover:border-slate-200 transition-all duration-200">
             <div className="flex justify-between items-start mb-4">
-                <span className="text-slate-500 font-medium text-sm">Budget Spent</span>
-                <div className="p-1.5 bg-slate-50 rounded-md">
-                    <span className="text-indigo-600 font-bold text-sm">$</span>
+                <span className="text-slate-400 font-medium text-xs uppercase tracking-wider">Budget Spent</span>
+                <div className="p-2 bg-indigo-50 rounded-lg">
+                    <span className="text-indigo-500 font-bold text-sm">$</span>
                 </div>
             </div>
-            <div className="text-4xl font-bold text-slate-900 mb-2">${data?.overview.totalSpent.toLocaleString()}</div>
-            <div className="h-12 w-full mt-4 opacity-50">
-                <svg viewBox="0 0 100 25" className="w-full h-full text-indigo-500 fill-indigo-50 stroke-indigo-500 stroke-2">
-                    <path d="M0 25 L0 20 Q 15 5, 30 15 T 60 10 T 100 15 L 100 25 Z" />
-                </svg>
+            <div className="text-5xl font-bold text-slate-800 mb-4 tracking-tight">${data?.overview.totalSpent.toLocaleString()}</div>
+            
+            {/* Interactive Graph */}
+            <div className="relative h-16 mt-4">
+              <svg 
+                viewBox="0 0 280 60" 
+                className="w-full h-full"
+                onMouseLeave={() => setHoveredPoint(null)}
+              >
+                {/* Gradient fill */}
+                <defs>
+                  <linearGradient id="budgetGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="rgb(99, 102, 241)" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="rgb(99, 102, 241)" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+                
+                {/* Area fill */}
+                <path
+                  d={`M 0 55 ${budgetData.map((val, i) => `L ${i * 40 + 20} ${55 - (val / Math.max(...budgetData)) * 45}`).join(' ')} L 280 55 Z`}
+                  fill="url(#budgetGradient)"
+                />
+                
+                {/* Line */}
+                <path
+                  d={`M ${budgetData.map((val, i) => `${i * 40 + 20} ${55 - (val / Math.max(...budgetData)) * 45}`).join(' L ')}`}
+                  fill="none"
+                  stroke="rgb(99, 102, 241)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                
+                {/* Interactive points */}
+                {budgetData.map((val, i) => {
+                  const x = i * 40 + 20;
+                  const y = 55 - (val / Math.max(...budgetData)) * 45;
+                  return (
+                    <g key={i}>
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r="12"
+                        fill="transparent"
+                        className="cursor-pointer"
+                        onMouseEnter={() => setHoveredPoint({ x, y, value: val })}
+                      />
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={hoveredPoint?.x === x ? 5 : 3}
+                        fill="white"
+                        stroke="rgb(99, 102, 241)"
+                        strokeWidth="2"
+                        className="transition-all duration-150"
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+              
+              {/* Tooltip */}
+              {hoveredPoint && (
+                <div 
+                  className="absolute bg-slate-800 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-full"
+                  style={{ left: `${(hoveredPoint.x / 280) * 100}%`, top: `${(hoveredPoint.y / 60) * 100 - 10}%` }}
+                >
+                  ${hoveredPoint.value.toLocaleString()}
+                  <div className="absolute left-1/2 -bottom-1 transform -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                </div>
+              )}
+            </div>
+            
+            {/* Day labels */}
+            <div className="flex justify-between mt-1 px-2">
+              {days.map((day, i) => (
+                <span key={day} className="text-[10px] text-slate-300">{day}</span>
+              ))}
             </div>
         </div>
 
-        {/* Brand Score Card */}
-        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-xl shadow-lg shadow-indigo-200 p-6 relative flex flex-col items-center justify-center text-center text-white">
-             <span className="text-indigo-100 font-medium text-sm mb-4">AI Brand Score</span>
+        {/* Brand Score Card - With Info Button */}
+        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl shadow-xl shadow-indigo-200/50 p-6 relative flex flex-col items-center justify-center text-center text-white overflow-hidden">
+             {/* Info Button - Top Right */}
+             <button 
+               onClick={() => setShowBrandScoreInfo(true)}
+               className="absolute top-4 right-4 p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition-colors backdrop-blur-sm"
+               title="What is Brand Score?"
+             >
+               <Info className="w-4 h-4 text-white/80" />
+             </button>
+             
+             <span className="text-indigo-200 font-medium text-xs uppercase tracking-wider mb-5">AI Brand Score</span>
              <div className="relative">
-                 <svg className="w-24 h-24 transform -rotate-90">
-                     <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-indigo-500/30" />
-                     <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={`${data?.overview.brandScore ? data.overview.brandScore * 2.51 : 0} 251`} className="text-white transition-all duration-1000 ease-out" />
+                 <svg className="w-28 h-28 transform -rotate-90">
+                     <circle cx="56" cy="56" r="48" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
+                     <circle 
+                       cx="56" cy="56" r="48" 
+                       stroke="currentColor" 
+                       strokeWidth="6" 
+                       fill="transparent" 
+                       strokeDasharray={`${data?.overview.brandScore ? data.overview.brandScore * 3.01 : 0} 301`} 
+                       strokeLinecap="round"
+                       className="text-white transition-all duration-1000 ease-out" 
+                     />
                  </svg>
-                 <div className="absolute inset-0 flex items-center justify-center text-3xl font-bold">
+                 <div className="absolute inset-0 flex items-center justify-center text-4xl font-bold tracking-tight">
                      {data?.overview.brandScore}
                  </div>
              </div>
-             <span className="mt-4 bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 backdrop-blur-sm">
+             <span className="mt-5 bg-white/15 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 backdrop-blur-sm">
                 <ArrowUpRight className="w-3 h-3" /> {data?.overview.brandScoreChange}%
              </span>
+             
+             {/* Decorative elements */}
+             <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-white/5 rounded-full"></div>
+             <div className="absolute -top-4 -left-4 w-16 h-16 bg-white/5 rounded-full"></div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Competitor Radar */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+      {/* Brand Score Info Modal */}
+      {showBrandScoreInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowBrandScoreInfo(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 rounded-xl">
+                  <Info className="w-5 h-5 text-indigo-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-800">What is Brand Score?</h3>
+              </div>
+              <button onClick={() => setShowBrandScoreInfo(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            
+            <p className="text-slate-600 text-sm leading-relaxed mb-5">
+              Your <strong>AI Brand Score</strong> is a comprehensive metric (0-100) that measures your brand's overall marketing health and effectiveness across all connected platforms.
+            </p>
+            
+            <div className="space-y-3 mb-5">
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">How it's calculated:</h4>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600 font-bold text-sm">30%</div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Engagement Rate</p>
+                    <p className="text-xs text-slate-400">Likes, comments, shares across platforms</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 font-bold text-sm">25%</div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Content Consistency</p>
+                    <p className="text-xs text-slate-400">Posting frequency and schedule adherence</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600 font-bold text-sm">25%</div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Audience Growth</p>
+                    <p className="text-xs text-slate-400">Follower growth rate and reach expansion</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center text-amber-600 font-bold text-sm">20%</div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Campaign Performance</p>
+                    <p className="text-xs text-slate-400">ROI and conversion metrics</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => setShowBrandScoreInfo(false)} 
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Competitor Radar - With Navigation Arrows */}
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 hover:border-slate-200 transition-all duration-200">
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-slate-900">Competitor Radar</h2>
-                    <Info className="w-4 h-4 text-slate-300" />
+                    <h2 className="text-sm font-semibold text-slate-800">Competitor Radar</h2>
+                    <Info className="w-3.5 h-3.5 text-slate-300" />
                 </div>
                 <button className="text-indigo-600 text-xs font-medium hover:underline">View All</button>
             </div>
             
-            <div className="relative group">
-                {/* Simulated Carousel arrows */}
-                <button className="absolute -left-3 top-1/2 -translate-y-1/2 p-1.5 bg-white border border-slate-200 rounded-full shadow-sm text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <ChevronLeft className="w-4 h-4" />
-                </button>
-                <div className="px-2">
-                    {data?.competitorActivity.slice(0, 1).map(post => (
-                        <div key={post.id} className="bg-slate-50 border border-slate-100 rounded-xl p-5 relative">
-                            <div className="absolute top-4 right-4 text-slate-300">
+            <div className="relative">
+                {/* Left Arrow with Preview */}
+                <div className="absolute -left-2 top-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
+                    <button 
+                      onClick={handlePrevCompetitor}
+                      className="p-2 bg-white border border-slate-200 rounded-full shadow-md text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all"
+                    >
+                        <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    {prevCompetitor && (
+                      <span className="mt-1.5 text-[9px] text-slate-400 max-w-[60px] text-center truncate">
+                        {prevCompetitor.competitorName}
+                      </span>
+                    )}
+                </div>
+                
+                <div className="px-8">
+                    {currentCompetitor && (
+                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-5 relative">
+                            <div className="absolute top-4 right-4 text-slate-300 hover:text-slate-500 cursor-pointer transition-colors">
                                 <MoreHorizontal className="w-5 h-5" />
                             </div>
                             <div className="flex justify-between items-start mb-3">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-sm font-bold text-slate-700 border border-slate-100">
-                                        {post.competitorLogo || 'C'}
+                                        {currentCompetitor.competitorLogo || currentCompetitor.competitorName?.charAt(0) || 'C'}
                                     </div>
                                     <div>
-                                        <p className="text-sm font-bold text-slate-900">{post.competitorName}</p>
+                                        <p className="text-sm font-semibold text-slate-800">{currentCompetitor.competitorName}</p>
                                         <p className="text-xs text-slate-400 flex items-center gap-1">
-                                            {post.platform} • {post.postedAt}
+                                            {currentCompetitor.platform} • {currentCompetitor.postedAt}
                                         </p>
                                     </div>
                                 </div>
                             </div>
                             <p className="text-sm text-slate-600 mb-4 leading-relaxed bg-white p-3 rounded-lg border border-slate-100 italic">
-                                "{post.content}"
+                                "{currentCompetitor.content}"
                             </p>
                             <div className="flex justify-between items-center">
                                 <div className="flex gap-4 text-xs font-medium">
-                                    <span className="text-slate-500">❤️ {post.likes.toLocaleString()}</span>
-                                    <span className="text-slate-500">💬 {post.comments}</span>
+                                    <span className="text-slate-500">❤️ {currentCompetitor.likes?.toLocaleString()}</span>
+                                    <span className="text-slate-500">💬 {currentCompetitor.comments}</span>
                                 </div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                                    post.sentiment === 'positive' ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
+                                    currentCompetitor.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700' : 
+                                    currentCompetitor.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
+                                    'bg-slate-200 text-slate-600'
                                 }`}>
-                                    {post.sentiment} Analysis
+                                    {currentCompetitor.sentiment} Analysis
                                 </span>
                             </div>
                         </div>
-                    ))}
+                    )}
                 </div>
-                <button className="absolute -right-3 top-1/2 -translate-y-1/2 p-1.5 bg-white border border-slate-200 rounded-full shadow-sm text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <ChevronRight className="w-4 h-4" />
-                </button>
+                
+                {/* Right Arrow with Preview */}
+                <div className="absolute -right-2 top-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
+                    <button 
+                      onClick={handleNextCompetitor}
+                      className="p-2 bg-white border border-slate-200 rounded-full shadow-md text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all"
+                    >
+                        <ChevronRight className="w-4 h-4" />
+                    </button>
+                    {nextCompetitor && (
+                      <span className="mt-1.5 text-[9px] text-slate-400 max-w-[60px] text-center truncate">
+                        {nextCompetitor.competitorName}
+                      </span>
+                    )}
+                </div>
+                
+                {/* Pagination dots */}
+                {data?.competitorActivity && data.competitorActivity.length > 1 && (
+                  <div className="flex justify-center gap-1.5 mt-4">
+                    {data.competitorActivity.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCompetitorIndex(idx)}
+                        className={`w-1.5 h-1.5 rounded-full transition-all ${
+                          idx === competitorIndex ? 'bg-indigo-600 w-4' : 'bg-slate-300 hover:bg-slate-400'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
             </div>
         </div>
 
-        {/* Suggested Actions */}
-        <div className="bg-slate-900 rounded-xl shadow-lg p-6 text-white flex flex-col">
+        {/* Suggested Actions - With Action Buttons */}
+        <div className="bg-slate-900 rounded-2xl shadow-xl p-6 text-white flex flex-col">
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-indigo-400" />
-                    <h2 className="text-base font-bold">Recommended Actions</h2>
+                    <h2 className="text-sm font-semibold">Recommended Actions</h2>
                 </div>
-                <span className="text-xs bg-indigo-600 px-2 py-0.5 rounded font-bold">AI Generated</span>
+                <span className="text-[10px] bg-indigo-500 px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide">AI Generated</span>
             </div>
 
             <div className="space-y-3 flex-1">
-                {data?.suggestedActions.map((action, idx) => (
-                    <div key={action.id} className="flex items-center justify-between gap-4 p-3 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors group cursor-pointer">
-                        <div className="flex items-center gap-3">
-                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center text-xs font-bold">
-                                {idx + 1}
-                            </span>
-                            <p className="text-sm font-medium text-slate-200 group-hover:text-white transition-colors">{action.title}</p>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-400" />
-                    </div>
-                ))}
-                <button className="w-full mt-2 py-2.5 border border-dashed border-slate-700 rounded-lg text-slate-400 text-sm hover:text-white hover:border-slate-500 transition-colors flex items-center justify-center gap-2">
+                {data?.suggestedActions.map((action, idx) => {
+                    const actionBtn = getActionButton(action.type, action.title);
+                    return (
+                      <div key={action.id} className="flex items-center justify-between gap-3 p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-colors group">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center justify-center text-xs font-bold">
+                                  {idx + 1}
+                              </span>
+                              <p className="text-sm font-medium text-slate-200 group-hover:text-white transition-colors truncate">{action.title}</p>
+                          </div>
+                          <button
+                            onClick={actionBtn.onClick}
+                            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition-colors"
+                          >
+                            {actionBtn.icon}
+                            {actionBtn.label}
+                          </button>
+                      </div>
+                    );
+                })}
+                <button className="w-full mt-2 py-3 border border-dashed border-slate-700 rounded-xl text-slate-400 text-sm hover:text-white hover:border-slate-500 transition-colors flex items-center justify-center gap-2">
                     <Plus className="w-4 h-4" /> Generate More Ideas
                 </button>
             </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-5">
          {/* Interactive Calendar */}
-         <div className="lg:col-span-3">
-             <CalendarWidget campaigns={data?.recentCampaigns || []} />
-         </div>
+         <CalendarWidget campaigns={data?.recentCampaigns || []} />
       </div>
     </div>
   );
@@ -257,13 +503,13 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden hover:border-slate-200 transition-all duration-200">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
                 <div className="flex items-center gap-4">
                     <button 
                         onClick={handleToday}
-                        className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2"
                     >
                         <CalendarIcon className="w-4 h-4" />
                         Today
@@ -273,21 +519,21 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
                             onClick={handlePrevWeek}
                             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                         >
-                            <ChevronLeft className="w-4 h-4 text-slate-600" />
+                            <ChevronLeft className="w-4 h-4 text-slate-500" />
                         </button>
                         <button 
                             onClick={handleNextWeek}
                             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                         >
-                            <ChevronRight className="w-4 h-4 text-slate-600" />
+                            <ChevronRight className="w-4 h-4 text-slate-500" />
                         </button>
                     </div>
-                    <h2 className="text-lg font-semibold text-slate-900">
+                    <h2 className="text-base font-semibold text-slate-800">
                         {formatDateRange()}
                     </h2>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+                    <span className="text-xs text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg font-medium">
                         Week View
                     </span>
                 </div>
