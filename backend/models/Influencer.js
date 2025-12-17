@@ -21,10 +21,11 @@ const influencerSchema = new mongoose.Schema({
     default: 'instagram'
   },
   profileImage: String,
+  profileUrl: String,
   bio: String,
   type: {
     type: String,
-    enum: ['nano', 'micro', 'macro', 'mega', 'celebrity'],
+    enum: ['nano', 'micro', 'mid-tier', 'macro', 'mega', 'celebrity'],
     default: 'micro'
   },
   niche: [String],
@@ -48,6 +49,14 @@ const influencerSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  avgViews: {
+    type: Number,
+    default: 0
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
   priceRange: {
     min: { type: Number, default: 0 },
     max: { type: Number, default: 0 },
@@ -57,6 +66,11 @@ const influencerSchema = new mongoose.Schema({
   aiMatchScore: {
     score: { type: Number, default: 0 },
     reason: String,
+    factors: [{
+      name: String,
+      score: Number,
+      max: Number
+    }],
     calculatedAt: Date
   },
   pastCollaborations: [{
@@ -78,7 +92,13 @@ const influencerSchema = new mongoose.Schema({
   isFavorite: {
     type: Boolean,
     default: false
-  }
+  },
+  // New fields for scraped influencers
+  scrapedFromSocial: {
+    type: Boolean,
+    default: false
+  },
+  scrapedAt: Date
 }, {
   timestamps: true
 });
@@ -86,5 +106,8 @@ const influencerSchema = new mongoose.Schema({
 // Index for efficient queries
 influencerSchema.index({ userId: 1, status: 1 });
 influencerSchema.index({ userId: 1, 'aiMatchScore.score': -1 });
+influencerSchema.index({ userId: 1, scrapedFromSocial: 1 });
+influencerSchema.index({ userId: 1, followerCount: -1 });
+influencerSchema.index({ userId: 1, engagementRate: -1 });
 
 module.exports = mongoose.model('Influencer', influencerSchema);

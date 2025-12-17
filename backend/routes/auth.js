@@ -76,7 +76,7 @@ router.post('/signup', [
 
     res.status(201).json({
       success: true,
-      message: 'Account created successfully! Welcome to Nebulaa.',
+      message: 'Account created successfully! Welcome to Gravity.',
       token,
       user: user.toPublicJSON()
     });

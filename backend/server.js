@@ -2,6 +2,34 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+
+// ============================================
+// Environment Validation (Fail Fast)
+// ============================================
+const requiredEnvVars = ['GEMINI_API_KEY'];
+const optionalEnvVars = ['GROK_API_KEY', 'MONGODB_URI', 'JWT_SECRET'];
+
+console.log('\n🔍 Validating environment...');
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`❌ Missing required environment variable: ${envVar}`);
+    // Don't exit - use fallback for Gemini
+  } else {
+    console.log(`✅ ${envVar}: configured`);
+  }
+}
+for (const envVar of optionalEnvVars) {
+  if (process.env[envVar]) {
+    console.log(`✅ ${envVar}: configured`);
+  } else {
+    console.log(`⚠️  ${envVar}: not set (optional)`);
+  }
+}
+console.log('');
+
+// ============================================
+// Route Imports
+// ============================================
 const authRoutes = require('./routes/auth');
 const socialRoutes = require('./routes/social');
 const chatRoutes = require('./routes/chat');
@@ -10,6 +38,13 @@ const campaignRoutes = require('./routes/campaigns');
 const competitorRoutes = require('./routes/competitors');
 const influencerRoutes = require('./routes/influencers');
 const reminderRoutes = require('./routes/reminders');
+
+// New real-data routes
+const brandRoutes = require('./routes/brand');
+const trendRoutes = require('./routes/trends');
+const contentRoutes = require('./routes/content');
+const campaignBuilderRoutes = require('./routes/campaignBuilder');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 
@@ -29,7 +64,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
+// Routes - Core
 app.use('/api/auth', authRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/chat', chatRoutes);
@@ -39,11 +74,18 @@ app.use('/api/competitors', competitorRoutes);
 app.use('/api/influencers', influencerRoutes);
 app.use('/api/reminders', reminderRoutes);
 
+// Routes - Real Data Features
+app.use('/api/brand', brandRoutes);
+app.use('/api/trends', trendRoutes);
+app.use('/api/content', contentRoutes);
+app.use('/api/campaign-builder', campaignBuilderRoutes);
+app.use('/api/analytics', analyticsRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
-    message: 'Nebulaa API is running',
+    message: 'Gravity API is running',
     timestamp: new Date().toISOString()
   });
 });
@@ -123,7 +165,7 @@ const startServer = async () => {
   }
 
   app.listen(PORT, () => {
-    console.log(`✅ Nebulaa API server running on http://localhost:${PORT}`);
+    console.log(`✅ Gravity API server running on http://localhost:${PORT}`);
     console.log(`   Health check: http://localhost:${PORT}/api/health`);
     if (!mongoConnected) {
       console.log('   ⚠️  Running in DEMO MODE (MongoDB unavailable)');

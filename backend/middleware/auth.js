@@ -70,4 +70,39 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { generateToken, protect };
+// Optional auth - doesn't require token but will use it if present
+const optionalAuth = async (req, res, next) => {
+  try {
+    let token;
+
+    // Check for token in Authorization header
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+      // No token, continue without user
+      req.user = null;
+      return next();
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Check if user still exists
+    const user = await User.findById(decoded.id);
+    if (user && user.isActive) {
+      req.user = user;
+    } else {
+      req.user = null;
+    }
+
+    next();
+  } catch (error) {
+    // Token invalid or expired, continue without user
+    req.user = null;
+    next();
+  }
+};
+
+module.exports = { generateToken, protect, optionalAuth };

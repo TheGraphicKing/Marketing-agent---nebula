@@ -13,7 +13,7 @@ const campaignSchema = new mongoose.Schema({
   },
   objective: {
     type: String,
-    enum: ['awareness', 'engagement', 'traffic', 'sales', 'conversion'],
+    enum: ['awareness', 'engagement', 'traffic', 'sales', 'conversion', 'conversions', 'leads'],
     default: 'awareness'
   },
   platforms: [{
@@ -25,17 +25,31 @@ const campaignSchema = new mongoose.Schema({
     enum: ['draft', 'scheduled', 'active', 'posted', 'paused', 'archived'],
     default: 'draft'
   },
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high'],
+    default: 'medium'
+  },
+  notes: {
+    type: String,
+    default: ''
+  },
   creative: {
     type: {
       type: String,
-      enum: ['image', 'video', 'carousel', 'story', 'text'],
+      enum: ['image', 'video', 'carousel', 'story', 'text', 'reel'],
       default: 'image'
     },
     textContent: String,
     imageUrls: [String],
     videoUrl: String,
     captions: String,
-    hashtags: [String]
+    hashtags: [String],
+    callToAction: {
+      type: String,
+      enum: ['', 'learn_more', 'shop_now', 'sign_up', 'contact_us', 'book_now', 'download', 'get_quote', 'watch_more'],
+      default: ''
+    }
   },
   scheduling: {
     startDate: Date,
@@ -52,6 +66,7 @@ const campaignSchema = new mongoose.Schema({
     }
   },
   targeting: {
+    demographics: { type: String, default: '' },
     ageRange: {
       min: { type: Number, default: 18 },
       max: { type: Number, default: 65 }
@@ -65,6 +80,7 @@ const campaignSchema = new mongoose.Schema({
     interests: [String]
   },
   budget: {
+    amount: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     daily: { type: Number, default: 0 },
     spent: { type: Number, default: 0 },

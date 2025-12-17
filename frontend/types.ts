@@ -8,6 +8,7 @@ export interface BusinessProfile {
   brandVoice: string; // e.g., Professional, Witty, Empathetic
   marketingGoals: string[]; // e.g., Brand Awareness, Sales, Leads
   description: string;
+  competitors?: string[]; // Competitor names/brands to track
 }
 
 export interface User {
@@ -40,14 +41,18 @@ export interface AuthResponse {
 export interface Campaign {
   _id: string;
   name: string;
-  objective: 'awareness' | 'traffic' | 'sales' | 'engagement' | 'conversion';
+  objective: 'awareness' | 'traffic' | 'sales' | 'engagement' | 'conversion' | 'conversions' | 'leads';
   platforms: string[];
   status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'archived' | 'posted';
+  priority?: 'low' | 'medium' | 'high';
+  notes?: string;
   creative: {
-    type: 'text' | 'image' | 'video' | 'carousel';
+    type: 'text' | 'image' | 'video' | 'carousel' | 'story' | 'reel';
     textContent: string;
     imageUrls: string[];
     captions?: string;
+    hashtags?: string[];
+    callToAction?: string;
     aiGenerated?: boolean;
   };
   scheduling: {
@@ -56,8 +61,16 @@ export interface Campaign {
     postTime?: string;
   };
   budget?: {
-    type: 'daily' | 'lifetime';
-    amount: number;
+    type?: 'daily' | 'lifetime';
+    amount?: number;
+    currency?: string;
+  };
+  targeting?: {
+    demographics?: string;
+    ageRange?: { min: number; max: number };
+    gender?: 'all' | 'male' | 'female';
+    locations?: string[];
+    interests?: string[];
   };
   audience?: string;
   performance?: {
@@ -80,6 +93,9 @@ export interface CompetitorPost {
   likes: number;
   comments: number;
   platform: string;
+  postUrl?: string;
+  imageUrl?: string;
+  isAIGenerated?: boolean;
 }
 
 export interface Competitor {
@@ -103,12 +119,34 @@ export interface Influencer {
   reach: number;
   engagementRate: number;
   niche: string[];
-  type: 'Nano' | 'Micro' | 'Mid-Tier' | 'Macro' | 'Mega';
+  type: 'nano' | 'micro' | 'mid-tier' | 'macro' | 'mega' | 'celebrity' | 'Nano' | 'Micro' | 'Mid-Tier' | 'Macro' | 'Mega';
   aiMatchScore: {
     score: number;
     reason: string;
+    factors?: {
+      name: string;
+      score: number;
+      max: number;
+    }[];
+    calculatedAt?: string;
   };
   profileImage?: string;
+  profileUrl?: string;
+  bio?: string;
+  avgLikes?: number;
+  avgComments?: number;
+  avgViews?: number;
+  isVerified?: boolean;
+  priceRange?: {
+    min: number;
+    max: number;
+    currency: string;
+  };
+  status?: 'discovered' | 'contacted' | 'negotiating' | 'confirmed' | 'completed' | 'rejected';
+  isFavorite?: boolean;
+  scrapedFromSocial?: boolean;
+  scrapedAt?: string;
+  createdAt?: string;
 }
 
 export interface SocialConnection {
@@ -143,7 +181,8 @@ export interface SuggestedAction {
   id: string;
   title: string;
   description?: string;
-  type: 'campaign' | 'social' | 'content';
+  type?: 'campaign' | 'social' | 'content';
+  actionType?: 'create_campaign' | 'create_post' | 'create_story' | 'analyze_competitors' | 'find_influencers' | 'engage_audience' | 'connect_social' | 'view_analytics' | 'schedule_content';
   priority?: 'high' | 'medium' | 'low';
   estimatedImpact?: string;
 }
@@ -187,7 +226,9 @@ export interface DashboardData {
   businessContext?: {
     name?: string;
     industry?: string;
+    niche?: string;
     targetAudience?: string;
   };
   generatedAt?: string;
+  dataSource?: 'real' | 'mock';
 }

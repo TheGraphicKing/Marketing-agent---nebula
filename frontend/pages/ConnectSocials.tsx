@@ -2,52 +2,78 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { SocialConnection } from '../types';
-import { Loader2, RefreshCw, Check, X, Instagram, Facebook, Twitter, Linkedin, Youtube, Video, AlertCircle, ShieldCheck, Ghost, MessageCircle, Pin, ExternalLink } from 'lucide-react';
+import { Loader2, RefreshCw, Check, X, Instagram, Facebook, Linkedin, Youtube, Video, AlertCircle, ShieldCheck, MessageCircle, Pin, ExternalLink } from 'lucide-react';
+import { useTheme, getThemeClasses } from '../context/ThemeContext';
+
+// X (Twitter) logo SVG component
+const XLogo = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>
+);
 
 const ConnectSocials: React.FC = () => {
+  const { isDarkMode } = useTheme();
+  const theme = getThemeClasses(isDarkMode);
   const location = useLocation();
   const [socials, setSocials] = useState<SocialConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
-  // Simulation State for non-YouTube platforms
+  // Connection State
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [showFakeAuthWindow, setShowFakeAuthWindow] = useState(false);
   const [authStep, setAuthStep] = useState(0); // 0: loading, 1: consent, 2: success
   const [usernameInput, setUsernameInput] = useState('');
   
-  // YouTube loading state
-  const [youtubeLoading, setYoutubeLoading] = useState(false);
+  // Loading states per platform
+  const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
 
   useEffect(() => {
     loadSocials();
     
     // Check URL params for OAuth callback results
     const searchParams = new URLSearchParams(location.search);
+    const error = searchParams.get('error');
+    const account = searchParams.get('account');
+    
+    // Check for successful connections for each platform
+    const platforms = ['youtube', 'instagram', 'facebook', 'x', 'linkedin', 'pinterest', 'reddit'];
+    for (const platform of platforms) {
+      const status = searchParams.get(platform);
+      if (status === 'connected') {
+        const displayName = platform.charAt(0).toUpperCase() + platform.slice(1);
+        setNotification({
+          type: 'success',
+          message: `${displayName}${account ? ` (${decodeURIComponent(account)})` : ''} connected successfully!`
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+        setTimeout(() => loadSocials(), 500);
+        break;
+      }
+    }
+    
+    // Legacy YouTube callback
     const youtubeStatus = searchParams.get('youtube');
     const channelName = searchParams.get('channel');
-    const error = searchParams.get('error');
-    
     if (youtubeStatus === 'connected' && channelName) {
       setNotification({
         type: 'success',
         message: `YouTube channel "${decodeURIComponent(channelName)}" connected successfully!`
       });
-      // Clear URL params
       window.history.replaceState({}, '', window.location.pathname);
-      // Reload socials to show updated status
       setTimeout(() => loadSocials(), 500);
     } else if (error) {
-      let errorMessage = 'Failed to connect YouTube.';
+      let errorMessage = 'Failed to connect account.';
       switch (error) {
         case 'access_denied':
-          errorMessage = 'You denied access to your YouTube account.';
+          errorMessage = 'You denied access to your account.';
           break;
         case 'no_channel':
           errorMessage = 'No YouTube channel found for this Google account.';
           break;
         case 'token_exchange_failed':
-          errorMessage = 'Failed to authenticate with Google. Please try again.';
+          errorMessage = 'Failed to authenticate. Please try again.';
           break;
         case 'invalid_state':
           errorMessage = 'Authentication session expired. Please try again.';
@@ -78,32 +104,34 @@ const ConnectSocials: React.FC = () => {
   };
 
   const initiateConnection = async (platform: string) => {
-    // For YouTube, use real OAuth
-    if (platform === 'YouTube') {
-      setYoutubeLoading(true);
-      try {
-        const response = await apiService.getYouTubeAuthUrl();
-        if (response.success && response.authUrl) {
-          // Redirect to Google OAuth
-          window.location.href = response.authUrl;
-        } else {
-          setNotification({ type: 'error', message: 'Failed to initiate YouTube connection.' });
-        }
-      } catch (error: any) {
-        setNotification({ type: 'error', message: error.message || 'Failed to connect to YouTube.' });
-        setYoutubeLoading(false);
-      }
-      return;
-    }
-    
-    // For other platforms, use simulated OAuth
+    setLoadingPlatform(platform);
     setConnectingPlatform(platform);
-    setShowFakeAuthWindow(true);
-    setAuthStep(0);
-    setUsernameInput('');
     
-    // Simulate redirection delay
-    setTimeout(() => setAuthStep(1), 1200);
+    try {
+      // Use universal OAuth endpoint for all platforms
+      const response = await apiService.getPlatformAuthUrl(platform);
+      
+      if (response.success && response.authUrl) {
+        // Redirect to the auth page (either platform OAuth or Ayrshare dashboard)
+        window.location.href = response.authUrl;
+      } else {
+        // Some error occurred
+        setNotification({ 
+          type: 'error', 
+          message: response.message || `Failed to initiate ${platform} connection.` 
+        });
+        setLoadingPlatform(null);
+        setConnectingPlatform(null);
+      }
+    } catch (error: any) {
+      console.error('OAuth connect error:', error);
+      setNotification({ 
+        type: 'error', 
+        message: error.message || `Failed to connect to ${platform}.` 
+      });
+      setLoadingPlatform(null);
+      setConnectingPlatform(null);
+    }
   };
 
   const confirmFakeAuth = async () => {
@@ -128,29 +156,26 @@ const ConnectSocials: React.FC = () => {
   };
 
   const handleDisconnect = async (platform: string) => {
-    if (platform === 'YouTube') {
-      try {
-        await apiService.disconnectYouTube();
-        setNotification({ type: 'success', message: 'YouTube disconnected successfully.' });
+    try {
+      const result = await apiService.disconnectPlatform(platform);
+      if (result.success) {
+        setNotification({ type: 'success', message: `${platform} disconnected successfully.` });
         loadSocials();
-      } catch (error: any) {
-        setNotification({ type: 'error', message: error.message || 'Failed to disconnect YouTube.' });
+      } else {
+        throw new Error('Disconnect failed');
       }
-      return;
+    } catch (error: any) {
+      setNotification({ type: 'error', message: error.message || `Failed to disconnect ${platform}.` });
     }
-    
-    setSocials(socials.map(s => s.platform === platform ? { ...s, connected: false } : s));
   };
 
   const getIcon = (platform: string) => {
       switch(platform) {
           case 'Instagram': return <Instagram className="w-6 h-6 text-white" />;
           case 'Facebook': return <Facebook className="w-6 h-6 text-white" />;
-          case 'Twitter': return <Twitter className="w-6 h-6 text-white" />;
+          case 'X': return <XLogo className="w-5 h-5 text-white" />;
           case 'LinkedIn': return <Linkedin className="w-6 h-6 text-white" />;
           case 'YouTube': return <Youtube className="w-6 h-6 text-white" />;
-          case 'TikTok': return <span className="text-white font-bold text-xl" style={{ fontFamily: 'sans-serif' }}>Tk</span>;
-          case 'Snapchat': return <Ghost className="w-6 h-6 text-white" />;
           case 'Pinterest': return <Pin className="w-6 h-6 text-white" />;
           case 'Reddit': return <MessageCircle className="w-6 h-6 text-white" />;
           default: return <Video className="w-6 h-6 text-white" />;
@@ -159,26 +184,18 @@ const ConnectSocials: React.FC = () => {
 
   const getBgColor = (platform: string) => {
     switch(platform) {
-        case 'Instagram': return 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500';
+        case 'Instagram': return 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600';
         case 'Facebook': return 'bg-[#1877F2]';
-        case 'Twitter': return 'bg-[#1DA1F2]';
+        case 'X': return 'bg-black';
         case 'LinkedIn': return 'bg-[#0A66C2]';
         case 'YouTube': return 'bg-[#FF0000]';
-        case 'TikTok': return 'bg-black';
-        case 'Snapchat': return 'bg-[#FFFC00] text-black'; // Snapchat yellow
         case 'Pinterest': return 'bg-[#BD081C]';
         case 'Reddit': return 'bg-[#FF4500]';
         default: return 'bg-slate-500';
     }
   };
 
-  // Helper for text color on bright backgrounds (Snapchat)
-  const getIconColorClass = (platform: string) => {
-      return platform === 'Snapchat' ? 'text-black' : 'text-white';
-  };
-
   const getCustomIcon = (platform: string) => {
-       if (platform === 'Snapchat') return <Ghost className="w-6 h-6 text-black" />;
        return getIcon(platform);
   };
 
@@ -207,17 +224,23 @@ const ConnectSocials: React.FC = () => {
 
       <div className="mb-8 flex justify-between items-end">
         <div>
-            <h1 className="text-2xl font-bold text-slate-900">Connect Socials</h1>
-            <p className="text-slate-500">Securely connect your platforms to enable auto-posting and analytics.</p>
+            <h1 className={`text-2xl font-bold ${theme.text}`}>Connect Socials</h1>
+            <p className={theme.textSecondary}>Securely connect your platforms to enable auto-posting and analytics.</p>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-bold text-blue-700">
+        <div className={`rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-bold ${
+          isDarkMode ? 'bg-blue-500/20 border border-blue-400/30 text-blue-400' : 'bg-blue-50 border border-blue-200 text-blue-700'
+        }`}>
             <ShieldCheck className="w-4 h-4" /> Secure OAuth 2.0 Connection
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {socials.map((social) => (
-              <div key={social.platform} className={`bg-white rounded-xl p-5 shadow-sm border transition-all duration-200 relative overflow-hidden group ${social.connected ? 'border-green-200 ring-1 ring-green-100' : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'}`}>
+              <div key={social.platform} className={`rounded-xl p-5 shadow-sm border transition-all duration-200 relative overflow-hidden group ${theme.bgCard} ${
+                social.connected 
+                  ? isDarkMode ? 'border-green-500/30 ring-1 ring-green-500/20' : 'border-green-200 ring-1 ring-green-100' 
+                  : isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40 hover:shadow-md' : 'border-slate-200 hover:border-[#ffcc29]/30 hover:shadow-md'
+              }`}>
                   {social.connected && (
                       <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">
                           CONNECTED
@@ -236,9 +259,9 @@ const ConnectSocials: React.FC = () => {
                           {getCustomIcon(social.platform)}
                       </div>
                       <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-slate-900 text-base">{social.platform}</h3>
+                          <h3 className={`font-bold text-base ${theme.text}`}>{social.platform}</h3>
                           {social.connected ? (
-                              <p className="text-xs text-slate-500 font-medium truncate">{social.username}</p>
+                              <p className={`text-xs font-medium truncate ${theme.textSecondary}`}>{social.username}</p>
                           ) : (
                               <p className="text-xs text-slate-400">Not connected</p>
                           )}
@@ -256,12 +279,18 @@ const ConnectSocials: React.FC = () => {
                   <div className="flex items-center gap-2 mt-auto">
                       {social.connected ? (
                            <>
-                             <button className="flex-1 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
+                             <button className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                               isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                             }`}>
                                 <RefreshCw className="w-3 h-3" /> Sync
                              </button>
                              <button 
                                 onClick={() => handleDisconnect(social.platform)}
-                                className="px-3 py-2 bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 text-xs font-bold rounded-lg transition-colors"
+                                className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors ${
+                                  isDarkMode 
+                                    ? 'bg-[#0f1419] border border-[#ffcc29]/20 text-slate-400 hover:text-red-400 hover:border-red-400/30' 
+                                    : 'bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200'
+                                }`}
                              >
                                 Unlink
                              </button>
@@ -269,10 +298,10 @@ const ConnectSocials: React.FC = () => {
                       ) : (
                           <button 
                             onClick={() => initiateConnection(social.platform)}
-                            disabled={social.platform === 'YouTube' && youtubeLoading}
-                            className="w-full py-2.5 bg-slate-900 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-wait text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
+                            disabled={loadingPlatform === social.platform}
+                            className="w-full py-2.5 bg-[#ffcc29] hover:bg-[#ffcc29]/80 disabled:opacity-50 disabled:cursor-wait text-black text-xs font-bold rounded-lg transition-all shadow-sm flex items-center justify-center gap-2"
                           >
-                             {social.platform === 'YouTube' && youtubeLoading ? (
+                             {loadingPlatform === social.platform ? (
                                <>
                                  <Loader2 className="w-3 h-3 animate-spin" /> Connecting...
                                </>
@@ -289,15 +318,19 @@ const ConnectSocials: React.FC = () => {
       {/* Simulated OAuth Popup Modal */}
       {showFakeAuthWindow && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-              <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+              <div className={`w-full max-w-md rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh] ${theme.bgCard}`}>
                   {/* Fake Browser Header */}
-                  <div className="bg-slate-100 border-b border-slate-200 p-3 flex items-center gap-2 flex-shrink-0">
+                  <div className={`border-b p-3 flex items-center gap-2 flex-shrink-0 ${
+                    isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-slate-100 border-slate-200'
+                  }`}>
                       <div className="flex gap-1.5">
                           <div className="w-3 h-3 rounded-full bg-red-400"></div>
                           <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
                           <div className="w-3 h-3 rounded-full bg-green-400"></div>
                       </div>
-                      <div className="flex-1 bg-white border border-slate-200 rounded text-[10px] text-slate-500 px-2 py-1 text-center truncate mx-4 flex items-center justify-center gap-1">
+                      <div className={`flex-1 border rounded text-[10px] px-2 py-1 text-center truncate mx-4 flex items-center justify-center gap-1 ${
+                        isDarkMode ? 'bg-[#0f1419] border-[#ffcc29]/20 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
+                      }`}>
                           <div className="w-2 h-2 rounded-full bg-green-500"></div>
                           https://api.{connectingPlatform?.toLowerCase()}.com/oauth/v2/authorize
                       </div>
@@ -314,7 +347,7 @@ const ConnectSocials: React.FC = () => {
                                       <Loader2 className="w-8 h-8 text-white animate-spin drop-shadow-md" />
                                   </div>
                               </div>
-                              <p className="text-slate-600 font-medium animate-pulse">Contacting {connectingPlatform}...</p>
+                              <p className={`font-medium animate-pulse ${theme.textSecondary}`}>Contacting {connectingPlatform}...</p>
                           </div>
                       )}
 
@@ -324,19 +357,23 @@ const ConnectSocials: React.FC = () => {
                                   {getCustomIcon(connectingPlatform || '')}
                               </div>
                               <div>
-                                  <h3 className="text-xl font-bold text-slate-900">Authorize Nebulaa AI</h3>
-                                  <p className="text-sm text-slate-500 mt-2">
-                                      Nebulaa is requesting access to your {connectingPlatform} account to publish posts and view analytics.
+                                  <h3 className={`text-xl font-bold ${theme.text}`}>Authorize Nebulaa Gravity</h3>
+                                  <p className={`text-sm mt-2 ${theme.textSecondary}`}>
+                                      Nebulaa Gravity is requesting access to your {connectingPlatform} account to publish posts and view analytics.
                                   </p>
                               </div>
 
-                              <div className="text-left bg-slate-50 p-4 rounded-lg border border-slate-100 text-sm">
-                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Enter {connectingPlatform} Username</label>
+                              <div className={`text-left p-4 rounded-lg border text-sm ${
+                                isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-slate-50 border-slate-200'
+                              }`}>
+                                  <label className={`block text-xs font-bold uppercase mb-1 ${theme.textSecondary}`}>Enter {connectingPlatform} Username</label>
                                   <input 
                                     type="text" 
                                     autoFocus
-                                    className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                    placeholder="e.g. nebulaa_official"
+                                    className={`w-full p-2 border rounded focus:ring-2 focus:ring-[#ffcc29] outline-none ${
+                                      isDarkMode ? 'bg-[#0f1419] border-[#ffcc29]/20 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                    }`}
+                                    placeholder="e.g. gravity_official"
                                     value={usernameInput}
                                     onChange={(e) => setUsernameInput(e.target.value)}
                                   />
@@ -346,13 +383,15 @@ const ConnectSocials: React.FC = () => {
                                   <button 
                                     onClick={confirmFakeAuth}
                                     disabled={!usernameInput}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg shadow-md transition-colors"
+                                    className="w-full bg-[#ffcc29] hover:bg-[#ffcc29]/80 disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-3 rounded-lg shadow-md transition-colors"
                                   >
                                       Authorize App
                                   </button>
                                   <button 
                                     onClick={() => setShowFakeAuthWindow(false)}
-                                    className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold py-3 rounded-lg transition-colors"
+                                    className={`w-full border font-bold py-3 rounded-lg transition-colors ${
+                                      isDarkMode ? 'bg-[#0f1419] border-[#ffcc29]/20 text-slate-400 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
                                   >
                                       Cancel
                                   </button>
@@ -369,8 +408,8 @@ const ConnectSocials: React.FC = () => {
                                   <Check className="w-10 h-10" />
                               </div>
                               <div>
-                                <h3 className="text-xl font-bold text-slate-900">Successfully Connected!</h3>
-                                <p className="text-slate-500 mt-1">Redirecting you back to the dashboard...</p>
+                                <h3 className={`text-xl font-bold ${theme.text}`}>Successfully Connected!</h3>
+                                <p className={`mt-1 ${theme.textSecondary}`}>Redirecting you back to the dashboard...</p>
                               </div>
                           </div>
                       )}

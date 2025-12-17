@@ -1,12 +1,17 @@
 /**
  * Campaign Routes
- * Full CRUD for marketing campaigns
+ * Full CRUD for marketing campaigns with social media posting
  */
 
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const Campaign = require('../models/Campaign');
+const User = require('../models/User');
+const { callGemini, parseGeminiJSON } = require('../services/geminiAI');
+
+// Import Ayrshare for social media posting
+const { postToSocialMedia, getAyrshareAnalytics } = require('../services/socialMediaAPI');
 
 /**
  * GET /api/campaigns
@@ -161,7 +166,7 @@ router.delete('/:id', protect, async (req, res) => {
 
 /**
  * POST /api/campaigns/:id/post
- * Post/publish a campaign
+ * Post/publish a campaign (legacy - marks as posted)
  */
 router.post('/:id/post', protect, async (req, res) => {
   try {
@@ -186,6 +191,120 @@ router.post('/:id/post', protect, async (req, res) => {
   } catch (error) {
     console.error('Post campaign error:', error);
     res.status(500).json({ success: false, message: 'Failed to post campaign', error: error.message });
+  }
+});
+
+/**
+ * POST /api/campaigns/:id/publish
+ * Actually publish a campaign to social media using Ayrshare
+ */
+router.post('/:id/publish', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const campaign = await Campaign.findOne({ _id: req.params.id, userId });
+    
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+    
+    // Get the platforms from the campaign
+    const platforms = campaign.platforms || ['instagram'];
+    
+    // Build the post content
+    const postContent = campaign.creative?.caption || campaign.content || campaign.title;
+    const mediaUrl = campaign.creative?.mediaUrl || null;
+    const hashtags = campaign.creative?.hashtags || [];
+    
+    // Format the full post with hashtags
+    const fullPost = hashtags.length > 0 
+      ? `${postContent}\n\n${hashtags.map(h => h.startsWith('#') ? h : `#${h}`).join(' ')}`
+      : postContent;
+    
+    // Post to social media via Ayrshare
+    const result = await postToSocialMedia(
+      platforms,
+      fullPost,
+      {
+        mediaUrls: mediaUrl ? [mediaUrl] : undefined,
+        shortenLinks: true
+      }
+    );
+    
+    if (result.success || result.id) {
+      // Update campaign with post result
+      await Campaign.findByIdAndUpdate(campaign._id, {
+        $set: {
+          status: 'posted',
+          'socialPostId': result.id || result.postIds?.[0],
+          'publishedAt': new Date(),
+          'publishResult': result
+        }
+      });
+      
+      res.json({
+        success: true,
+        message: 'Campaign published to social media!',
+        postId: result.id,
+        platforms,
+        result
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to publish to social media',
+        error: result.error || result.message
+      });
+    }
+  } catch (error) {
+    console.error('Publish campaign error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to publish campaign', 
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/campaigns/:id/analytics
+ * Get real analytics for a published campaign from Ayrshare
+ */
+router.get('/:id/analytics', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const campaign = await Campaign.findOne({ _id: req.params.id, userId });
+    
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+    
+    if (!campaign.socialPostId) {
+      return res.json({
+        success: true,
+        message: 'Campaign not yet published to social media',
+        analytics: null
+      });
+    }
+    
+    // Get analytics from Ayrshare
+    const platform = campaign.platforms?.[0] || 'instagram';
+    const analytics = await getAyrshareAnalytics(platform);
+    
+    res.json({
+      success: true,
+      campaignId: campaign._id,
+      postId: campaign.socialPostId,
+      platform,
+      analytics,
+      publishedAt: campaign.publishedAt
+    });
+  } catch (error) {
+    console.error('Campaign analytics error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch analytics', 
+      error: error.message 
+    });
   }
 });
 
@@ -309,6 +428,131 @@ router.get('/analytics/overview', protect, async (req, res) => {
   } catch (error) {
     console.error('Analytics error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch analytics', error: error.message });
+  }
+});
+
+/**
+ * POST /api/campaigns/generate
+ * Use AI to generate a campaign based on user's business profile
+ */
+router.post('/generate', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const user = await User.findById(userId);
+    const bp = user?.businessProfile || {};
+    
+    const { goal, platform, theme } = req.body;
+    
+    const prompt = `Generate a complete marketing campaign for:
+Business: ${bp.name || 'A business'}
+Industry: ${bp.industry || 'General'}
+Target Audience: ${bp.targetAudience || 'General audience'}
+Brand Voice: ${bp.brandVoice || 'Professional'}
+Business Type: ${bp.businessType || 'B2C'}
+${goal ? `Campaign Goal: ${goal}` : ''}
+${platform ? `Platform: ${platform}` : ''}
+${theme ? `Theme/Topic: ${theme}` : ''}
+
+Create a campaign that aligns with their brand voice and targets their specific audience.
+
+Return ONLY valid JSON:
+{
+  "name": "Campaign name",
+  "description": "Campaign description",
+  "content": {
+    "caption": "Main social media caption with hashtags",
+    "headline": "Short headline",
+    "callToAction": "CTA text"
+  },
+  "platforms": ["instagram", "facebook"],
+  "hashtags": ["hashtag1", "hashtag2", "hashtag3"],
+  "targetAudience": "Specific target for this campaign",
+  "estimatedReach": "10K-50K",
+  "bestPostingTime": "Tuesday 2PM",
+  "tips": ["tip1", "tip2"]
+}`;
+
+    const response = await callGemini(prompt, { maxTokens: 1500 });
+    const campaignData = parseGeminiJSON(response);
+    
+    // Create the campaign in the database
+    const campaign = new Campaign({
+      userId,
+      name: campaignData.name,
+      description: campaignData.description,
+      content: campaignData.content,
+      platforms: campaignData.platforms || ['instagram'],
+      hashtags: campaignData.hashtags || [],
+      status: 'draft',
+      aiGenerated: true
+    });
+    
+    await campaign.save();
+    
+    res.json({
+      success: true,
+      campaign,
+      suggestions: campaignData.tips || [],
+      estimatedReach: campaignData.estimatedReach,
+      bestPostingTime: campaignData.bestPostingTime
+    });
+  } catch (error) {
+    console.error('Generate campaign error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate campaign', error: error.message });
+  }
+});
+
+/**
+ * POST /api/campaigns/:id/enhance
+ * Use AI to enhance/improve an existing campaign
+ */
+router.post('/:id/enhance', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const user = await User.findById(userId);
+    const bp = user?.businessProfile || {};
+    
+    const campaign = await Campaign.findOne({ _id: req.params.id, userId });
+    
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+    
+    const prompt = `Enhance this marketing campaign for a ${bp.businessType || 'B2C'} ${bp.industry || ''} business:
+
+Current Campaign:
+Name: ${campaign.name}
+Description: ${campaign.description}
+Content: ${JSON.stringify(campaign.content)}
+Platforms: ${campaign.platforms?.join(', ')}
+
+Business Context:
+Brand Voice: ${bp.brandVoice || 'Professional'}
+Target Audience: ${bp.targetAudience || 'General'}
+
+Improve the campaign to be more engaging and effective. Return ONLY valid JSON:
+{
+  "enhancedContent": {
+    "caption": "Enhanced caption with better hooks and hashtags",
+    "headline": "More compelling headline",
+    "callToAction": "Stronger CTA"
+  },
+  "improvements": ["What was improved 1", "What was improved 2"],
+  "additionalHashtags": ["newhash1", "newhash2"],
+  "engagementTips": ["tip1", "tip2"]
+}`;
+
+    const response = await callGemini(prompt, { maxTokens: 1000 });
+    const enhancements = parseGeminiJSON(response);
+    
+    res.json({
+      success: true,
+      originalCampaign: campaign,
+      enhancements
+    });
+  } catch (error) {
+    console.error('Enhance campaign error:', error);
+    res.status(500).json({ success: false, message: 'Failed to enhance campaign', error: error.message });
   }
 });
 

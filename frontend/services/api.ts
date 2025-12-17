@@ -113,12 +113,10 @@ let campaigns: Campaign[] = [
 let socialConnections: SocialConnection[] = [
   { platform: 'Instagram', connected: false, status: 'disconnected' },
   { platform: 'Facebook', connected: false, status: 'disconnected' },
-  { platform: 'Twitter', connected: false, status: 'disconnected' },
+  { platform: 'X', connected: false, status: 'disconnected' },
   { platform: 'LinkedIn', connected: false, status: 'disconnected' },
   { platform: 'YouTube', connected: false, status: 'disconnected' },
-  { platform: 'TikTok', connected: false, status: 'disconnected' },
   { platform: 'Pinterest', connected: false, status: 'disconnected' },
-  { platform: 'Snapchat', connected: false, status: 'disconnected' },
   { platform: 'Reddit', connected: false, status: 'disconnected' }
 ];
 
@@ -404,7 +402,53 @@ export const apiService = {
     return response;
   },
 
-  // Disconnect YouTube
+  // Universal OAuth - Get auth URL for any platform
+  getPlatformAuthUrl: async (platform: string): Promise<{ 
+    success: boolean; 
+    configured: boolean; 
+    authUrl?: string; 
+    message?: string;
+    setupInstructions?: { url: string; steps: string[] };
+  }> => {
+    try {
+      const response = await apiCall<{ 
+        success: boolean; 
+        configured: boolean; 
+        authUrl?: string; 
+        message?: string;
+        setupInstructions?: { url: string; steps: string[] };
+      }>(
+        `/social/${platform.toLowerCase()}/auth`,
+        { method: 'GET' },
+        true
+      );
+      return response;
+    } catch (error: any) {
+      console.error(`Failed to get ${platform} auth URL:`, error);
+      return { 
+        success: false, 
+        configured: false, 
+        message: error.message || `Failed to initiate ${platform} connection` 
+      };
+    }
+  },
+
+  // Disconnect any platform
+  disconnectPlatform: async (platform: string): Promise<{ success: boolean }> => {
+    try {
+      const response = await apiCall<{ success: boolean }>(
+        `/social/${platform.toLowerCase()}/disconnect`,
+        { method: 'POST' },
+        true
+      );
+      return response;
+    } catch (error) {
+      console.error(`Failed to disconnect ${platform}:`, error);
+      return { success: false };
+    }
+  },
+
+  // Disconnect YouTube (legacy, kept for compatibility)
   disconnectYouTube: async (): Promise<{ success: boolean }> => {
     const response = await apiCall<{ success: boolean }>(
       '/social/youtube/disconnect',
@@ -414,10 +458,35 @@ export const apiService = {
     return response;
   },
 
+  // Get Ayrshare connected profiles
+  getAyrshareProfile: async (): Promise<{ success: boolean; profiles: any[] }> => {
+    try {
+      const response = await apiCall<{ success: boolean; profiles: any[] }>(
+        '/social/ayrshare/profile',
+        { method: 'GET' },
+        true
+      );
+      return response;
+    } catch (error) {
+      console.error('Failed to get Ayrshare profile:', error);
+      return { success: false, profiles: [] };
+    }
+  },
+
+  // Get Ayrshare OAuth connect URL for a platform (deprecated - use getPlatformAuthUrl instead)
+  getAyrshareConnectUrl: async (platform: string): Promise<{ success: boolean; connectUrl: string }> => {
+    const response = await apiCall<{ success: boolean; connectUrl: string }>(
+      `/social/ayrshare/connect-url/${platform}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
   toggleSocial: async (platform: string, connected: boolean, username?: string): Promise<{ success: boolean }> => {
-    // For YouTube, use real API
-    if (platform === 'YouTube' && !connected) {
-      return await apiService.disconnectYouTube();
+    // For disconnecting, use real API
+    if (!connected) {
+      return await apiService.disconnectPlatform(platform);
     }
     
     // For other platforms, use mock
@@ -480,10 +549,11 @@ export const apiService = {
     return response;
   },
 
-  getInfluencers: async (): Promise<any> => {
+  getInfluencers: async (sortBy?: string): Promise<any> => {
     try {
+      const queryString = sortBy ? `?sortBy=${sortBy}` : '';
       const response = await apiCall<{ success: boolean; influencers: any[] }>(
-        '/influencers',
+        `/influencers${queryString}`,
         { method: 'GET' },
         true
       );
@@ -491,6 +561,39 @@ export const apiService = {
     } catch (error) {
       console.log('Using fallback influencer data');
       return { influencers: [] };
+    }
+  },
+
+  // Discover real influencers from social media using Apify + Gemini AI
+  discoverInfluencers: async (options?: { platforms?: string[]; limit?: number; forceRefresh?: boolean }): Promise<{
+    success: boolean;
+    influencers: any[];
+    discovered?: number;
+    searchKeywords?: string[];
+    aiGenerated?: boolean;
+    message?: string;
+  }> => {
+    try {
+      const response = await apiCall<{
+        success: boolean;
+        influencers: any[];
+        discovered?: number;
+        searchKeywords?: string[];
+        aiGenerated?: boolean;
+        message?: string;
+      }>(
+        '/influencers/discover',
+        { method: 'POST', body: JSON.stringify(options || {}) },
+        true
+      );
+      return response;
+    } catch (error: any) {
+      console.error('Influencer discovery failed:', error);
+      return { 
+        success: false, 
+        influencers: [], 
+        message: error.message || 'Discovery failed' 
+      };
     }
   },
 
@@ -733,6 +836,290 @@ export const apiService = {
     const response = await apiCall<{ success: boolean }>(
       `/reminders/${id}`,
       { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  // ============================================
+  // NEW REAL-DATA ENDPOINTS
+  // ============================================
+
+  // Brand Profile APIs
+  createBrandProfile: async (data: { website: string; name?: string; description?: string }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/brand',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  getBrandProfile: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(`/brand/${id}`, { method: 'GET' }, true);
+    return response;
+  },
+
+  analyzeBrand: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/brand/${id}/analyze`,
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  // Trends APIs
+  getTrends: async (industry?: string): Promise<any> => {
+    const queryParams = industry ? `?industry=${encodeURIComponent(industry)}` : '';
+    const response = await apiCall<any>(`/trends${queryParams}`, { method: 'GET' }, true);
+    return response;
+  },
+
+  discoverTrends: async (sources: string[], keywords?: string[]): Promise<any> => {
+    const response = await apiCall<any>(
+      '/trends/discover',
+      { method: 'POST', body: JSON.stringify({ sources, keywords }) },
+      true
+    );
+    return response;
+  },
+
+  clusterTrends: async (trendIds: string[]): Promise<any> => {
+    const response = await apiCall<any>(
+      '/trends/cluster',
+      { method: 'POST', body: JSON.stringify({ trendIds }) },
+      true
+    );
+    return response;
+  },
+
+  generateContentPlan: async (trendId: string, platforms: string[]): Promise<any> => {
+    const response = await apiCall<any>(
+      '/trends/content-plan',
+      { method: 'POST', body: JSON.stringify({ trendId, platforms }) },
+      true
+    );
+    return response;
+  },
+
+  // Content Studio APIs
+  generateContent: async (params: {
+    type: string;
+    platform: string;
+    topic: string;
+    tone?: string;
+    keywords?: string[];
+  }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/content/generate',
+      { method: 'POST', body: JSON.stringify(params) },
+      true
+    );
+    return response;
+  },
+
+  modifyContent: async (draftId: string, modifications: { tone?: string; length?: string; style?: string }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/content/modify',
+      { method: 'POST', body: JSON.stringify({ draftId, modifications }) },
+      true
+    );
+    return response;
+  },
+
+  checkContentCompliance: async (draftId: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/content/${draftId}/compliance-check`,
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  // Campaign Builder APIs
+  buildCampaign: async (params: {
+    name: string;
+    objective: string;
+    platforms: string[];
+    budget?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/campaign-builder',
+      { method: 'POST', body: JSON.stringify(params) },
+      true
+    );
+    return response;
+  },
+
+  getCampaignPlans: async (): Promise<any> => {
+    const response = await apiCall<any>('/campaign-builder', { method: 'GET' }, true);
+    return response;
+  },
+
+  getCampaignPlan: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(`/campaign-builder/${id}`, { method: 'GET' }, true);
+    return response;
+  },
+
+  exportCampaignPlan: async (id: string, format: 'pdf' | 'json' | 'csv' | 'notion'): Promise<any> => {
+    const response = await apiCall<any>(
+      `/campaign-builder/${id}/export`,
+      { method: 'POST', body: JSON.stringify({ format }) },
+      true
+    );
+    return response;
+  },
+
+  // Analytics APIs
+  importAnalyticsCsv: async (platform: string, data: any[]): Promise<any> => {
+    const response = await apiCall<any>(
+      '/analytics/import/csv',
+      { method: 'POST', body: JSON.stringify({ platform, data }) },
+      true
+    );
+    return response;
+  },
+
+  importAnalyticsManual: async (platform: string, metrics: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/analytics/import/manual',
+      { method: 'POST', body: JSON.stringify({ platform, metrics }) },
+      true
+    );
+    return response;
+  },
+
+  getAnalyticsInsights: async (snapshotId: string): Promise<any> => {
+    const response = await apiCall<any>(`/analytics/${snapshotId}/insights`, { method: 'GET' }, true);
+    return response;
+  },
+
+  // ============================================
+  // REAL-TIME DATA APIs (Ayrshare, Apify, SearchAPI)
+  // ============================================
+
+  // Get real-time competitor data using Apify scraping
+  getRealCompetitorData: async (competitorId: string, platform: string = 'instagram'): Promise<any> => {
+    const response = await apiCall<any>(
+      `/competitors/real/${competitorId}?platform=${platform}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Scrape all active competitors
+  scrapeAllCompetitors: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/competitors/scrape-all',
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  // Refresh competitor posts with REAL data from social media (Apify)
+  refreshRealCompetitorPosts: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/dashboard/refresh-competitor-posts',
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  // Get real-time trends using SearchAPI
+  getRealTimeTrends: async (query?: string, category?: string): Promise<any> => {
+    const params = new URLSearchParams();
+    if (query) params.append('query', query);
+    if (category) params.append('category', category);
+    
+    const response = await apiCall<any>(
+      `/trends/real-time?${params.toString()}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Search social media for trends
+  searchSocialTrends: async (query: string, platform: string = 'twitter'): Promise<any> => {
+    const response = await apiCall<any>(
+      `/trends/social-search?query=${encodeURIComponent(query)}&platform=${platform}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Post to social media via Ayrshare
+  postToSocial: async (platforms: string[], content: string, options?: { mediaUrls?: string[]; scheduledDate?: string }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/social/post',
+      { method: 'POST', body: JSON.stringify({ platforms, content, ...options }) },
+      true
+    );
+    return response;
+  },
+
+  // Publish a campaign to social media
+  publishCampaign: async (campaignId: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/campaigns/${campaignId}/publish`,
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  // Get real analytics for a campaign
+  getCampaignRealAnalytics: async (campaignId: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/campaigns/${campaignId}/analytics`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Get social media analytics from Ayrshare
+  getSocialAnalytics: async (platform: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/social/analytics/${platform}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Check API integration status
+  checkApiStatus: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/social/api-status',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Get dashboard with real-time data
+  getDashboardRealTime: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/dashboard/real-competitors',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Quick analyze website for onboarding
+  analyzeWebsite: async (websiteUrl: string): Promise<any> => {
+    const response = await apiCall<any>(
+      '/brand/quick-analyze',
+      { method: 'POST', body: JSON.stringify({ websiteUrl }) },
       true
     );
     return response;

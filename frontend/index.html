@@ -1,30 +1,74 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nebulaa AI - Marketing Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              nebula: {
+                dark: '#070A12',
+                gold: '#ffcc29',
+                silver: '#ededed',
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
-        background-color: #f8fafc;
       }
-      /* Custom scrollbar for webkit */
+      /* Dark mode styles */
+      .dark body {
+        background-color: #070A12;
+        color: #ededed;
+      }
+      /* Light mode styles */
+      body {
+        background-color: #ededed;
+        color: #070A12;
+      }
+      html.dark body {
+        background-color: #070A12;
+        color: #ededed;
+      }
+      /* Custom scrollbar for webkit - Dark mode */
+      .dark ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .dark ::-webkit-scrollbar-track {
+        background: #070A12;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #ffcc29;
+        border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+        background: #e6b825;
+      }
+      /* Light mode scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: transparent;
+        background: #ededed;
       }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
+        background: #070A12;
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
+        background: #1a1f2e;
       }
     </style>
   <script type="importmap">

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
-import { Loader2, Zap, Check, X as XIcon, ShieldCheck } from 'lucide-react';
+import { Loader2, Zap, Check, X as XIcon, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 interface AuthProps {
   onLoginSuccess: (user: any) => void;
@@ -12,6 +13,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   // Form State
   const [email, setEmail] = useState('');
@@ -82,26 +84,44 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+    <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#070A12]' : 'bg-gray-100'}`}>
+      {/* Theme Toggle Button */}
+      <button
+        onClick={toggleTheme}
+        className={`fixed top-4 right-4 p-3 rounded-full transition-all duration-300 z-50 ${
+          theme === 'dark' 
+            ? 'bg-[#1a1f2e] hover:bg-[#252b3d] text-yellow-400' 
+            : 'bg-white hover:bg-gray-100 text-gray-700 shadow-md'
+        }`}
+        title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      >
+        {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
+
+      <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ${
+        theme === 'dark' 
+          ? 'bg-[#0d1117] border border-[#ffcc29]/20' 
+          : 'bg-white border border-gray-200'
+      }`}>
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-8 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/20 mb-4 text-white backdrop-blur-sm">
-                <Zap className="w-6 h-6" />
+        <div className="bg-gradient-to-r from-[#ffcc29] to-[#e6b825] p-8 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#070A12]/20 mb-4 backdrop-blur-sm">
+                <img src="/assets/logo.png" alt="Nebulaa Gravity" className="w-12 h-12" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Nebulaa AI</h1>
-            <p className="text-indigo-100 text-sm mt-2">Marketing Agent & Growth Engine</p>
+            <h1 className="text-2xl font-bold text-[#070A12] tracking-tight">Nebulaa</h1>
+            <h2 className="text-xl font-bold text-[#070A12] tracking-tight">Gravity</h2>
+            <p className="text-[#070A12]/80 text-sm mt-2">Marketing Agent & Growth Engine</p>
         </div>
 
         {/* Form */}
         <div className="p-8">
-            <h2 className="text-xl font-bold text-slate-900 mb-6 text-center">
+            <h2 className={`text-xl font-bold mb-6 text-center ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
                 {isLogin ? 'Welcome Back' : 'Create Secure Account'}
             </h2>
 
             {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100 flex items-start gap-2">
+                <div className="bg-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-6 border border-red-500/30 flex items-start gap-2">
                     <XIcon className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     <span>{error}</span>
                 </div>
@@ -111,22 +131,30 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
                 {!isLogin && (
                     <>
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">First Name</label>
+                            <label className={`block text-xs font-bold uppercase mb-1 ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>First Name</label>
                             <input 
                                 type="text"
                                 required 
-                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 outline-none transition-all ${
+                                  theme === 'dark'
+                                    ? 'bg-[#070A12] border-[#ffcc29]/30 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] text-[#ededed] placeholder-[#ededed]/40'
+                                    : 'bg-gray-50 border-gray-300 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] text-gray-900 placeholder-gray-400'
+                                }`}
                                 value={firstName}
                                 onChange={(e) => setFirstName(e.target.value)}
                                 placeholder="Jane"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Company Name</label>
+                            <label className={`block text-xs font-bold uppercase mb-1 ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>Company Name</label>
                             <input 
                                 type="text"
                                 required 
-                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 outline-none transition-all ${
+                                  theme === 'dark'
+                                    ? 'bg-[#070A12] border-[#ffcc29]/30 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] text-[#ededed] placeholder-[#ededed]/40'
+                                    : 'bg-gray-50 border-gray-300 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] text-gray-900 placeholder-gray-400'
+                                }`}
                                 value={companyName}
                                 onChange={(e) => setCompanyName(e.target.value)}
                                 placeholder="Acme Inc."
@@ -136,11 +164,15 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
                 )}
 
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Address</label>
+                    <label className={`block text-xs font-bold uppercase mb-1 ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>Email Address</label>
                     <input 
                         type="email"
                         required 
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 outline-none transition-all ${
+                          theme === 'dark'
+                            ? 'bg-[#070A12] border-[#ffcc29]/30 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] text-[#ededed] placeholder-[#ededed]/40'
+                            : 'bg-gray-50 border-gray-300 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] text-gray-900 placeholder-gray-400'
+                        }`}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@company.com"
@@ -148,13 +180,17 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
                 </div>
                 
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
+                    <label className={`block text-xs font-bold uppercase mb-1 ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>Password</label>
                     <input 
                         type="password"
                         required 
                         className={`w-full px-4 py-2 border rounded-lg focus:ring-2 outline-none transition-all ${
-                            !isLogin && !isPasswordValid && password.length > 0 ? 'border-red-300 focus:ring-red-200' : 'border-slate-300 focus:ring-indigo-500'
-                        }`}
+                            !isLogin && !isPasswordValid && password.length > 0 
+                              ? 'border-red-400/50 focus:ring-red-400/30' 
+                              : theme === 'dark'
+                                ? 'border-[#ffcc29]/30 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29]'
+                                : 'border-gray-300 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29]'
+                        } ${theme === 'dark' ? 'bg-[#070A12] text-[#ededed] placeholder-[#ededed]/40' : 'bg-gray-50 text-gray-900 placeholder-gray-400'}`}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
@@ -163,15 +199,19 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
 
                 {/* Password Strength Meter (Only for Signup) */}
                 {!isLogin && (
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs animate-in fade-in">
-                        <p className="font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                    <div className={`p-3 rounded-lg text-xs animate-in fade-in ${
+                      theme === 'dark' 
+                        ? 'bg-[#070A12] border border-[#ffcc29]/20' 
+                        : 'bg-gray-50 border border-gray-200'
+                    }`}>
+                        <p className="font-semibold text-[#ffcc29] mb-2 flex items-center gap-1">
                             <ShieldCheck className="w-3 h-3" /> Password Requirements:
                         </p>
                         <ul className="space-y-1">
-                            <CriteriaItem met={pwdCriteria.length} label="At least 8 characters" />
-                            <CriteriaItem met={pwdCriteria.letter} label="Contains a letter" />
-                            <CriteriaItem met={pwdCriteria.number} label="Contains a number" />
-                            <CriteriaItem met={pwdCriteria.special} label="Contains a symbol (!@#$)" />
+                            <CriteriaItem met={pwdCriteria.length} label="At least 8 characters" theme={theme} />
+                            <CriteriaItem met={pwdCriteria.letter} label="Contains a letter" theme={theme} />
+                            <CriteriaItem met={pwdCriteria.number} label="Contains a number" theme={theme} />
+                            <CriteriaItem met={pwdCriteria.special} label="Contains a symbol (!@#$)" theme={theme} />
                         </ul>
                     </div>
                 )}
@@ -179,7 +219,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
                 <button 
                     type="submit" 
                     disabled={loading || (!isLogin && !isPasswordValid)}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors mt-6 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-[#ffcc29] hover:bg-[#e6b825] text-[#070A12] font-bold py-3 rounded-lg transition-colors mt-6 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                     {isLogin ? 'Sign In' : 'Create Account'}
@@ -187,11 +227,11 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
             </form>
 
             <div className="mt-6 text-center">
-                <p className="text-sm text-slate-500">
+                <p className={`text-sm ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
                     {isLogin ? "Don't have an account? " : "Already have an account? "}
                     <button 
                         onClick={() => { setIsLogin(!isLogin); setError(null); setPassword(''); }}
-                        className="text-indigo-600 font-semibold hover:underline focus:outline-none"
+                        className="text-[#ffcc29] font-semibold hover:underline focus:outline-none"
                     >
                         {isLogin ? 'Sign Up' : 'Log In'}
                     </button>
@@ -203,9 +243,9 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   );
 };
 
-const CriteriaItem: React.FC<{ met: boolean; label: string }> = ({ met, label }) => (
-    <li className={`flex items-center gap-2 ${met ? 'text-green-600' : 'text-slate-400'}`}>
-        {met ? <Check className="w-3 h-3" /> : <div className="w-3 h-3 rounded-full border border-slate-300" />}
+const CriteriaItem: React.FC<{ met: boolean; label: string; theme?: string }> = ({ met, label, theme }) => (
+    <li className={`flex items-center gap-2 ${met ? 'text-green-400' : theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-500'}`}>
+        {met ? <Check className="w-3 h-3" /> : <div className={`w-3 h-3 rounded-full border ${theme === 'dark' ? 'border-[#ededed]/30' : 'border-gray-400'}`} />}
         <span>{label}</span>
     </li>
 );

@@ -11,6 +11,7 @@ import Competitors from './pages/Competitors';
 import Influencers from './pages/Influencers';
 import ConnectSocials from './pages/ConnectSocials';
 import Settings from './pages/Settings';
+import { ThemeProvider } from './context/ThemeContext';
 import { apiService } from './services/api';
 import { User } from './types';
 import { Loader2 } from 'lucide-react';
@@ -52,13 +53,14 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 text-indigo-600">
-            <Loader2 className="w-8 h-8 animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-[#070A12]">
+            <Loader2 className="w-8 h-8 animate-spin text-[#ffcc29]" />
         </div>
     );
   }
 
   return (
+    <ThemeProvider>
     <Router>
       <Routes>
         {/* Landing Page - shown when not logged in */}
@@ -118,6 +120,7 @@ const App: React.FC = () => {
       {/* Floating ChatBot - appears on all pages */}
       <ChatBot />
     </Router>
+    </ThemeProvider>
   );
 };
 
