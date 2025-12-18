@@ -3,7 +3,7 @@
  * Uses Google Gemini API for all AI-related tasks
  */
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyB0vmWI713x1LHudyzttWby6stVC-ZBcRw';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ;
 // Using available Gemini models with fallbacks - prioritize lite models for lower quota usage
 const GEMINI_MODELS = [
   'gemini-2.0-flash-lite',  // Lower quota usage
