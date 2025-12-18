@@ -4,7 +4,7 @@
  * Handles structured JSON outputs with validation and retry
  */
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBBbimZ4QDL6Xd17FE2hgufYF-yr9wj3og';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ;
 const GROK_API_KEY = process.env.GROK_API_KEY;
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
