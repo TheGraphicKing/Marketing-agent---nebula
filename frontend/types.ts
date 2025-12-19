@@ -1,0 +1,236 @@
+export interface BusinessProfile {
+  name: string;
+  website: string;
+  industry: string;
+  niche: string;
+  businessType: 'B2B' | 'B2C' | 'Both' | '';
+  targetAudience: string;
+  brandVoice: string; // e.g., Professional, Witty, Empathetic
+  marketingGoals: string[]; // e.g., Brand Awareness, Sales, Leads
+  description: string;
+  competitors?: string[]; // Competitor names/brands to track
+}
+
+export interface User {
+  _id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  onboardingCompleted: boolean;
+  businessProfile?: BusinessProfile;
+  brandScore?: {
+    score: number;
+    metrics: {
+      engagement: number;
+      consistency: number;
+      authenticity: number;
+    };
+  };
+  preferences?: {
+    emailNotifications: boolean;
+  };
+}
+
+export interface AuthResponse {
+  success: boolean;
+  token?: string;
+  user?: User;
+  error?: string;
+}
+
+export interface Campaign {
+  _id: string;
+  name: string;
+  objective: 'awareness' | 'traffic' | 'sales' | 'engagement' | 'conversion' | 'conversions' | 'leads';
+  platforms: string[];
+  status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'archived' | 'posted';
+  priority?: 'low' | 'medium' | 'high';
+  notes?: string;
+  creative: {
+    type: 'text' | 'image' | 'video' | 'carousel' | 'story' | 'reel';
+    textContent: string;
+    imageUrls: string[];
+    captions?: string;
+    hashtags?: string[];
+    callToAction?: string;
+    aiGenerated?: boolean;
+  };
+  scheduling: {
+    startDate: string;
+    endDate?: string;
+    postTime?: string;
+  };
+  budget?: {
+    type?: 'daily' | 'lifetime';
+    amount?: number;
+    currency?: string;
+  };
+  targeting?: {
+    demographics?: string;
+    ageRange?: { min: number; max: number };
+    gender?: 'all' | 'male' | 'female';
+    locations?: string[];
+    interests?: string[];
+  };
+  audience?: string;
+  performance?: {
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    engagement: number;
+    spend: number;
+  };
+  createdAt: string;
+}
+
+export interface CompetitorPost {
+  id: string;
+  competitorName: string;
+  competitorLogo?: string;
+  content: string;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  postedAt: string;
+  postedAtRaw?: string; // Original date for filtering
+  postedAtDisplay?: string; // Formatted display string
+  likes: number;
+  comments: number;
+  platform: string;
+  postUrl?: string;
+  imageUrl?: string;
+  isAIGenerated?: boolean;
+}
+
+export interface Competitor {
+  _id: string;
+  name: string;
+  industry: string;
+  website: string;
+  analysisScore: number;
+  strengths: string[];
+  weaknesses: string[];
+  lastAnalyzed: string;
+  posts?: CompetitorPost[];
+}
+
+export interface Influencer {
+  _id: string;
+  name: string;
+  platform: 'instagram' | 'linkedin' | 'youtube' | 'twitter' | 'facebook';
+  handle: string;
+  followerCount: number;
+  reach: number;
+  engagementRate: number;
+  niche: string[];
+  type: 'nano' | 'micro' | 'mid-tier' | 'macro' | 'mega' | 'celebrity' | 'Nano' | 'Micro' | 'Mid-Tier' | 'Macro' | 'Mega';
+  aiMatchScore: {
+    score: number;
+    reason: string;
+    factors?: {
+      name: string;
+      score: number;
+      max: number;
+    }[];
+    calculatedAt?: string;
+  };
+  profileImage?: string;
+  profileUrl?: string;
+  bio?: string;
+  avgLikes?: number;
+  avgComments?: number;
+  avgViews?: number;
+  isVerified?: boolean;
+  priceRange?: {
+    min: number;
+    max: number;
+    currency: string;
+  };
+  status?: 'discovered' | 'contacted' | 'negotiating' | 'confirmed' | 'completed' | 'rejected';
+  isFavorite?: boolean;
+  scrapedFromSocial?: boolean;
+  scrapedAt?: string;
+  createdAt?: string;
+}
+
+export interface SocialConnection {
+  platform: string;
+  connected: boolean;
+  username?: string;
+  profileId?: string;
+  lastSync?: string;
+  status: 'active' | 'expired' | 'connecting' | 'disconnected';
+}
+
+export interface Trend {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  relevanceScore?: number;
+}
+
+export interface DashboardMetrics {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  totalSpent: number;
+  brandScore: number;
+  brandScoreChange: number;
+  activeCampaignsChange: number;
+  engagementRate: number;
+  connectedPlatforms?: number;
+}
+
+export interface SuggestedAction {
+  id: string;
+  title: string;
+  description?: string;
+  type?: 'campaign' | 'social' | 'content';
+  actionType?: 'create_campaign' | 'create_post' | 'create_story' | 'analyze_competitors' | 'find_influencers' | 'engage_audience' | 'connect_social' | 'view_analytics' | 'schedule_content';
+  priority?: 'high' | 'medium' | 'low';
+  estimatedImpact?: string;
+}
+
+export interface CampaignIdea {
+  id: string;
+  name: string;
+  tagline?: string;
+  objective: string;
+  platforms: string[];
+  description: string;
+  contentIdeas?: string[];
+  estimatedBudget?: string | { min: number; max: number; currency: string };
+  duration?: string;
+  expectedResults?: string;
+  targetAudience?: string;
+}
+
+export interface BrandScoreFactor {
+  score: number;
+  reason: string;
+}
+
+export interface BrandScoreFactors {
+  engagement?: BrandScoreFactor;
+  consistency?: BrandScoreFactor;
+  audienceGrowth?: BrandScoreFactor;
+  contentQuality?: BrandScoreFactor;
+}
+
+export interface DashboardData {
+  overview: DashboardMetrics;
+  trends: Trend[];
+  recentCampaigns: Campaign[];
+  suggestedActions: SuggestedAction[];
+  competitorActivity: CompetitorPost[];
+  // AI-generated extended data
+  campaignIdeas?: CampaignIdea[];
+  brandScoreFactors?: BrandScoreFactors;
+  personalizedTips?: string[];
+  businessContext?: {
+    name?: string;
+    industry?: string;
+    niche?: string;
+    targetAudience?: string;
+  };
+  generatedAt?: string;
+  dataSource?: 'real' | 'mock';
+}

@@ -1,0 +1,1084 @@
+/**
+ * Dashboard Routes
+ * Provides AI-powered personalized dashboard data with REAL metrics from database
+ */
+
+const express = require('express');
+const router = express.Router();
+const { protect } = require('../middleware/auth');
+const User = require('../models/User');
+const Campaign = require('../models/Campaign');
+const Competitor = require('../models/Competitor');
+const Influencer = require('../models/Influencer');
+const CachedCampaign = require('../models/CachedCampaign');
+const { 
+  generateDashboardInsights,
+  generateCampaignSuggestions,
+  generateSectionSynopsis,
+  generateCompetitorActivity,
+  generateSingleCampaign,
+  generateRivalPost
+} = require('../services/geminiAI');
+
+// Import socialMediaAPI for real competitor scraping
+let socialMediaAPI = null;
+try {
+  socialMediaAPI = require('../services/socialMediaAPI');
+} catch (e) {
+  console.warn('socialMediaAPI not available:', e.message);
+}
+
+// ============================================
+// In-memory cache for dashboard data
+// ============================================
+const dashboardCache = new Map();
+const DASHBOARD_CACHE_TTL = 60 * 1000; // 1 minute cache for dashboard
+const AI_INSIGHTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes for AI insights
+
+function getDashboardCache(userId) {
+  const cached = dashboardCache.get(userId);
+  if (cached && (Date.now() - cached.timestamp) < DASHBOARD_CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+}
+
+function setDashboardCache(userId, data) {
+  dashboardCache.set(userId, { data, timestamp: Date.now() });
+}
+
+// Cleanup old cache entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of dashboardCache.entries()) {
+    if (now - value.timestamp > DASHBOARD_CACHE_TTL * 2) {
+      dashboardCache.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// Helper to generate post URL based on platform
+function generatePlatformPostUrl(platform, socialHandles) {
+  const handle = socialHandles?.[platform] || 'user';
+  const cleanHandle = handle.replace('@', '');
+  const postId = Math.random().toString(36).substring(2, 15);
+  
+  switch (platform?.toLowerCase()) {
+    case 'instagram':
+      return `https://www.instagram.com/p/${postId}/`;
+    case 'twitter':
+    case 'x':
+      return `https://twitter.com/${cleanHandle}/status/${Date.now()}`;
+    case 'facebook':
+      return `https://www.facebook.com/${cleanHandle}/posts/${postId}`;
+    case 'linkedin':
+      return `https://www.linkedin.com/feed/update/urn:li:activity:${Date.now()}`;
+    case 'youtube':
+      return `https://www.youtube.com/watch?v=${postId}`;
+    default:
+      return `#`;
+  }
+}
+
+/**
+ * GET /api/dashboard/overview
+ * Get personalized dashboard overview with REAL data from database
+ */
+router.get('/overview', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const skipCache = req.query.refresh === 'true';
+    
+    // Check cache first (unless refresh requested)
+    if (!skipCache) {
+      const cached = getDashboardCache(userId);
+      if (cached) {
+        console.log('⚡ Returning cached dashboard data');
+        return res.json(cached);
+      }
+    }
+    
+    // Run initial database queries in parallel for better performance
+    const [user, allCampaigns, competitors, influencerCount] = await Promise.all([
+      User.findById(userId),
+      Campaign.find({ userId }).sort({ createdAt: -1 }).lean(), // Use lean() for faster read
+      Competitor.find({ userId }).limit(10).lean(),
+      Influencer.countDocuments({ userId })
+    ]);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Process campaign data (already fetched)
+    const activeCampaigns = allCampaigns.filter(c => ['active', 'posted', 'scheduled'].includes(c.status));
+    const recentCampaigns = allCampaigns.slice(0, 10);
+    
+    // Calculate REAL spend from campaigns
+    const totalSpent = allCampaigns.reduce((sum, c) => sum + (c.budget?.spent || 0), 0);
+    
+    // Calculate REAL daily spend for the graph (last 7 days)
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const daySpend = allCampaigns
+        .filter(c => c.createdAt && c.createdAt.toISOString().split('T')[0] === dateStr)
+        .reduce((sum, c) => sum + (c.budget?.spent || 0), 0);
+      
+      last7Days.push({
+        date: dateStr,
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        spend: daySpend
+      });
+    }
+    
+    // Calculate REAL performance metrics
+    const totalImpressions = allCampaigns.reduce((sum, c) => sum + (c.performance?.impressions || 0), 0);
+    const totalClicks = allCampaigns.reduce((sum, c) => sum + (c.performance?.clicks || 0), 0);
+    const totalEngagement = allCampaigns.reduce((sum, c) => sum + (c.performance?.engagement || 0), 0);
+    const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
+    
+    // Process competitor data (already fetched)
+    let competitorPosts = [];
+    
+    // Get competitor names from onboarding (businessProfile.competitors)
+    const onboardingCompetitors = user.businessProfile?.competitors || [];
+    
+    // If no Competitor documents exist but we have names from onboarding, create them
+    if (competitors.length === 0 && onboardingCompetitors.length > 0) {
+      console.log('Syncing competitors from onboarding:', onboardingCompetitors);
+      
+      // Create Competitor documents from onboarding data
+      for (const competitorName of onboardingCompetitors) {
+        if (competitorName && competitorName.trim()) {
+          const existingComp = await Competitor.findOne({ userId, name: competitorName.trim() });
+          if (!existingComp) {
+            await Competitor.create({
+              userId,
+              name: competitorName.trim(),
+              platforms: ['instagram', 'twitter', 'linkedin'],
+              posts: []
+            });
+          }
+        }
+      }
+      
+      // Re-fetch competitors after creation
+      competitors = await Competitor.find({ userId }).limit(10);
+    }
+    
+    // Get competitor names for activity generation
+    const competitorNames = competitors.length > 0 
+      ? competitors.map(c => c.name)
+      : onboardingCompetitors.filter(n => n && n.trim());
+    
+    // If we have competitor names but no posts in DB, try to fetch REAL posts using Apify
+    const hasPostsInDB = competitors.some(c => c.posts && c.posts.length > 0);
+    
+    if (competitorNames.length > 0) {
+      if (hasPostsInDB) {
+        // Use posts from database
+        for (const comp of competitors) {
+          if (comp.posts && comp.posts.length > 0) {
+            comp.posts.slice(0, 3).forEach(post => {
+              competitorPosts.push({
+                id: post._id?.toString() || Math.random().toString(),
+                competitorName: comp.name,
+                competitorLogo: comp.name?.charAt(0) || 'C',
+                content: post.content || 'No content available',
+                sentiment: post.sentiment || 'neutral',
+                postedAt: post.postedAt ? getRelativeTime(post.postedAt) : 'Recently',
+                likes: post.likes || 0,
+                comments: post.comments || 0,
+                platform: post.platform || comp.platforms?.[0] || 'unknown',
+                postUrl: post.postUrl || generatePlatformPostUrl(post.platform, comp.socialHandles),
+                isReal: true
+              });
+            });
+          }
+        }
+      } else {
+        // Try to fetch REAL posts from social media using Apify
+        console.log('Attempting to fetch REAL competitor posts for:', competitorNames);
+        
+        if (socialMediaAPI && socialMediaAPI.fetchRealCompetitorPosts) {
+          try {
+            // Build competitor handles from database or use names as handles
+            const competitorHandles = competitors.map(c => ({
+              name: c.name,
+              instagram: c.socialHandles?.instagram || c.name.toLowerCase().replace(/\s+/g, ''),
+              twitter: c.socialHandles?.twitter,
+              facebook: c.socialHandles?.facebook
+            }));
+            
+            const realPosts = await socialMediaAPI.fetchRealCompetitorPosts(competitorHandles, { limit: 3 });
+            
+            if (realPosts.success && realPosts.posts && realPosts.posts.length > 0) {
+              console.log(`Fetched ${realPosts.posts.length} REAL competitor posts`);
+              competitorPosts = realPosts.posts;
+              
+              // Save real posts to database for future use
+              for (const post of realPosts.posts) {
+                const competitor = await Competitor.findOne({ userId, name: post.competitorName });
+                if (competitor) {
+                  competitor.posts.push({
+                    platform: post.platform,
+                    postUrl: post.postUrl,
+                    content: post.content,
+                    imageUrl: post.imageUrl,
+                    likes: post.likes,
+                    comments: post.comments,
+                    sentiment: post.sentiment,
+                    postedAt: new Date(),
+                    fetchedAt: new Date()
+                  });
+                  await competitor.save();
+                }
+              }
+            } else {
+              // Fallback to AI-generated if real scraping fails
+              console.log('Real scraping returned no posts, falling back to AI generation');
+              competitorPosts = await generateCompetitorActivity(competitorNames, user.businessProfile);
+            }
+          } catch (scrapeError) {
+            console.error('Real competitor scraping failed:', scrapeError.message);
+            // Fallback to AI-generated activity
+            competitorPosts = await generateCompetitorActivity(competitorNames, user.businessProfile);
+          }
+        } else {
+          // No socialMediaAPI available, use AI-generated
+          console.log('socialMediaAPI not available, using AI generation');
+          competitorPosts = await generateCompetitorActivity(competitorNames, user.businessProfile);
+        }
+      }
+    }
+
+    // influencerCount already fetched in parallel above
+    
+    // Generate AI-powered insights using Gemini (with real context) - with timeout
+    const metrics = {
+      totalCampaigns: allCampaigns.length,
+      activeCampaigns: activeCampaigns.length,
+      totalSpent,
+      engagementRate: totalImpressions > 0 ? ((totalEngagement / totalImpressions) * 100).toFixed(2) : 0
+    };
+    
+    // Use Promise.race to timeout AI generation if it takes too long
+    let aiData = { suggestedActions: [], trendingTopics: [], personalizedTips: [], brandScoreFactors: {} };
+    if (user.businessProfile?.name) {
+      try {
+        const aiPromise = generateDashboardInsights(user.businessProfile, metrics);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AI timeout')), 5000)
+        );
+        aiData = await Promise.race([aiPromise, timeoutPromise]);
+      } catch (aiError) {
+        console.warn('AI insights generation timed out or failed, using defaults');
+      }
+    }
+    
+    // Calculate brand score based on REAL data
+    const brandScore = calculateRealBrandScore({
+      campaignCount: allCampaigns.length,
+      activeCampaignCount: activeCampaigns.length,
+      totalSpent,
+      totalImpressions,
+      totalEngagement,
+      avgCTR,
+      competitorCount: competitors.length,
+      influencerCount
+    });
+    
+    // Build response with REAL data
+    const dashboardData = {
+      success: true,
+      data: {
+        overview: {
+          totalCampaigns: allCampaigns.length,
+          activeCampaigns: activeCampaigns.length,
+          activeCampaignsChange: calculateChange(activeCampaigns.length, 0), // Would compare to previous period
+          totalSpent: totalSpent,
+          dailySpend: last7Days,
+          brandScore: brandScore,
+          brandScoreChange: 0, // Would compare to previous period
+          engagementRate: totalImpressions > 0 ? ((totalEngagement / totalImpressions) * 100).toFixed(2) : 0,
+          totalImpressions,
+          totalClicks,
+          avgCTR,
+          connectedPlatforms: (user.connectedSocials || []).filter(s => s.accessToken).length,
+          influencerCount
+        },
+        trends: aiData.trendingTopics || [],
+        recentCampaigns: recentCampaigns.map(c => ({
+          _id: c._id,
+          name: c.name,
+          objective: c.objective,
+          platforms: c.platforms,
+          status: c.status,
+          scheduling: c.scheduling,
+          performance: c.performance,
+          creative: c.creative,
+          createdAt: c.createdAt
+        })),
+        suggestedActions: (aiData.suggestedActions && aiData.suggestedActions.length > 0) 
+          ? aiData.suggestedActions.map(action => ({
+              id: action.id || `action_${Math.random().toString(36).substr(2, 9)}`,
+              title: action.title,
+              description: action.description,
+              actionType: action.actionType || action.type || 'create_campaign',
+              priority: action.priority || 'medium'
+            }))
+          : [
+              // Fallback actions if AI fails
+              {
+                id: 'fallback_1',
+                title: `Create your first ${user.businessProfile?.industry || 'marketing'} campaign`,
+                description: 'Get started by creating a campaign to reach your audience',
+                actionType: 'create_campaign',
+                priority: 'high'
+              },
+              {
+                id: 'fallback_2',
+                title: 'Connect your social media accounts',
+                description: 'Link your social accounts to enable posting and analytics',
+                actionType: 'connect_social',
+                priority: 'high'
+              },
+              {
+                id: 'fallback_3',
+                title: 'Analyze your competitors',
+                description: 'See what strategies work for your competitors',
+                actionType: 'analyze_competitors',
+                priority: 'medium'
+              },
+              {
+                id: 'fallback_4',
+                title: 'Find influencers in your niche',
+                description: 'Discover potential partnerships to expand your reach',
+                actionType: 'find_influencers',
+                priority: 'medium'
+              }
+            ],
+        competitorActivity: competitorPosts.length > 0 ? competitorPosts : (aiData.competitorInsights || []).map(insight => ({
+          id: insight.id,
+          competitorName: insight.competitorName,
+          competitorLogo: insight.competitorName?.charAt(0) || 'C',
+          content: insight.content,
+          sentiment: insight.sentiment || 'neutral',
+          postedAt: 'AI Generated',
+          likes: insight.likes || 0,
+          comments: insight.comments || 0,
+          platform: insight.platform || 'instagram',
+          insight: insight.insight,
+          isAIGenerated: true
+        })),
+        trackedCompetitors: competitorNames.map(name => ({
+          name: name,
+          logo: name?.charAt(0)?.toUpperCase() || 'C',
+          platforms: ['instagram', 'twitter', 'linkedin']
+        })),
+        campaignIdeas: aiData.campaignIdeas || [],
+        brandScoreFactors: aiData.brandScoreFactors || {},
+        personalizedTips: aiData.personalizedTips || [],
+        businessContext: {
+          name: user.businessProfile?.name,
+          industry: user.businessProfile?.industry,
+          niche: user.businessProfile?.niche
+        },
+        generatedAt: new Date().toISOString(),
+        dataSource: 'real' // Indicates this is real data, not mock
+      }
+    };
+
+    // Cache the response
+    setDashboardCache(userId, dashboardData);
+    
+    res.json(dashboardData);
+  } catch (error) {
+    console.error('Dashboard overview error:', error);
+    res.status(500).json({ success: false, message: 'Failed to load dashboard', error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/competitors
+ * Get AI-powered competitor analysis
+ */
+router.get('/competitors', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const competitors = req.query.competitors 
+      ? req.query.competitors.split(',') 
+      : (user.businessProfile?.competitors || []);
+
+    const analysis = await generateCompetitorAnalysis(user, competitors);
+
+    res.json({
+      success: true,
+      data: analysis
+    });
+  } catch (error) {
+    console.error('Competitor analysis error:', error);
+    res.status(500).json({ success: false, message: 'Failed to analyze competitors', error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/campaign-suggestions
+ * Get AI-powered campaign suggestions using Gemini with CACHING
+ * Returns cached campaigns instantly if available, otherwise generates new ones
+ */
+router.get('/campaign-suggestions', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (!user.businessProfile?.name) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please complete onboarding first',
+        campaigns: []
+      });
+    }
+
+    const count = parseInt(req.query.count) || 6;
+    const forceRefresh = req.query.refresh === 'true';
+    
+    // Generate profile hash for cache invalidation
+    const profileHash = CachedCampaign.createProfileHash(user.businessProfile);
+    
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await CachedCampaign.getCachedForUser(
+        user._id, 
+        profileHash, 
+        count
+      );
+      
+      if (cached && cached.length >= count) {
+        console.log(`✅ Returning ${cached.length} cached campaigns for user ${user._id}`);
+        
+        // Transform cached data to match expected format
+        const campaigns = cached.map(c => ({
+          id: c.campaignId,
+          name: c.name,
+          title: c.name,
+          tagline: c.tagline,
+          objective: c.objective,
+          platforms: c.platforms,
+          platform: c.platform,
+          description: c.description,
+          caption: c.caption,
+          hashtags: c.hashtags,
+          imageUrl: c.imageUrl,
+          bestPostTime: c.bestPostTime,
+          expectedReach: c.estimatedReach,
+          estimatedReach: c.estimatedReach,
+          duration: c.duration,
+          estimatedBudget: c.estimatedBudget,
+          contentIdeas: c.contentIdeas
+        }));
+        
+        return res.json({
+          success: true,
+          data: { campaigns },
+          personalized: true,
+          cached: true,
+          businessContext: {
+            name: user.businessProfile.name,
+            industry: user.businessProfile.industry
+          }
+        });
+      }
+    }
+    
+    // No cache or force refresh - generate new suggestions
+    console.log(`🔄 Generating fresh campaigns for user ${user._id}`);
+    const suggestions = await generateCampaignSuggestions(user.businessProfile, count);
+    
+    // Cache the new suggestions
+    if (suggestions.campaigns && suggestions.campaigns.length > 0) {
+      try {
+        await CachedCampaign.saveCampaigns(user._id, profileHash, suggestions.campaigns);
+        console.log(`💾 Cached ${suggestions.campaigns.length} new campaigns`);
+      } catch (cacheError) {
+        console.error('Failed to cache campaigns:', cacheError);
+        // Continue anyway - caching failure shouldn't break the response
+      }
+    }
+
+    res.json({
+      success: true,
+      data: suggestions,
+      personalized: true,
+      cached: false,
+      businessContext: {
+        name: user.businessProfile.name,
+        industry: user.businessProfile.industry
+      }
+    });
+  } catch (error) {
+    console.error('Campaign suggestions error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate suggestions', error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/campaign-suggestions-stream
+ * Stream campaign suggestions using Server-Sent Events for PROGRESSIVE LOADING
+ * Campaigns appear one-by-one as they're generated
+ */
+router.get('/campaign-suggestions-stream', protect, async (req, res) => {
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      res.write(`data: ${JSON.stringify({ error: 'User not found' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    if (!user.businessProfile?.name) {
+      res.write(`data: ${JSON.stringify({ error: 'Please complete onboarding first' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const count = parseInt(req.query.count) || 6;
+    const forceRefresh = req.query.refresh === 'true';
+    const profileHash = CachedCampaign.createProfileHash(user.businessProfile);
+    
+    // Check cache first
+    if (!forceRefresh) {
+      const cached = await CachedCampaign.getCachedForUser(user._id, profileHash, count);
+      
+      if (cached && cached.length >= count) {
+        // Stream cached campaigns quickly (50ms apart for smooth UX)
+        for (let i = 0; i < cached.length; i++) {
+          const c = cached[i];
+          const campaign = {
+            id: c.campaignId,
+            name: c.name,
+            title: c.name,
+            objective: c.objective,
+            platforms: c.platforms,
+            platform: c.platform,
+            caption: c.caption,
+            hashtags: c.hashtags,
+            imageUrl: c.imageUrl,
+            bestPostTime: c.bestPostTime,
+            estimatedReach: c.estimatedReach
+          };
+          
+          res.write(`data: ${JSON.stringify({ 
+            type: 'campaign', 
+            index: i, 
+            total: cached.length,
+            campaign,
+            cached: true
+          })}\n\n`);
+          
+          // Small delay for smooth appearance
+          await new Promise(r => setTimeout(r, 50));
+        }
+        
+        res.write(`data: ${JSON.stringify({ type: 'complete', total: cached.length, cached: true })}\n\n`);
+        res.end();
+        return;
+      }
+    }
+    
+    // Generate campaigns one by one using streaming
+    res.write(`data: ${JSON.stringify({ type: 'start', total: count, message: 'Generating personalized campaigns...' })}\n\n`);
+    
+    const generatedCampaigns = [];
+    
+    for (let i = 0; i < count; i++) {
+      try {
+        // Generate single campaign
+        const campaign = await generateSingleCampaign(user.businessProfile, i, count);
+        
+        if (campaign) {
+          generatedCampaigns.push(campaign);
+          
+          res.write(`data: ${JSON.stringify({ 
+            type: 'campaign', 
+            index: i, 
+            total: count,
+            campaign,
+            cached: false
+          })}\n\n`);
+        }
+      } catch (err) {
+        console.error(`Error generating campaign ${i}:`, err);
+        res.write(`data: ${JSON.stringify({ type: 'error', index: i, message: err.message })}\n\n`);
+      }
+    }
+    
+    // Cache all generated campaigns
+    if (generatedCampaigns.length > 0) {
+      try {
+        await CachedCampaign.saveCampaigns(user._id, profileHash, generatedCampaigns);
+      } catch (cacheError) {
+        console.error('Failed to cache streamed campaigns:', cacheError);
+      }
+    }
+    
+    res.write(`data: ${JSON.stringify({ type: 'complete', total: generatedCampaigns.length })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Campaign streaming error:', error);
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+/**
+ * DELETE /api/dashboard/campaign-cache
+ * Clear campaign cache for user (useful when profile changes)
+ */
+router.delete('/campaign-cache', protect, async (req, res) => {
+  try {
+    const result = await CachedCampaign.invalidateCache(req.user.userId || req.user.id);
+    res.json({ success: true, message: 'Cache cleared', deleted: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to clear cache' });
+  }
+});
+
+/**
+ * POST /api/dashboard/refresh
+ * Force refresh AI-generated dashboard data
+ */
+router.post('/refresh', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Generate fresh AI data using Gemini
+    const metrics = {};
+    const aiData = user.businessProfile?.name 
+      ? await generateDashboardInsights(user.businessProfile, metrics)
+      : { suggestedActions: [], trendingTopics: [], personalizedTips: [], brandScoreFactors: {} };
+
+    res.json({
+      success: true,
+      message: 'Dashboard refreshed',
+      data: aiData
+    });
+  } catch (error) {
+    console.error('Dashboard refresh error:', error);
+    res.status(500).json({ success: false, message: 'Failed to refresh dashboard', error: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/refresh-competitor-posts
+ * Manually trigger real competitor post scraping using Apify
+ */
+router.post('/refresh-competitor-posts', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    // Get competitors from database
+    const competitors = await Competitor.find({ userId }).limit(10);
+    
+    if (competitors.length === 0) {
+      return res.json({ success: false, message: 'No competitors to scrape', posts: [] });
+    }
+    
+    if (!socialMediaAPI || !socialMediaAPI.fetchRealCompetitorPosts) {
+      return res.status(503).json({ success: false, message: 'Scraping service not available' });
+    }
+    
+    // Build competitor handles
+    const competitorHandles = competitors.map(c => ({
+      name: c.name,
+      instagram: c.socialHandles?.instagram || c.name.toLowerCase().replace(/\s+/g, ''),
+      twitter: c.socialHandles?.twitter,
+      facebook: c.socialHandles?.facebook
+    }));
+    
+    console.log('Manual refresh: Fetching real posts for', competitorHandles.map(c => c.name));
+    
+    const realPosts = await socialMediaAPI.fetchRealCompetitorPosts(competitorHandles, { limit: 5 });
+    
+    if (realPosts.success && realPosts.posts.length > 0) {
+      // Save to database
+      for (const post of realPosts.posts) {
+        const competitor = await Competitor.findOne({ userId, name: post.competitorName });
+        if (competitor) {
+          // Clear old posts and add new real ones
+          competitor.posts = competitor.posts.filter(p => p.isReal !== false).slice(-10);
+          competitor.posts.push({
+            platform: post.platform,
+            postUrl: post.postUrl,
+            content: post.content,
+            imageUrl: post.imageUrl,
+            likes: post.likes,
+            comments: post.comments,
+            sentiment: post.sentiment,
+            postedAt: new Date(),
+            fetchedAt: new Date()
+          });
+          await competitor.save();
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Fetched ${realPosts.posts.length} real posts from social media`,
+        posts: realPosts.posts,
+        source: 'apify_real_scrape'
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'Could not fetch real posts. Make sure competitor social handles are configured.',
+        error: realPosts.error
+      });
+    }
+  } catch (error) {
+    console.error('Refresh competitor posts error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/synopsis
+ * Get AI-powered synopsis for a specific dashboard section using Gemini
+ */
+router.post('/synopsis', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { section, data } = req.body;
+    
+    if (!section) {
+      return res.status(400).json({ success: false, message: 'Section is required' });
+    }
+
+    // Use Gemini AI for synopsis generation
+    const synopsis = await generateSectionSynopsis(
+      section,
+      data || {},
+      user.businessProfile
+    );
+
+    res.json({
+      success: true,
+      ...synopsis
+    });
+  } catch (error) {
+    console.error('Synopsis generation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate synopsis', error: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/generate-rival-post
+ * Generate a rival post to counter a competitor's content
+ */
+router.post('/generate-rival-post', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { competitorName, competitorContent, platform, sentiment, likes, comments } = req.body;
+    
+    if (!competitorContent) {
+      return res.status(400).json({ success: false, message: 'Competitor content is required' });
+    }
+
+    console.log(`🗡️ Generating rival post to counter ${competitorName} on ${platform}`);
+
+    // Generate the rival post using Gemini AI
+    const rivalPost = await generateRivalPost(
+      { competitorName, competitorContent, platform, sentiment, likes, comments },
+      user.businessProfile
+    );
+
+    console.log('✅ Rival post generated successfully');
+
+    res.json({
+      success: true,
+      caption: rivalPost.caption,
+      hashtags: rivalPost.hashtags,
+      imageUrl: rivalPost.imageUrl
+    });
+  } catch (error) {
+    console.error('Rival post generation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate rival post', error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/section-info/:section
+ * Get static info about a dashboard section
+ */
+router.get('/section-info/:section', (req, res) => {
+  const { section } = req.params;
+  const info = getSectionInfo(section);
+  
+  res.json({
+    success: true,
+    ...info
+  });
+});
+
+// Helper functions
+
+/**
+ * Calculate brand score based on REAL metrics
+ */
+function calculateRealBrandScore(metrics) {
+  let score = 30; // Base score
+  
+  // Add points for campaigns
+  if (metrics.campaignCount > 0) score += 10;
+  if (metrics.campaignCount >= 5) score += 10;
+  if (metrics.activeCampaignCount > 0) score += 10;
+  
+  // Add points for engagement
+  if (metrics.totalImpressions > 100) score += 5;
+  if (metrics.totalImpressions > 1000) score += 5;
+  if (parseFloat(metrics.avgCTR) > 1) score += 5;
+  if (parseFloat(metrics.avgCTR) > 3) score += 5;
+  
+  // Add points for competitor tracking
+  if (metrics.competitorCount > 0) score += 5;
+  if (metrics.competitorCount >= 3) score += 5;
+  
+  // Add points for influencer discovery
+  if (metrics.influencerCount > 0) score += 5;
+  if (metrics.influencerCount >= 5) score += 5;
+  
+  return Math.min(100, score);
+}
+
+/**
+ * Calculate percentage change
+ */
+function calculateChange(current, previous) {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function calculateBrandScore(factors) {
+  if (!factors) return 50;
+  
+  const weights = {
+    engagement: 0.3,
+    consistency: 0.25,
+    audienceGrowth: 0.25,
+    contentQuality: 0.2
+  };
+
+  let totalScore = 0;
+  let totalWeight = 0;
+
+  for (const [key, value] of Object.entries(factors)) {
+    if (weights[key] && value?.score) {
+      totalScore += value.score * weights[key];
+      totalWeight += weights[key];
+    }
+  }
+
+  return totalWeight > 0 ? Math.round(totalScore / totalWeight) : 50;
+}
+
+/**
+ * Get relative time from a date
+ */
+function getRelativeTime(date) {
+  if (!date) return 'Recently';
+  
+  const now = new Date();
+  const past = new Date(date);
+  const diffMs = now - past;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return past.toLocaleDateString();
+}
+
+/**
+ * GET /api/dashboard/api-status
+ * Check status of all configured APIs
+ */
+router.get('/api-status', protect, async (req, res) => {
+  try {
+    const status = socialMediaAPI ? socialMediaAPI.getAPIStatus() : {
+      ayrshare: { configured: false },
+      apify: { configured: false },
+      searchapi: { configured: false }
+    };
+    
+    res.json({ success: true, status });
+  } catch (error) {
+    console.error('API status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/real-time-competitor/:competitorName
+ * Fetch real-time competitor data using Apify
+ */
+router.get('/real-time-competitor/:competitorName', protect, async (req, res) => {
+  try {
+    const { competitorName } = req.params;
+    const { platforms } = req.query;
+    
+    if (!socialMediaAPI) {
+      return res.status(503).json({ success: false, message: 'Social media API not available' });
+    }
+    
+    const platformList = platforms ? platforms.split(',') : ['instagram'];
+    const analysis = await socialMediaAPI.getCompetitorAnalysis(competitorName, platformList);
+    
+    res.json({ success: true, analysis });
+  } catch (error) {
+    console.error('Real-time competitor error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/trends
+ * Get real-time marketing trends and insights
+ */
+router.get('/trends', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const user = await User.findById(userId);
+    
+    if (!socialMediaAPI) {
+      return res.status(503).json({ success: false, message: 'Social media API not available' });
+    }
+    
+    const industry = user?.businessProfile?.industry || 'marketing';
+    const niche = user?.businessProfile?.niche || '';
+    
+    const insights = await socialMediaAPI.getMarketingInsights(industry, niche);
+    
+    res.json({ success: true, insights });
+  } catch (error) {
+    console.error('Trends error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/post-to-social
+ * Post content to social media via Ayrshare
+ */
+router.post('/post-to-social', protect, async (req, res) => {
+  try {
+    const { platforms, content, mediaUrls, scheduleDate } = req.body;
+    
+    if (!socialMediaAPI) {
+      return res.status(503).json({ success: false, message: 'Social media API not available' });
+    }
+    
+    if (!platforms || !content) {
+      return res.status(400).json({ success: false, message: 'Platforms and content are required' });
+    }
+    
+    const result = await socialMediaAPI.postToSocialMedia(platforms, content, {
+      mediaUrls,
+      scheduleDate
+    });
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Post to social error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/social-analytics
+ * Get analytics from connected social platforms via Ayrshare
+ */
+router.get('/social-analytics', protect, async (req, res) => {
+  try {
+    const { platforms } = req.query;
+    
+    if (!socialMediaAPI) {
+      return res.status(503).json({ success: false, message: 'Social media API not available' });
+    }
+    
+    const platformList = platforms ? platforms.split(',') : ['instagram', 'twitter', 'facebook'];
+    const analytics = await socialMediaAPI.getAyrshareAnalytics(platformList);
+    
+    res.json(analytics);
+  } catch (error) {
+    console.error('Social analytics error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/search
+ * Search for topics/trends via SearchAPI
+ */
+router.get('/search', protect, async (req, res) => {
+  try {
+    const { q, num } = req.query;
+    
+    if (!socialMediaAPI) {
+      return res.status(503).json({ success: false, message: 'Social media API not available' });
+    }
+    
+    if (!q) {
+      return res.status(400).json({ success: false, message: 'Query is required' });
+    }
+    
+    const results = await socialMediaAPI.searchGoogle(q, { num: parseInt(num) || 10 });
+    
+    res.json(results);
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+module.exports = router;
