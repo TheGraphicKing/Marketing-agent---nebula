@@ -103,7 +103,6 @@ async function callGemini(prompt, options = {}) {
  */
 function parseGeminiJSON(text) {
   let cleaned = text.trim();
-  
   // Remove markdown code blocks
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.slice(7);
@@ -113,8 +112,13 @@ function parseGeminiJSON(text) {
   if (cleaned.endsWith('```')) {
     cleaned = cleaned.slice(0, -3);
   }
-  
-  return JSON.parse(cleaned.trim());
+  try {
+    return JSON.parse(cleaned.trim());
+  } catch (err) {
+    console.error('Failed to parse Gemini JSON:', err, '\nRaw response:', cleaned);
+    // Return a fallback object or null to avoid crashing the backend
+    return { error: 'Invalid Gemini JSON', raw: cleaned };
+  }
 }
 
 /**
@@ -198,12 +202,18 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
     const response = await callGemini(prompt, { temperature: 0.8, maxTokens: 4096 });
     const parsed = parseGeminiJSON(response);
     
-    // Enhance campaigns with relevant Unsplash images based on search queries
+    // Enhance campaigns with AI-generated images based on campaign content
     if (parsed.campaigns && parsed.campaigns.length > 0) {
       parsed.campaigns = await Promise.all(parsed.campaigns.map(async (campaign, index) => {
-        // Generate image URL based on the campaign's image search query or context
-        const imageQuery = campaign.imageSearchQuery || `${industry} ${campaign.objective} marketing`;
-        const imageUrl = await getRelevantImage(imageQuery, industry, campaign.objective);
+        // Generate contextually relevant AI image based on campaign details
+        const imageQuery = campaign.description || campaign.caption || campaign.imageSearchQuery || `${industry} ${campaign.objective} marketing`;
+        const imageUrl = await getRelevantImage(
+          imageQuery, 
+          industry, 
+          campaign.objective,
+          campaign.title || campaign.name,
+          campaign.platform || 'instagram'
+        );
         
         return {
           ...campaign,
@@ -221,9 +231,74 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
 }
 
 /**
- * Get a relevant Unsplash image URL based on search query
+ * Generate AI image using Pollinations.ai (free, no API key needed)
+ * Creates contextually relevant marketing images based on campaign content
  */
-async function getRelevantImage(searchQuery, industry, objective) {
+async function generateAIImage(campaignTitle, campaignDescription, objective, platform, industry) {
+  // Create a detailed, marketing-focused prompt for the AI image generator
+  const styleGuide = {
+    'awareness': 'eye-catching, vibrant colors, bold typography overlay space, modern design',
+    'engagement': 'warm, inviting, people interacting, community feeling, social atmosphere',
+    'sales': 'premium product photography, clean background, professional lighting, call-to-action space',
+    'traffic': 'dynamic, arrows, movement, digital aesthetic, website mockup elements',
+    'conversion': 'trust signals, testimonial style, before-after concept, success imagery'
+  };
+
+  const platformStyle = {
+    'instagram': 'square format, aesthetic, Instagram-worthy, lifestyle photography',
+    'facebook': 'engaging social media post, community focused, shareable content',
+    'twitter': 'bold statement, concise visual, Twitter card style',
+    'linkedin': 'professional, corporate, business environment, networking',
+    'tiktok': 'trendy, youth-focused, dynamic, vertical format ready',
+    'youtube': 'thumbnail style, high contrast, clickable, video preview'
+  };
+
+  const objectiveStyle = styleGuide[objective?.toLowerCase()] || styleGuide.awareness;
+  const platformHint = platformStyle[platform?.toLowerCase()] || platformStyle.instagram;
+
+  // Build a comprehensive prompt for high-quality marketing image
+  const imagePrompt = `Professional marketing campaign image for ${industry || 'business'}. 
+Campaign: ${campaignTitle}. 
+Theme: ${campaignDescription || objective || 'brand awareness'}. 
+Style: ${objectiveStyle}. ${platformHint}. 
+Requirements: High quality, 4K, photorealistic, modern design, clean composition, suitable for social media marketing, no text in image, professional photography style, vibrant but not oversaturated, commercial quality.`;
+
+  // URL encode the prompt for Pollinations.ai
+  const encodedPrompt = encodeURIComponent(imagePrompt);
+  
+  // Use Pollinations.ai - free AI image generation
+  // Adding seed for consistency and quality parameters
+  const seed = Math.floor(Math.random() * 1000000);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=800&height=600&seed=${seed}&nologo=true`;
+  
+  return imageUrl;
+}
+
+/**
+ * Get a relevant image - now uses AI generation with Unsplash fallback
+ */
+async function getRelevantImage(searchQuery, industry, objective, campaignTitle = '', platform = 'instagram') {
+  try {
+    // Generate AI image based on campaign context
+    const aiImageUrl = await generateAIImage(
+      campaignTitle || searchQuery,
+      searchQuery,
+      objective,
+      platform,
+      industry
+    );
+    return aiImageUrl;
+  } catch (error) {
+    console.error('AI image generation failed, using fallback:', error);
+    // Fallback to curated Unsplash images
+    return getFallbackImage(industry, objective);
+  }
+}
+
+/**
+ * Fallback to curated Unsplash images if AI generation fails
+ */
+function getFallbackImage(industry, objective) {
   // Curated high-quality images by industry and objective
   const industryImages = {
     'ecommerce': {

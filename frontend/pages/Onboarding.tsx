@@ -215,6 +215,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         }
         if (currentStep === 3) {
             if (formData.marketingGoals.length === 0) return "Please select at least one marketing goal.";
+            if (!formData.competitors || formData.competitors.length === 0) return "Please add at least one competitor to track.";
         }
         // Step 4 (socials) is optional - no validation needed
         return null;
@@ -638,10 +639,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 {/* Competitors Section */}
                                 <div className="mt-6 pt-6 border-t border-[#ededed]/10">
                                     <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>
-                                        Your Competitors
+                                        Your Competitors <span className="text-red-500">*</span>
                                     </label>
                                     <p className={`text-xs mb-3 ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-500'}`}>
-                                        Enter competitor names/brands you'd like to track. Press Enter or click Add to add each one.
+                                        Enter at least one competitor name/brand you'd like to track. Press Enter or click Add to add each one.
                                     </p>
                                     <div className="flex gap-2">
                                         <input 

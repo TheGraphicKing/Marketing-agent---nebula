@@ -588,7 +588,7 @@ const Dashboard: React.FC = () => {
                   </>
                 ) : (
                   <button 
-                    onClick={() => window.open('/campaigns?action=create', '_self')}
+                    onClick={() => { window.location.hash = '/campaigns?action=create'; }}
                     className="w-full py-2 bg-[#ffcc29] hover:bg-[#e6b825] text-[#070A12] text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" /> Create New Campaign

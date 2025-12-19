@@ -81,13 +81,16 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
       >
         <div className="flex flex-col h-full">
             <div className="p-6">
-                <div className={`flex items-center gap-2 font-bold text-xl tracking-tight mb-2 ${isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}`}>
-                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className="w-8 h-8" />
-                    <span>Nebulaa Gravity</span>
+                <div className={`flex items-center gap-3 mb-2 ${isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}`}>
+                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className="w-12 h-12" />
+                    <div className="flex flex-col">
+                        <span className="font-bold text-xl tracking-tight leading-tight">Nebulaa</span>
+                        <span className="font-semibold text-lg tracking-tight leading-tight">Gravity</span>
+                    </div>
                 </div>
                 {/* Show user's business name if available */}
                 {user?.businessProfile?.name && (
-                  <p className={`text-xs mb-6 pl-10 truncate ${isDarkMode ? 'text-[#ededed]/60' : 'text-[#070A12]/70'}`} title={user.businessProfile.name}>
+                  <p className={`text-xs mb-6 pl-[60px] truncate ${isDarkMode ? 'text-[#ededed]/60' : 'text-[#070A12]/70'}`} title={user.businessProfile.name}>
                     for {user.businessProfile.name}
                   </p>
                 )}
