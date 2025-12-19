@@ -1,6 +1,8 @@
 import { AuthResponse, BusinessProfile, Campaign, DashboardData, SocialConnection, User } from '../types';
 
 const API_BASE_URL = 'http://localhost:5000/api';
+const DEFAULT_TIMEOUT = 10000; // 10 second default timeout
+const AI_TIMEOUT = 30000; // 30 seconds for AI operations (campaign generation, etc.)
 
 // Helper to get auth token
 const getToken = (): string | null => localStorage.getItem('authToken');
@@ -11,11 +13,37 @@ const setToken = (token: string): void => localStorage.setItem('authToken', toke
 // Helper to remove auth token
 const removeToken = (): void => localStorage.removeItem('authToken');
 
+// Fetch with timeout helper
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeout: number = DEFAULT_TIMEOUT
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    throw error;
+  }
+}
+
 // Generic API call function with real backend integration
 async function apiCall<T>(
   endpoint: string, 
   options: RequestInit = {},
-  requiresAuth: boolean = false
+  requiresAuth: boolean = false,
+  timeout: number = DEFAULT_TIMEOUT
 ): Promise<T> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -31,10 +59,10 @@ async function apiCall<T>(
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-    });
+    }, timeout);
 
     const data = await response.json();
 
@@ -81,7 +109,7 @@ let campaigns: Campaign[] = [
     _id: 'c2',
     name: 'Spring Teaser Video',
     objective: 'awareness',
-    platforms: ['tiktok'],
+    platforms: ['instagram'],
     status: 'draft',
     creative: { type: 'video', textContent: 'Coming soon...', imageUrls: [], captions: '' },
     scheduling: { startDate: daysFromNow(2), postTime: '09:00' },
@@ -283,7 +311,7 @@ export const apiService = {
         trends: [
           { id: '1', title: 'AI in Marketing', description: 'Leveraging AI for personalized content.', category: 'Tech' },
           { id: '2', title: 'Sustainability', description: 'Green marketing is on the rise.', category: 'Social' },
-          { id: '3', title: 'Short-form Video', description: 'TikTok and Reels dominance continues.', category: 'Media' }
+          { id: '3', title: 'Short-form Video', description: 'Instagram Reels and YouTube Shorts dominance continues.', category: 'Media' }
         ],
         recentCampaigns: campaigns,
         suggestedActions: [
@@ -312,17 +340,109 @@ export const apiService = {
     }
   },
 
-  getCampaignSuggestions: async (count: number = 3): Promise<any> => {
+  getCampaignSuggestions: async (count: number = 3, forceRefresh: boolean = false): Promise<any> => {
     try {
-      const response = await apiCall<{ success: boolean; data: any }>(
-        `/dashboard/campaign-suggestions?count=${count}`,
+      const response = await apiCall<{ success: boolean; data: any; cached?: boolean }>(
+        `/dashboard/campaign-suggestions?count=${count}${forceRefresh ? '&refresh=true' : ''}`,
         { method: 'GET' },
         true
       );
-      return response.data;
+      return { ...response.data, cached: response.cached };
     } catch (error) {
       console.log('Campaign suggestions error:', error);
       return { campaigns: [] };
+    }
+  },
+
+  // Stream campaign suggestions for progressive loading
+  streamCampaignSuggestions: (
+    count: number = 6,
+    forceRefresh: boolean = false,
+    onCampaign: (campaign: any, index: number, total: number, cached: boolean) => void,
+    onComplete: (total: number) => void,
+    onError: (error: string) => void
+  ): (() => void) => {
+    const token = localStorage.getItem('token');
+    const baseUrl = (window as any).__API_BASE_URL__ || 'http://localhost:5000/api';
+    const url = `${baseUrl}/dashboard/campaign-suggestions-stream?count=${count}${forceRefresh ? '&refresh=true' : ''}`;
+    
+    const eventSource = new EventSource(url + `&token=${token}`);
+    
+    // Fallback: If EventSource doesn't support headers, use fetch with SSE parsing
+    // Actually EventSource doesn't support custom headers, so we need fetch
+    eventSource.close();
+    
+    const controller = new AbortController();
+    
+    fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'text/event-stream'
+      },
+      signal: controller.signal
+    })
+    .then(response => {
+      if (!response.ok) throw new Error('Stream request failed');
+      
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      if (!reader) throw new Error('No response body');
+      
+      function pump(): Promise<void> {
+        return reader!.read().then(({ done, value }) => {
+          if (done) return;
+          
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === 'campaign') {
+                  onCampaign(data.campaign, data.index, data.total, data.cached || false);
+                } else if (data.type === 'complete') {
+                  onComplete(data.total);
+                } else if (data.type === 'error') {
+                  onError(data.message);
+                }
+              } catch (e) {
+                console.log('SSE parse error:', e);
+              }
+            }
+          }
+          
+          return pump();
+        });
+      }
+      
+      return pump();
+    })
+    .catch(error => {
+      if (error.name !== 'AbortError') {
+        onError(error.message);
+      }
+    });
+    
+    // Return cleanup function
+    return () => controller.abort();
+  },
+
+  // Clear campaign cache
+  clearCampaignCache: async (): Promise<{ success: boolean }> => {
+    try {
+      const response = await apiCall<{ success: boolean }>(
+        '/dashboard/campaign-cache',
+        { method: 'DELETE' },
+        true
+      );
+      return response;
+    } catch (error) {
+      console.log('Clear cache error:', error);
+      return { success: false };
     }
   },
 
@@ -359,6 +479,37 @@ export const apiService = {
         insights: [], 
         trend: 'stable' 
       };
+    }
+  },
+
+  // Generate Rival Post
+  generateRivalPost: async (data: {
+    competitorName: string;
+    competitorContent: string;
+    platform: string;
+    sentiment?: string;
+    likes?: number;
+    comments?: number;
+  }): Promise<{ caption: string; hashtags: string[]; imageUrl: string }> => {
+    try {
+      const response = await apiCall<{ 
+        success: boolean; 
+        caption: string; 
+        hashtags: string[]; 
+        imageUrl: string 
+      }>(
+        '/dashboard/generate-rival-post',
+        { method: 'POST', body: JSON.stringify(data) },
+        true
+      );
+      return {
+        caption: response.caption,
+        hashtags: response.hashtags,
+        imageUrl: response.imageUrl
+      };
+    } catch (error) {
+      console.error('Rival post generation error:', error);
+      throw error;
     }
   },
 

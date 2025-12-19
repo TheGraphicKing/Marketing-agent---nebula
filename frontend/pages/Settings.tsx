@@ -499,7 +499,7 @@ const Settings: React.FC<SettingsProps> = ({ user, onUserUpdate }) => {
                                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">AP</div>
                                   <div>
                                     <p className={`font-semibold ${theme.text}`}>Apify</p>
-                                    <p className={`text-xs ${theme.textMuted}`}>Web scraping for Instagram, Twitter, TikTok</p>
+                                    <p className={`text-xs ${theme.textMuted}`}>Web scraping for Instagram, Twitter, Facebook</p>
                                   </div>
                                 </div>
                                 <div className={`px-3 py-1 rounded-full text-xs font-semibold ${

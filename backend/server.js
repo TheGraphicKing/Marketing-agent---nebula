@@ -55,8 +55,31 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Response time monitoring middleware - warn if > 3 seconds
+app.use((req, res, next) => {
+  const start = Date.now();
+  const originalEnd = res.end;
+  
+  res.end = function(...args) {
+    const duration = Date.now() - start;
+    const threshold = 3000; // 3 seconds
+    
+    if (duration > threshold) {
+      console.warn(`⚠️  SLOW REQUEST: ${req.method} ${req.path} took ${duration}ms (>${threshold}ms threshold)`);
+    } else if (duration > 1000) {
+      console.log(`⏱️  ${req.method} ${req.path} - ${duration}ms`);
+    }
+    
+    // Add response time header
+    res.setHeader('X-Response-Time', `${duration}ms`);
+    return originalEnd.apply(this, args);
+  };
+  
+  next();
+});
 
 // Request logging middleware
 app.use((req, res, next) => {

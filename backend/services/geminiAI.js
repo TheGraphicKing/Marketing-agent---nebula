@@ -3,7 +3,7 @@
  * Uses Google Gemini API for all AI-related tasks
  */
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // Using available Gemini models with fallbacks - prioritize lite models for lower quota usage
 const GEMINI_MODELS = [
   'gemini-2.0-flash-lite',  // Lower quota usage
@@ -14,10 +14,44 @@ const GEMINI_MODELS = [
 // Simple in-memory cache for API responses
 const responseCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+const API_TIMEOUT = 8000; // 8 second timeout for API calls (leaving 1s buffer for processing)
+
+// Cache cleanup - run every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of responseCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      responseCache.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
 
 function getCacheKey(prompt) {
   // Create a simple hash of the prompt
   return prompt.substring(0, 100).replace(/\s+/g, '_');
+}
+
+/**
+ * Fetch with timeout helper
+ */
+async function fetchWithTimeout(url, options, timeout = API_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeout}ms`);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -27,20 +61,24 @@ function getCacheKey(prompt) {
  * @returns {Promise<string>} - The AI response
  */
 async function callGemini(prompt, options = {}) {
+  const startTime = Date.now();
+  
   // Check cache first (unless explicitly disabled)
   if (!options.skipCache) {
     const cacheKey = getCacheKey(prompt);
     const cached = responseCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-      console.log('Using cached Gemini response');
+      console.log('⚡ Using cached Gemini response (instant)');
       return cached.response;
     }
   }
 
+  const timeout = options.timeout || API_TIMEOUT;
+  
   for (const model of GEMINI_MODELS) {
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     try {
-      const response = await fetch(`${apiUrl}?key=${GEMINI_API_KEY}`, {
+      const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -51,11 +89,11 @@ async function callGemini(prompt, options = {}) {
           }],
           generationConfig: {
             temperature: options.temperature || 0.7,
-            maxOutputTokens: options.maxTokens || 2048,
+            maxOutputTokens: options.maxTokens || 1024, // Reduced for faster responses
             topP: 0.9
           }
         })
-      });
+      }, timeout);
 
       const data = await response.json();
 
@@ -85,7 +123,8 @@ async function callGemini(prompt, options = {}) {
         responseCache.set(cacheKey, { response: text, timestamp: Date.now() });
       }
 
-      console.log(`✅ Gemini response received from ${model}`);
+      const duration = Date.now() - startTime;
+      console.log(`✅ Gemini response from ${model} in ${duration}ms`);
       return text;
     } catch (error) {
       console.error(`Gemini API call to ${model} failed:`, error.message);
@@ -196,7 +235,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
   ]
 }
 
-Generate ${count} diverse campaigns covering different objectives (awareness, engagement, sales, etc.) and platforms (instagram, facebook, tiktok, linkedin, twitter). Make every campaign UNIQUE and SPECIFIC to ${companyName}.`;
+Generate ${count} diverse campaigns covering different objectives (awareness, engagement, sales, etc.) and platforms (instagram, facebook, linkedin, twitter/X, youtube). Make every campaign UNIQUE and SPECIFIC to ${companyName}.`;
 
   try {
     const response = await callGemini(prompt, { temperature: 0.8, maxTokens: 4096 });
@@ -231,67 +270,285 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
 }
 
 /**
- * Generate AI image using Pollinations.ai (free, no API key needed)
- * Creates contextually relevant marketing images based on campaign content
+ * Generate a SINGLE campaign quickly for streaming/progressive loading
+ * This is optimized for speed - generates one campaign at a time
  */
-async function generateAIImage(campaignTitle, campaignDescription, objective, platform, industry) {
-  // Create a detailed, marketing-focused prompt for the AI image generator
-  const styleGuide = {
-    'awareness': 'eye-catching, vibrant colors, bold typography overlay space, modern design',
-    'engagement': 'warm, inviting, people interacting, community feeling, social atmosphere',
-    'sales': 'premium product photography, clean background, professional lighting, call-to-action space',
-    'traffic': 'dynamic, arrows, movement, digital aesthetic, website mockup elements',
-    'conversion': 'trust signals, testimonial style, before-after concept, success imagery'
-  };
-
-  const platformStyle = {
-    'instagram': 'square format, aesthetic, Instagram-worthy, lifestyle photography',
-    'facebook': 'engaging social media post, community focused, shareable content',
-    'twitter': 'bold statement, concise visual, Twitter card style',
-    'linkedin': 'professional, corporate, business environment, networking',
-    'tiktok': 'trendy, youth-focused, dynamic, vertical format ready',
-    'youtube': 'thumbnail style, high contrast, clickable, video preview'
-  };
-
-  const objectiveStyle = styleGuide[objective?.toLowerCase()] || styleGuide.awareness;
-  const platformHint = platformStyle[platform?.toLowerCase()] || platformStyle.instagram;
-
-  // Build a comprehensive prompt for high-quality marketing image
-  const imagePrompt = `Professional marketing campaign image for ${industry || 'business'}. 
-Campaign: ${campaignTitle}. 
-Theme: ${campaignDescription || objective || 'brand awareness'}. 
-Style: ${objectiveStyle}. ${platformHint}. 
-Requirements: High quality, 4K, photorealistic, modern design, clean composition, suitable for social media marketing, no text in image, professional photography style, vibrant but not oversaturated, commercial quality.`;
-
-  // URL encode the prompt for Pollinations.ai
-  const encodedPrompt = encodeURIComponent(imagePrompt);
+async function generateSingleCampaign(businessProfile, index, total) {
+  const companyName = businessProfile.name || 'Your Company';
+  const industry = businessProfile.industry || 'General';
+  const niche = businessProfile.niche || industry;
+  const businessType = businessProfile.businessType || 'B2C';
+  const targetAudience = businessProfile.targetAudience || 'General consumers';
+  const brandVoice = businessProfile.brandVoice || 'Professional';
+  const marketingGoals = (businessProfile.marketingGoals || []).join(', ') || 'Brand awareness';
   
-  // Use Pollinations.ai - free AI image generation
-  // Adding seed for consistency and quality parameters
-  const seed = Math.floor(Math.random() * 1000000);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=800&height=600&seed=${seed}&nologo=true`;
+  // Vary objectives for diversity
+  const objectives = ['awareness', 'engagement', 'sales', 'traffic', 'trust', 'conversion'];
+  const platforms = ['instagram', 'facebook', 'linkedin', 'twitter', 'youtube'];
+  const objective = objectives[index % objectives.length];
+  const platform = platforms[index % platforms.length];
   
-  return imageUrl;
+  const prompt = `Generate ONE ${objective}-focused social media campaign for "${companyName}" (${industry}/${niche}).
+
+Target: ${targetAudience}
+Voice: ${brandVoice}
+Platform: ${platform}
+Goals: ${marketingGoals}
+
+Return ONLY valid JSON (no markdown):
+{
+  "id": "campaign_${index + 1}",
+  "name": "Campaign title",
+  "objective": "${objective}",
+  "platforms": ["${platform}"],
+  "caption": "Ready-to-post caption with emojis, in ${brandVoice} voice. Include call-to-action.",
+  "hashtags": ["#BrandHashtag", "#Industry", "#Relevant"],
+  "bestPostTime": "9:00 AM",
+  "estimatedReach": "10K - 25K"
+}`;
+
+  try {
+    const response = await callGemini(prompt, { temperature: 0.9, maxTokens: 1024 });
+    const campaign = parseGeminiJSON(response);
+    
+    // Generate AI image for this campaign
+    const imageUrl = await getRelevantImage(
+      campaign.caption || campaign.name || `${industry} ${objective} marketing`,
+      industry,
+      objective,
+      campaign.name,
+      platform
+    );
+    
+    return {
+      ...campaign,
+      imageUrl,
+      id: campaign.id || `campaign_${index + 1}`
+    };
+  } catch (error) {
+    console.error(`Error generating single campaign ${index}:`, error);
+    
+    // Return a fallback campaign on error
+    return {
+      id: `campaign_${index + 1}`,
+      name: `${companyName} ${objective.charAt(0).toUpperCase() + objective.slice(1)} Campaign`,
+      objective,
+      platforms: [platform],
+      caption: `✨ Discover what makes ${companyName} special! We're here to serve ${targetAudience} with the best in ${industry}. \n\n💬 What would you like to see from us? Let us know below! \n\n#${companyName.replace(/\s+/g, '')} #${industry}`,
+      hashtags: [`#${companyName.replace(/\s+/g, '')}`, `#${industry}`, '#Marketing', '#Growth'],
+      imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(`${industry} ${objective} marketing professional photo`)}?width=800&height=600&seed=${Date.now()}`,
+      bestPostTime: '10:00 AM',
+      estimatedReach: '10K - 20K'
+    };
+  }
 }
 
 /**
- * Get a relevant image - now uses AI generation with Unsplash fallback
+ * Generate AI image using Google Gemini Imagen 3 API
+ * Creates images RELEVANT to the campaign content for social media posting
  */
-async function getRelevantImage(searchQuery, industry, objective, campaignTitle = '', platform = 'instagram') {
+async function generateAIImage(campaignTitle, campaignDescription, objective, platform, industry, brandContext = {}) {
+  // Create a detailed, campaign-specific prompt for relevant images with brand context
+  const campaignContext = campaignDescription || campaignTitle || '';
+  
+  // Build rich brand-aware prompt
+  const brandDetails = [];
+  if (brandContext.companyName) brandDetails.push(`Brand: ${brandContext.companyName}`);
+  if (brandContext.products) brandDetails.push(`Products: ${brandContext.products}`);
+  if (brandContext.services) brandDetails.push(`Services: ${brandContext.services}`);
+  if (brandContext.usps) brandDetails.push(`Key features: ${brandContext.usps}`);
+  if (brandContext.niche) brandDetails.push(`Niche: ${brandContext.niche}`);
+  
+  const brandInfo = brandDetails.length > 0 ? brandDetails.join('. ') + '.' : '';
+  
+  // Extract key themes from the campaign
+  const prompt = `Create a professional, high-quality social media marketing image for: "${campaignTitle}". 
+${brandInfo}
+Context: ${campaignContext.substring(0, 300)}. 
+Industry: ${industry}. 
+Target audience: ${brandContext.targetAudience || 'general consumers'}.
+Style: Modern, clean, high-quality ${platform} post ready, vibrant colors matching brand identity, professional photography or sleek graphics, no text or words in image, commercial quality, suitable for ${objective} marketing campaign.
+The image should clearly represent the brand's products/services and appeal to the target market.`;
+
+  console.log('Generating image for campaign:', campaignTitle);
+  
   try {
-    // Generate AI image based on campaign context
-    const aiImageUrl = await generateAIImage(
+    // Try Gemini Imagen 3 first
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: platform === 'youtube' ? '16:9' : '4:3',
+            safetyFilterLevel: 'block_few',
+            personGeneration: 'allow_adult'
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+    
+    if (data.predictions && data.predictions[0]?.bytesBase64Encoded) {
+      console.log('✅ Gemini Imagen 3 generated image successfully');
+      return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+    }
+    
+    console.log('Imagen 3 response:', JSON.stringify(data).substring(0, 200));
+    return await generateImageWithGeminiFlash(campaignTitle, campaignDescription, industry, objective, platform, brandContext);
+    
+  } catch (error) {
+    console.error('Gemini Imagen error:', error.message);
+    return await generateImageWithGeminiFlash(campaignTitle, campaignDescription, industry, objective, platform, brandContext);
+  }
+}
+
+/**
+ * Generate image using Gemini 2.0 Flash with image generation capability
+ */
+async function generateImageWithGeminiFlash(campaignTitle, campaignDescription, industry, objective, platform, brandContext = {}) {
+  // Build brand-aware prompt
+  const brandInfo = brandContext.companyName ? `for ${brandContext.companyName} (${brandContext.products || brandContext.services || industry})` : `for a ${industry} brand`;
+  const targetInfo = brandContext.targetAudience ? `, appealing to ${brandContext.targetAudience}` : '';
+  
+  const prompt = `Generate a stunning, professional social media image ${brandInfo} campaign called "${campaignTitle}". The image should be perfect for ${platform}, with modern design, vibrant and eye-catching visuals that represent the brand's products/services${targetInfo}. No text in the image. High-quality commercial photography style.`;
+  
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: `Generate an image: ${prompt}` }]
+          }],
+          generationConfig: {
+            responseModalities: ['IMAGE', 'TEXT']
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+    
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.mimeType?.startsWith('image/')) {
+        console.log('✅ Gemini Flash generated image successfully');
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    
+    console.log('Gemini Flash response:', JSON.stringify(data).substring(0, 300));
+    return getRelevantStockImage(campaignTitle, industry, objective, platform);
+    
+  } catch (error) {
+    console.error('Gemini Flash image error:', error.message);
+    return getRelevantStockImage(campaignTitle, industry, objective, platform);
+  }
+}
+
+/**
+ * Get relevant stock images based on campaign keywords
+ * Uses Pexels-style URLs that actually work
+ */
+function getRelevantStockImage(campaignTitle, industry, objective, platform) {
+  const title = (campaignTitle || '').toLowerCase();
+  const ind = (industry || '').toLowerCase();
+  
+  // Keyword-based image mapping for relevance
+  const keywordImages = {
+    // Sports & Athletics
+    'champion': 'https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?w=800&h=600&fit=crop',
+    'athlete': 'https://images.pexels.com/photos/2294361/pexels-photo-2294361.jpeg?w=800&h=600&fit=crop',
+    'running': 'https://images.pexels.com/photos/2402777/pexels-photo-2402777.jpeg?w=800&h=600&fit=crop',
+    'sports': 'https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?w=800&h=600&fit=crop',
+    'fitness': 'https://images.pexels.com/photos/841130/pexels-photo-841130.jpeg?w=800&h=600&fit=crop',
+    'workout': 'https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?w=800&h=600&fit=crop',
+    'gym': 'https://images.pexels.com/photos/1954524/pexels-photo-1954524.jpeg?w=800&h=600&fit=crop',
+    
+    // Fashion & Style
+    'style': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
+    'fashion': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
+    'school': 'https://images.pexels.com/photos/5212345/pexels-photo-5212345.jpeg?w=800&h=600&fit=crop',
+    'back-to-school': 'https://images.pexels.com/photos/5212345/pexels-photo-5212345.jpeg?w=800&h=600&fit=crop',
+    'sneaker': 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?w=800&h=600&fit=crop',
+    'shoes': 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?w=800&h=600&fit=crop',
+    'design': 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?w=800&h=600&fit=crop',
+    
+    // Community & People
+    'community': 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?w=800&h=600&fit=crop',
+    'spotlight': 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?w=800&h=600&fit=crop',
+    'team': 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?w=800&h=600&fit=crop',
+    'young': 'https://images.pexels.com/photos/8613089/pexels-photo-8613089.jpeg?w=800&h=600&fit=crop',
+    
+    // Business & Marketing
+    'lead': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
+    'business': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
+    'partner': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
+    'organization': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
+    
+    // Products
+    'gear': 'https://images.pexels.com/photos/4397840/pexels-photo-4397840.jpeg?w=800&h=600&fit=crop',
+    'product': 'https://images.pexels.com/photos/4397840/pexels-photo-4397840.jpeg?w=800&h=600&fit=crop',
+    'makers': 'https://images.pexels.com/photos/3912992/pexels-photo-3912992.jpeg?w=800&h=600&fit=crop',
+    'behind': 'https://images.pexels.com/photos/3912992/pexels-photo-3912992.jpeg?w=800&h=600&fit=crop'
+  };
+  
+  // Industry-specific defaults
+  const industryDefaults = {
+    'sports': 'https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?w=800&h=600&fit=crop',
+    'apparel': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
+    'fashion': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
+    'technology': 'https://images.pexels.com/photos/3861969/pexels-photo-3861969.jpeg?w=800&h=600&fit=crop',
+    'food': 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?w=800&h=600&fit=crop',
+    'health': 'https://images.pexels.com/photos/841130/pexels-photo-841130.jpeg?w=800&h=600&fit=crop',
+    'ecommerce': 'https://images.pexels.com/photos/5632402/pexels-photo-5632402.jpeg?w=800&h=600&fit=crop',
+    'default': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop'
+  };
+  
+  // Find matching keyword in campaign title
+  for (const [keyword, imageUrl] of Object.entries(keywordImages)) {
+    if (title.includes(keyword)) {
+      console.log(`✅ Found relevant image for keyword: ${keyword}`);
+      return imageUrl;
+    }
+  }
+  
+  // Fall back to industry default
+  for (const [key, imageUrl] of Object.entries(industryDefaults)) {
+    if (ind.includes(key)) {
+      console.log(`✅ Using industry default image for: ${key}`);
+      return imageUrl;
+    }
+  }
+  
+  console.log('Using general default image');
+  return industryDefaults.default;
+}
+
+/**
+ * Get a relevant image - tries Gemini AI first, then keyword-based fallback
+ */
+async function getRelevantImage(searchQuery, industry, objective, campaignTitle = '', platform = 'instagram', brandContext = {}) {
+  try {
+    const imageUrl = await generateAIImage(
       campaignTitle || searchQuery,
       searchQuery,
       objective,
       platform,
-      industry
+      industry,
+      brandContext
     );
-    return aiImageUrl;
+    return imageUrl;
   } catch (error) {
-    console.error('AI image generation failed, using fallback:', error);
-    // Fallback to curated Unsplash images
-    return getFallbackImage(industry, objective);
+    console.error('Image generation failed:', error);
+    return getRelevantStockImage(campaignTitle || searchQuery, industry, objective, platform);
   }
 }
 
@@ -576,8 +833,8 @@ Provide a helpful, concise response (under 200 words). Be actionable and specifi
     if (lowerMessage.includes('instagram') || lowerMessage.includes('insta')) {
       return "Instagram tips coming right up! 📸\n\n• Reels are getting 2x more reach than static posts\n• Use 3-5 hashtags strategically\n• Post carousels for educational content\n• Stories with polls boost engagement 40%\n• Best posting times: 11am-1pm and 7-9pm\n\nWhat specific aspect of Instagram do you need help with?";
     }
-    if (lowerMessage.includes('tiktok') || lowerMessage.includes('video')) {
-      return "TikTok is 🔥 right now! Here's how to crush it:\n\n• Hook viewers in the first 2 seconds\n• Use trending sounds\n• Post 2-4 times daily\n• Jump on trends within 24-48 hours\n• Be authentic - polished content often underperforms\n\nWhat type of videos are you thinking about creating?";
+    if (lowerMessage.includes('video') || lowerMessage.includes('reels')) {
+      return "Video content is 🔥 right now! Here's how to crush it with Reels & YouTube Shorts:\n\n• Hook viewers in the first 2 seconds\n• Use trending audio\n• Post consistently\n• Be authentic - raw content often outperforms polished\n• Add captions for accessibility\n\nWhat type of videos are you thinking about creating?";
     }
     if (lowerMessage.includes('help') || lowerMessage.includes('what can you')) {
       return "I'm here to help with your marketing needs! 🚀 I can assist with:\n\n• Content strategy & ideas\n• Social media tips\n• Campaign planning\n• Audience growth tactics\n• Hashtag strategies\n• Best posting times\n• Trend analysis\n\nJust ask me anything!";
@@ -968,14 +1225,138 @@ function generatePostUrl(platform, competitorName) {
   }
 }
 
+/**
+ * Generate a rival post to counter a competitor's content
+ * Creates a viral-optimized post with caption, hashtags, and AI-generated image
+ */
+async function generateRivalPost(competitorData, brandProfile) {
+  const { competitorName, competitorContent, platform, sentiment, likes, comments } = competitorData;
+  const { companyName, industry, targetAudience } = brandProfile || {};
+  
+  // Extract key themes from competitor content for relevance
+  const contentLower = (competitorContent || '').toLowerCase();
+  
+  // Determine content themes
+  let contentThemes = [];
+  if (contentLower.includes('sneaker') || contentLower.includes('shoe') || contentLower.includes('footwear')) contentThemes.push('footwear', 'sneakers');
+  if (contentLower.includes('fitness') || contentLower.includes('exercise') || contentLower.includes('workout')) contentThemes.push('fitness', 'workout');
+  if (contentLower.includes('run') || contentLower.includes('sport')) contentThemes.push('running', 'sports');
+  if (contentLower.includes('mind') || contentLower.includes('body') || contentLower.includes('wellness')) contentThemes.push('wellness', 'mindfulness');
+  if (contentLower.includes('fashion') || contentLower.includes('style')) contentThemes.push('fashion', 'style');
+  if (contentLower.includes('tech') || contentLower.includes('innovation')) contentThemes.push('technology', 'innovation');
+  if (contentLower.includes('restock') || contentLower.includes('new') || contentLower.includes('launch')) contentThemes.push('product launch', 'new arrival');
+  if (contentLower.includes('collaboration') || contentLower.includes('team') || contentLower.includes('partner')) contentThemes.push('collaboration', 'partnership');
+  
+  if (contentThemes.length === 0) contentThemes = ['quality', 'excellence', 'innovation'];
+  
+  // Generate caption and hashtags using Gemini with enhanced context
+  const prompt = `You are an expert social media strategist creating a VIRAL counter-post. 
+
+COMPETITOR ANALYSIS:
+- Competitor: "${competitorName}"
+- Platform: ${platform}
+- Their Post: "${competitorContent}"
+- Engagement: ${likes || 0} likes, ${comments || 0} comments
+- Sentiment: ${sentiment || 'neutral'}
+- Key Themes Detected: ${contentThemes.join(', ')}
+
+YOUR BRAND:
+- Brand Name: "${companyName || 'Our Brand'}"
+- Industry: ${industry || 'retail/consumer goods'}
+- Target Audience: ${targetAudience || 'health-conscious consumers'}
+
+MISSION: Create a RIVAL POST that directly competes with and OUTPERFORMS the competitor's content.
+
+REQUIREMENTS:
+1. DIRECTLY address the SAME TOPIC/THEME as the competitor (${contentThemes.slice(0, 3).join(', ')})
+2. Highlight YOUR BRAND's unique value proposition
+3. Use ${platform}-optimized format (${platform === 'twitter' ? 'max 280 chars' : 'engaging story format'})
+4. Include emotional hooks and a compelling call-to-action
+5. Make it SHAREABLE and engagement-worthy
+6. The image description MUST be specific and directly related to: ${contentThemes.slice(0, 2).join(' and ')}
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "caption": "Your viral caption that directly addresses ${contentThemes[0] || 'the topic'} - use emojis strategically",
+  "hashtags": ["#relevant", "#trending", "#niche", "#branded", "#viral"],
+  "imageDescription": "SPECIFIC description for AI image generation: A professional ${contentThemes[0] || 'product'} photo showing [exact visual elements related to ${contentThemes.slice(0, 2).join(' and ')}], modern lighting, ${platform === 'instagram' ? 'square format' : 'landscape'}, commercial quality"
+}`;
+
+  try {
+    const response = await callGemini(prompt, { skipCache: true, temperature: 0.8 });
+    const parsed = parseGeminiJSON(response);
+    
+    if (!parsed || !parsed.caption) {
+      throw new Error('Invalid response format');
+    }
+    
+    // Generate AI image based on the specific image description
+    const imagePrompt = parsed.imageDescription || `Professional ${contentThemes.join(' ')} marketing photo, ${industry} brand, modern aesthetic`;
+    
+    const imageUrl = await getRelevantImage(
+      imagePrompt,
+      industry || contentThemes[0] || 'business',
+      'engagement',
+      contentThemes.slice(0, 2).join(' '),
+      platform
+    );
+    
+    // Clean and format hashtags
+    const cleanHashtags = Array.isArray(parsed.hashtags) 
+      ? parsed.hashtags.map(h => {
+          const clean = h.replace(/^#+/, '').trim();
+          return clean ? `#${clean}` : null;
+        }).filter(Boolean)
+      : [`#${contentThemes[0] || 'trending'}`, '#viral', '#quality'];
+    
+    return {
+      caption: parsed.caption,
+      hashtags: cleanHashtags,
+      imageUrl
+    };
+  } catch (error) {
+    console.error('Error generating rival post:', error);
+    
+    // Fallback response based on detected themes
+    const themeBasedCaption = contentThemes.includes('footwear') || contentThemes.includes('sneakers')
+      ? `👟 Step into excellence! While others follow trends, we SET them. Our latest collection redefines what ${contentThemes[0]} should be.\n\n💪 Built for those who demand more. Ready to elevate your game?\n\n👉 Drop a 🔥 if you're ready!`
+      : contentThemes.includes('fitness') || contentThemes.includes('wellness')
+      ? `🏃‍♂️ Transform your ${contentThemes[0]} journey with us! We don't just talk about results – we DELIVER them.\n\n✨ Join thousands who've already made the switch.\n\n💬 What's your fitness goal? Tell us below!`
+      : `💫 Excellence isn't just a word – it's our standard. While competitors talk, we deliver results that speak for themselves.\n\n🎯 Ready to experience the difference?\n\n👇 Let us know what you're looking for!`;
+    
+    const fallbackHashtags = [
+      `#${contentThemes[0] || 'trending'}`,
+      `#${contentThemes[1] || 'quality'}`,
+      `#${(companyName || 'brand').replace(/\s+/g, '')}`,
+      '#excellence',
+      '#viral'
+    ];
+    
+    return {
+      caption: themeBasedCaption,
+      hashtags: fallbackHashtags,
+      imageUrl: await getRelevantImage(
+        `Professional ${contentThemes.join(' ')} marketing photo, modern aesthetic, high quality`,
+        industry || contentThemes[0] || 'business',
+        'engagement',
+        contentThemes[0] || 'excellence',
+        platform
+      )
+    };
+  }
+}
+
 module.exports = {
   callGemini,
   parseGeminiJSON,
   generateCampaignSuggestions,
+  generateSingleCampaign,
   generateDashboardInsights,
   generateChatResponse,
   generateSectionSynopsis,
   calculateInfluencerMatchScore,
   generateChatSuggestions,
-  generateCompetitorActivity
+  generateCompetitorActivity,
+  generateRivalPost,
+  getRelevantImage
 };

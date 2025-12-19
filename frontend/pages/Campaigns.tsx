@@ -1,13 +1,115 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { apiService } from '../services/api';
 import { Campaign } from '../types';
-import { Plus, Sparkles, Filter, Loader2, Calendar, BarChart3, Image as ImageIcon, Video, X, ChevronRight, Check, Eye, MousePointer, Archive, Send, Edit3, DollarSign, RefreshCw, Wand2, Instagram, Facebook, Twitter, Linkedin, Youtube, Clock, Heart, MessageCircle, Share2, Zap } from 'lucide-react';
+import { Plus, Sparkles, Filter, Loader2, Calendar, BarChart3, Image as ImageIcon, Video, X, ChevronRight, Check, Eye, MousePointer, Archive, Send, Edit3, DollarSign, RefreshCw, Wand2, Instagram, Facebook, Twitter, Linkedin, Youtube, Clock, Heart, MessageCircle, Share2, Zap, Download, FileText, ImageDown, ChevronDown, Copy } from 'lucide-react';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 
-type TabView = 'suggestions' | 'all' | 'draft' | 'posted' | 'archived' | 'analytics';
+// ComboBox component - allows selecting from dropdown OR entering custom value
+interface ComboBoxProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  className?: string;
+  isDarkMode?: boolean;
+}
+
+const ComboBox: React.FC<ComboBoxProps> = ({ value, onChange, options, placeholder, className, isDarkMode }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Sync inputValue with value prop
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+    onChange(newValue);
+  };
+  
+  const handleSelect = (optionValue: string) => {
+    setInputValue(optionValue);
+    onChange(optionValue);
+    setIsOpen(false);
+  };
+  
+  const displayLabel = options.find(o => o.value === value)?.label || value;
+  
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={inputValue === value && options.find(o => o.value === value) ? displayLabel : inputValue}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          className={className}
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-opacity-10 hover:bg-gray-500 transition-colors ${
+            isDarkMode ? 'text-slate-400' : 'text-slate-500'
+          }`}
+        >
+          <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+      
+      {isOpen && (
+        <div className={`absolute z-50 w-full mt-1 rounded-lg shadow-lg border max-h-48 overflow-y-auto ${
+          isDarkMode 
+            ? 'bg-[#161b22] border-[#ffcc29]/20' 
+            : 'bg-white border-slate-200'
+        }`}>
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => handleSelect(option.value)}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                value === option.value
+                  ? 'bg-[#ffcc29]/20 text-[#ffcc29]'
+                  : isDarkMode
+                    ? 'text-slate-300 hover:bg-slate-700'
+                    : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+          {inputValue && !options.find(o => o.value === inputValue || o.label.toLowerCase() === inputValue.toLowerCase()) && (
+            <div className={`px-3 py-2 text-xs border-t ${
+              isDarkMode ? 'text-slate-500 border-slate-700' : 'text-slate-400 border-slate-200'
+            }`}>
+              ✨ Using custom value: "{inputValue}"
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+type TabView = 'suggestions' | 'all' | 'draft' | 'scheduled' | 'posted' | 'archived' | 'analytics';
 
 interface SuggestedCampaign {
     id: string;
@@ -32,6 +134,9 @@ const Campaigns: React.FC = () => {
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const [editingCampaign, setEditingCampaign] = useState<SuggestedCampaign | null>(null);
   const [regenerationCount, setRegenerationCount] = useState(0);
+  const [streamingProgress, setStreamingProgress] = useState<{ current: number; total: number } | null>(null);
+  const [isCached, setIsCached] = useState(false);
+  const [downloadingImage, setDownloadingImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTab === 'suggestions') {
@@ -125,7 +230,7 @@ const Campaigns: React.FC = () => {
         title: `Behind the Scenes at ${name}`,
         caption: `🎬 Ever wonder what happens behind the scenes?\n\nHere's a sneak peek into how we ${niche || 'create value for you'}!\n\n${voice.emoji} Our team works hard to bring you the best in ${industry.toLowerCase()}.\n\n💬 Drop a comment if you want to see more!`,
         imageUrl: images[2] || images[0],
-        platform: 'TikTok',
+        platform: 'YouTube',
         objective: 'Engagement',
         hashtags: ['#BehindTheScenes', '#BTS', `#${industry}Life`, '#TeamWork'],
         bestTime: '12:00 PM',
@@ -245,10 +350,60 @@ const Campaigns: React.FC = () => {
     }));
   };
 
-  const generateSuggestions = async () => {
+  // Progressive streaming generation - campaigns appear one by one
+  const generateSuggestionsStreaming = useCallback(async (forceRefresh: boolean = false) => {
+    setLoadingSuggestions(true);
+    setSuggestedCampaigns([]);
+    setStreamingProgress({ current: 0, total: 6 });
+    setIsCached(false);
+    
+    try {
+      // Use streaming endpoint for progressive loading
+      const cleanup = apiService.streamCampaignSuggestions(
+        6, // count
+        forceRefresh, // force refresh
+        // On each campaign received
+        (campaign, index, total, cached) => {
+          const transformed: SuggestedCampaign = {
+            id: campaign.id || `ai-${index}-${regenerationCount}`,
+            title: campaign.name || campaign.title || 'Campaign Idea',
+            caption: campaign.caption || campaign.description || 'AI-generated campaign content',
+            imageUrl: campaign.imageUrl || getImageForObjective(campaign.objective || 'awareness'),
+            platform: capitalizeFirst(campaign.platforms?.[0] || campaign.platform || 'Instagram'),
+            objective: capitalizeFirst(campaign.objective || 'Awareness'),
+            hashtags: campaign.hashtags || ['#Marketing', '#Growth'],
+            bestTime: campaign.bestPostTime || '10:00 AM',
+            estimatedReach: campaign.estimatedReach || campaign.expectedReach || '10K - 25K'
+          };
+          
+          setSuggestedCampaigns(prev => [...prev, transformed]);
+          setStreamingProgress({ current: index + 1, total });
+          setIsCached(cached);
+        },
+        // On complete
+        (total) => {
+          setLoadingSuggestions(false);
+          setStreamingProgress(null);
+        },
+        // On error - fallback to regular API
+        async (error) => {
+          console.log('Streaming failed, falling back to regular API:', error);
+          await generateSuggestionsFallback(forceRefresh);
+        }
+      );
+      
+      // Store cleanup for component unmount
+      return cleanup;
+    } catch (error) {
+      console.log('Streaming setup failed:', error);
+      await generateSuggestionsFallback(forceRefresh);
+    }
+  }, [regenerationCount]);
+  
+  // Fallback non-streaming generation
+  const generateSuggestionsFallback = async (forceRefresh: boolean = false) => {
     setLoadingSuggestions(true);
     
-    // Get user profile for personalized fallback
     let userProfile: any = null;
     try {
       const { user } = await apiService.getCurrentUser();
@@ -258,11 +413,10 @@ const Campaigns: React.FC = () => {
     }
     
     try {
-      // Try to get AI-generated suggestions from backend based on user's business profile
-      const response = await apiService.getCampaignSuggestions(6);
+      const response = await apiService.getCampaignSuggestions(6, forceRefresh);
+      setIsCached(response.cached || false);
       
       if (response.campaigns && response.campaigns.length > 0) {
-        // Transform backend response to match our SuggestedCampaign interface
         const aiSuggestions: SuggestedCampaign[] = response.campaigns.map((camp: any, index: number) => ({
           id: camp.id || `ai-${index}-${regenerationCount}`,
           title: camp.name || camp.title || 'Campaign Idea',
@@ -271,7 +425,7 @@ const Campaigns: React.FC = () => {
           platform: capitalizeFirst(camp.platforms?.[0] || 'Instagram'),
           objective: capitalizeFirst(camp.objective || 'Awareness'),
           hashtags: camp.hashtags || camp.keyMessages?.map((m: string) => `#${m.replace(/\s+/g, '')}`) || ['#Marketing', '#Growth'],
-          bestTime: camp.bestPostTime || (camp.duration === '1 week' ? '10:00 AM' : camp.duration === '2 weeks' ? '2:00 PM' : '12:00 PM'),
+          bestTime: camp.bestPostTime || '10:00 AM',
           estimatedReach: camp.expectedReach || camp.expectedResults || '10K - 25K'
         }));
         setSuggestedCampaigns(aiSuggestions);
@@ -282,20 +436,77 @@ const Campaigns: React.FC = () => {
       console.log('AI suggestions not available, using personalized fallback:', error);
     }
     
-    // Use personalized fallback suggestions based on user's business profile
-    // Pass regenerationCount as seed for variety
     const suggestions = generatePersonalizedFallback(userProfile, regenerationCount);
-    
-    // Simulate API delay
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 500));
     setSuggestedCampaigns(suggestions);
     setLoadingSuggestions(false);
   };
   
-  // Handle regenerate with incrementing seed
+  // Main generate suggestions - uses streaming
+  const generateSuggestions = () => {
+    generateSuggestionsStreaming(false);
+  };
+  
+  // Handle regenerate - forces new generation
   const handleRegenerate = () => {
     setRegenerationCount(prev => prev + 1);
-    generateSuggestions();
+    generateSuggestionsStreaming(true);
+  };
+
+  // Download image
+  const handleDownloadImage = async (suggestion: SuggestedCampaign) => {
+    setDownloadingImage(suggestion.id);
+    try {
+      const response = await fetch(suggestion.imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${suggestion.title.replace(/\s+/g, '-').toLowerCase()}-image.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download image:', error);
+      // Fallback: open image in new tab
+      window.open(suggestion.imageUrl, '_blank');
+    }
+    setDownloadingImage(null);
+  };
+
+  // Download text content (caption + hashtags)
+  const handleDownloadText = (suggestion: SuggestedCampaign) => {
+    const content = `Campaign: ${suggestion.title}
+Platform: ${suggestion.platform}
+Objective: ${suggestion.objective}
+Best Time to Post: ${suggestion.bestTime}
+Estimated Reach: ${suggestion.estimatedReach}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CAPTION:
+${suggestion.caption}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HASHTAGS:
+${suggestion.hashtags.join(' ')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Generated by Nebulaa Gravity Marketing Agent
+`;
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${suggestion.title.replace(/\s+/g, '-').toLowerCase()}-content.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
   // Helper function to get image based on objective
@@ -318,7 +529,7 @@ const Campaigns: React.FC = () => {
   const loadCampaigns = async () => {
     try {
       setLoading(true);
-      const queryStatus = activeTab === 'all' || activeTab === 'analytics' ? undefined : activeTab;
+      const queryStatus = activeTab === 'all' || activeTab === 'analytics' || activeTab === 'scheduled' ? undefined : activeTab;
       const response = await apiService.getCampaigns(queryStatus);
       setCampaigns(response.campaigns || []);
     } catch (error) {
@@ -331,7 +542,14 @@ const Campaigns: React.FC = () => {
   const handleCampaignCreated = (newCampaign: Campaign) => {
     setCampaigns([newCampaign, ...campaigns]);
     setIsModalOpen(false);
-    setActiveTab('draft');
+    // If new campaign is scheduled, go to scheduled tab, otherwise go to appropriate tab
+    if (newCampaign.status === 'scheduled') {
+      setActiveTab('scheduled');
+    } else {
+      setActiveTab('draft');
+    }
+    // Reload campaigns to get all the new scheduled posts
+    loadCampaigns();
   };
 
   const handleUseSuggestion = async (suggestion: SuggestedCampaign) => {
@@ -366,7 +584,7 @@ const Campaigns: React.FC = () => {
       case 'twitter': return <Twitter className="w-4 h-4" />;
       case 'linkedin': return <Linkedin className="w-4 h-4" />;
       case 'youtube': return <Youtube className="w-4 h-4" />;
-      case 'tiktok': return <span className="text-xs font-bold">Tk</span>;
+      case 'youtube': return <Youtube className="w-4 h-4" />;
       default: return <Share2 className="w-4 h-4" />;
     }
   };
@@ -378,7 +596,7 @@ const Campaigns: React.FC = () => {
       case 'twitter': return 'bg-[#1DA1F2]';
       case 'linkedin': return 'bg-[#0A66C2]';
       case 'youtube': return 'bg-[#FF0000]';
-      case 'tiktok': return 'bg-black';
+      case 'youtube': return 'bg-[#FF0000]';
       default: return 'bg-#f5f5f50';
     }
   };
@@ -412,7 +630,7 @@ const Campaigns: React.FC = () => {
             </button>
           </div>
 
-          {loadingSuggestions ? (
+          {loadingSuggestions && suggestedCampaigns.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="relative">
                 <Sparkles className="w-12 h-12 text-[#ffcc29] animate-pulse" />
@@ -423,12 +641,13 @@ const Campaigns: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {suggestedCampaigns.map((suggestion) => (
+              {suggestedCampaigns.map((suggestion, idx) => (
                 <div 
                   key={suggestion.id} 
-                  className={`rounded-xl shadow-sm border overflow-hidden group hover:shadow-lg transition-all duration-300 ${theme.bgCard} ${
+                  className={`rounded-xl shadow-sm border overflow-hidden group hover:shadow-lg transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 ${theme.bgCard} ${
                     isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-slate-200 hover:border-[#ffcc29]/30'
                   }`}
+                  style={{ animationDelay: `${idx * 100}ms` }}
                 >
                   {/* Image */}
                   <div className="relative h-48 overflow-hidden">
@@ -436,20 +655,21 @@ const Campaigns: React.FC = () => {
                       src={suggestion.imageUrl} 
                       alt={suggestion.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      loading="lazy"
                     />
                     {/* Overlay with actions on hover */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-4 gap-3">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-4 gap-2">
                       <button 
                         onClick={() => setEditingCampaign(suggestion)}
-                        className="px-4 py-2 bg-white text-#070A12 rounded-lg font-semibold text-sm flex items-center gap-2 hover:bg-#ededed transition-colors shadow-lg"
+                        className="px-3 py-2 bg-white text-slate-800 rounded-lg font-semibold text-sm flex items-center gap-1.5 hover:bg-slate-100 transition-colors shadow-lg"
                       >
-                        <Edit3 className="w-4 h-4" /> Edit
+                        <Edit3 className="w-3.5 h-3.5" /> Edit
                       </button>
                       <button 
                         onClick={() => handleUseSuggestion(suggestion)}
-                        className="px-4 py-2 bg-#ffcc29 text-white rounded-lg font-semibold text-sm flex items-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg"
+                        className="px-3 py-2 bg-[#ffcc29] text-black rounded-lg font-semibold text-sm flex items-center gap-1.5 hover:bg-[#e6b825] transition-colors shadow-lg"
                       >
-                        <Send className="w-4 h-4" /> Use This
+                        <Send className="w-3.5 h-3.5" /> Use
                       </button>
                     </div>
                     {/* Platform badge */}
@@ -458,7 +678,7 @@ const Campaigns: React.FC = () => {
                       {suggestion.platform}
                     </div>
                     {/* Objective badge */}
-                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-#0f1526">
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-slate-800">
                       {suggestion.objective}
                     </div>
                   </div>
@@ -493,11 +713,134 @@ const Campaigns: React.FC = () => {
                         <span>{suggestion.estimatedReach}</span>
                       </div>
                     </div>
+
+                    {/* Download Buttons */}
+                    <div className={`flex items-center gap-2 mt-3 pt-3 border-t ${
+                      isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'
+                    }`}>
+                      <button
+                        onClick={() => handleDownloadImage(suggestion)}
+                        disabled={downloadingImage === suggestion.id}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          isDarkMode 
+                            ? 'bg-slate-800 hover:bg-slate-700 text-white' 
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        } ${downloadingImage === suggestion.id ? 'opacity-50 cursor-wait' : ''}`}
+                      >
+                        {downloadingImage === suggestion.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <ImageDown className="w-3.5 h-3.5" />
+                        )}
+                        Image
+                      </button>
+                      <button
+                        onClick={() => handleDownloadText(suggestion)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          isDarkMode 
+                            ? 'bg-slate-800 hover:bg-slate-700 text-white' 
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        Text
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleDownloadImage(suggestion);
+                          handleDownloadText(suggestion);
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-[#ffcc29] text-black hover:bg-[#e6b825] transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        All
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
+              
+              {/* Placeholder cards while streaming */}
+              {loadingSuggestions && suggestedCampaigns.length > 0 && (
+                Array.from({ length: Math.max(0, 6 - suggestedCampaigns.length) }).map((_, i) => (
+                  <div 
+                    key={`placeholder-${i}`}
+                    className={`rounded-xl border overflow-hidden animate-pulse ${theme.bgCard} ${
+                      isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'
+                    }`}
+                  >
+                    <div className="h-48 bg-slate-300 dark:bg-slate-700" />
+                    <div className="p-4 space-y-3">
+                      <div className="h-4 bg-slate-300 dark:bg-slate-700 rounded w-3/4" />
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-full" />
+                      <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-5/6" />
+                      <div className="flex gap-2">
+                        <div className="h-5 w-16 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                        <div className="h-5 w-16 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           )}
+        </div>
+      );
+    }
+
+    // Scheduled posts view with special actions
+    if (activeTab === 'scheduled') {
+      const scheduledCampaigns = campaigns.filter(c => c.status === 'scheduled');
+      
+      if (loading) {
+        return (
+          <div className="flex justify-center py-20">
+            <Loader2 className="w-10 h-10 text-[#ffcc29] animate-spin" />
+          </div>
+        );
+      }
+      
+      if (scheduledCampaigns.length === 0) {
+        return (
+          <div className={`text-center py-20 rounded-xl border border-dashed ${theme.bgCard} ${
+            isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-300'
+          }`}>
+            <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+              isDarkMode ? 'bg-slate-800' : 'bg-slate-100'
+            }`}>
+              <Calendar className="w-8 h-8 text-slate-400" />
+            </div>
+            <h3 className={`text-lg font-bold ${theme.text}`}>No scheduled posts</h3>
+            <p className={`${theme.textSecondary} mb-6`}>Create a campaign to schedule posts for publishing.</p>
+            <button onClick={() => setIsModalOpen(true)} className="bg-[#ffcc29] text-black px-4 py-2 rounded-lg font-medium hover:bg-[#ffcc29]/80 transition-colors">
+              + New Campaign
+            </button>
+          </div>
+        );
+      }
+      
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-[#ffcc29]" />
+              <h2 className={`text-lg font-bold ${theme.text}`}>Scheduled Posts ({scheduledCampaigns.length})</h2>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {scheduledCampaigns.map((campaign) => (
+              <ScheduledPostCard 
+                key={campaign._id} 
+                campaign={campaign} 
+                isDarkMode={isDarkMode} 
+                theme={theme}
+                onStatusChange={(id, status) => {
+                  setCampaigns(prev => prev.map(c => c._id === id ? { ...c, status } : c));
+                }}
+              />
+            ))}
+          </div>
         </div>
       );
     }
@@ -565,6 +908,7 @@ const Campaigns: React.FC = () => {
             { id: 'suggestions', label: 'AI Suggestions', icon: Sparkles },
             { id: 'all', label: 'All Campaigns', icon: null },
             { id: 'draft', label: 'Drafts', icon: null },
+            { id: 'scheduled', label: 'Scheduled', icon: Calendar },
             { id: 'posted', label: 'Posted', icon: null },
             { id: 'archived', label: 'Archived', icon: null },
             { id: 'analytics', label: 'Analytics', icon: BarChart3 }
@@ -763,95 +1107,1443 @@ const CampaignCard: React.FC<{ campaign: Campaign; isDarkMode: boolean; theme: R
     </div>
 );
 
-// --- MODAL (Kept concise for length) ---
+// --- SCHEDULED POST CARD WITH ACTIONS ---
+const ScheduledPostCard: React.FC<{
+  campaign: Campaign;
+  isDarkMode: boolean;
+  theme: ReturnType<typeof getThemeClasses>;
+  onStatusChange: (id: string, status: string) => void;
+}> = ({ campaign, isDarkMode, theme, onStatusChange }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedCaption, setEditedCaption] = useState(campaign.creative.textContent || '');
+  const [downloading, setDownloading] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const handleDownloadImage = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const imageUrl = campaign.creative.imageUrls?.[0];
+    if (!imageUrl) return;
+    
+    setDownloading(true);
+    try {
+      let filename = `${campaign.name.replace(/[^a-z0-9]/gi, '_')}_${campaign.platforms[0]}.png`;
+      
+      if (imageUrl.startsWith('data:')) {
+        // Base64 image
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // URL image
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download image');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handlePost = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setPosting(true);
+    try {
+      await apiService.updateCampaign(campaign._id, { status: 'posted' });
+      onStatusChange(campaign._id, 'posted');
+      setShowPreview(false);
+    } catch (error) {
+      console.error('Failed to post:', error);
+      alert('Failed to mark as posted');
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const handleSaveEdit = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      await apiService.updateCampaign(campaign._id, {
+        creative: { ...campaign.creative, textContent: editedCaption }
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Failed to save:', error);
+      alert('Failed to save changes');
+    }
+  };
+
+  const handleCopyCaption = () => {
+    const fullCaption = `${campaign.creative.textContent || ''}\n\n${campaign.creative.captions || ''}`;
+    navigator.clipboard.writeText(fullCaption);
+    alert('Caption copied to clipboard!');
+  };
+
+  const scheduledDate = campaign.scheduling?.startDate 
+    ? new Date(campaign.scheduling.startDate).toLocaleDateString('en-US', { 
+        weekday: 'short', month: 'short', day: 'numeric' 
+      })
+    : 'Not set';
+
+  const fullDate = campaign.scheduling?.startDate 
+    ? new Date(campaign.scheduling.startDate).toLocaleDateString('en-US', { 
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+      })
+    : 'Not set';
+
+  const getPlatformIcon = (platform: string) => {
+    switch(platform?.toLowerCase()) {
+      case 'instagram': return <Instagram className="w-4 h-4" />;
+      case 'facebook': return <Facebook className="w-4 h-4" />;
+      case 'twitter': return <Twitter className="w-4 h-4" />;
+      case 'linkedin': return <Linkedin className="w-4 h-4" />;
+      case 'youtube': return <Youtube className="w-4 h-4" />;
+      default: return <Share2 className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <>
+      {/* Card */}
+      <div 
+        onClick={() => setShowPreview(true)}
+        className={`rounded-xl shadow-sm border overflow-hidden hover:shadow-lg transition-all cursor-pointer group ${theme.bgCard} ${
+          isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-slate-200 hover:border-[#ffcc29]'
+        }`}
+      >
+        {/* Image */}
+        <div className="relative aspect-square bg-slate-100 overflow-hidden">
+          {campaign.creative.imageUrls?.[0] ? (
+            <img 
+              src={campaign.creative.imageUrls[0]} 
+              alt={campaign.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center ${
+              isDarkMode ? 'bg-slate-800' : 'bg-slate-100'
+            }`}>
+              <ImageIcon className="w-12 h-12 text-slate-400" />
+            </div>
+          )}
+          
+          {/* Hover overlay */}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <Eye className="w-8 h-8 text-white drop-shadow-lg" />
+            </div>
+          </div>
+          
+          {/* Platform badge */}
+          <div className={`absolute top-3 left-3 px-2 py-1 rounded-lg flex items-center gap-1.5 text-xs font-medium ${
+            isDarkMode ? 'bg-black/70 text-white' : 'bg-white/90 text-slate-700'
+          }`}>
+            {getPlatformIcon(campaign.platforms[0])}
+            <span className="capitalize">{campaign.platforms[0]}</span>
+          </div>
+          
+          {/* Schedule badge */}
+          <div className={`absolute top-3 right-3 px-2 py-1 rounded-lg flex items-center gap-1.5 text-xs font-medium bg-[#ffcc29] text-black`}>
+            <Clock className="w-3 h-3" />
+            {scheduledDate}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-4">
+          <h3 className={`font-bold text-sm mb-2 ${theme.text}`}>{campaign.name}</h3>
+          <p className={`text-xs line-clamp-3 ${theme.textSecondary}`}>
+            {campaign.creative.textContent || 'No caption'}
+          </p>
+
+          {/* Hashtags */}
+          {campaign.creative.captions && (
+            <p className="text-xs text-[#ffcc29] mt-2 line-clamp-1">
+              {campaign.creative.captions}
+            </p>
+          )}
+
+          {/* Time */}
+          <div className={`flex items-center gap-1 mt-3 text-xs ${theme.textSecondary}`}>
+            <Clock className="w-3 h-3" />
+            <span>Scheduled for {campaign.scheduling?.postTime || '10:00'}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className={`p-3 border-t flex justify-between gap-2 ${
+          isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-slate-50 border-slate-200'
+        }`}>
+          <div className="flex gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); setShowPreview(true); }}
+              className={`text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 border ${
+                isDarkMode 
+                  ? 'border-slate-700 text-slate-400 hover:bg-slate-800' 
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Edit3 className="w-3 h-3" /> Edit
+            </button>
+            <button
+              onClick={(e) => handleDownloadImage(e)}
+              disabled={downloading || !campaign.creative.imageUrls?.[0]}
+              className={`text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 border ${
+                isDarkMode 
+                  ? 'border-slate-700 text-slate-400 hover:bg-slate-800' 
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+              } ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+              Download
+            </button>
+          </div>
+          <button
+            onClick={(e) => handlePost(e)}
+            disabled={posting}
+            className="text-xs font-bold text-black bg-[#ffcc29] px-4 py-1.5 rounded hover:bg-[#ffcc29]/80 flex items-center gap-1"
+          >
+            {posting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+            Post Now
+          </button>
+        </div>
+      </div>
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => { setShowPreview(false); setIsEditing(false); }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className={`rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row ${theme.bgCard}`}
+          >
+            {/* Image Side */}
+            <div className="md:w-1/2 relative bg-black flex items-center justify-center">
+              {campaign.creative.imageUrls?.[0] ? (
+                <img 
+                  src={campaign.creative.imageUrls[0]} 
+                  alt={campaign.name}
+                  className="w-full h-full object-contain max-h-[50vh] md:max-h-[90vh]"
+                />
+              ) : (
+                <div className="w-full h-64 md:h-full flex items-center justify-center bg-slate-800">
+                  <ImageIcon className="w-20 h-20 text-slate-600" />
+                </div>
+              )}
+              
+              {/* Close button */}
+              <button 
+                onClick={() => { setShowPreview(false); setIsEditing(false); }}
+                className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Side */}
+            <div className="md:w-1/2 flex flex-col max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className={`p-6 border-b ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-[#ffcc29]/20' : 'bg-[#ffcc29]/10'}`}>
+                      {getPlatformIcon(campaign.platforms[0])}
+                    </div>
+                    <div>
+                      <h2 className={`text-lg font-bold ${theme.text}`}>{campaign.name}</h2>
+                      <p className={`text-sm capitalize ${theme.textSecondary}`}>{campaign.platforms[0]}</p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#ffcc29] text-black">
+                    Scheduled
+                  </span>
+                </div>
+
+                {/* Schedule Info */}
+                <div className={`flex items-center gap-4 text-sm ${theme.textSecondary}`}>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#ffcc29]" />
+                    <span>{fullDate}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-[#ffcc29]" />
+                    <span>{campaign.scheduling?.postTime || '10:00'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Caption */}
+              <div className="p-6 flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className={`text-sm font-bold uppercase tracking-wide ${theme.textMuted}`}>Caption</h3>
+                  {!isEditing && (
+                    <button 
+                      onClick={handleCopyCaption}
+                      className={`text-xs flex items-center gap-1 px-2 py-1 rounded ${
+                        isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      <Copy className="w-3 h-3" /> Copy
+                    </button>
+                  )}
+                </div>
+                
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <textarea
+                      value={editedCaption}
+                      onChange={(e) => setEditedCaption(e.target.value)}
+                      className={`w-full p-3 text-sm rounded-lg border resize-none ${
+                        isDarkMode 
+                          ? 'bg-[#0d1117] border-[#ffcc29]/20 text-white' 
+                          : 'bg-white border-slate-200 text-slate-900'
+                      }`}
+                      rows={6}
+                      placeholder="Enter your caption..."
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveEdit}
+                        className="flex-1 text-sm font-bold text-black bg-[#ffcc29] px-4 py-2 rounded-lg hover:bg-[#ffcc29]/80 flex items-center justify-center gap-2"
+                      >
+                        <Check className="w-4 h-4" /> Save Changes
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditing(false);
+                          setEditedCaption(campaign.creative.textContent || '');
+                        }}
+                        className={`flex-1 text-sm font-bold px-4 py-2 rounded-lg border ${
+                          isDarkMode ? 'border-slate-700 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={`text-sm whitespace-pre-wrap ${theme.text}`}>
+                    {campaign.creative.textContent || 'No caption'}
+                  </p>
+                )}
+
+                {/* Hashtags */}
+                {campaign.creative.captions && !isEditing && (
+                  <div className="mt-4">
+                    <h3 className={`text-sm font-bold uppercase tracking-wide mb-2 ${theme.textMuted}`}>Hashtags</h3>
+                    <p className="text-sm text-[#ffcc29]">
+                      {campaign.creative.captions}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions Footer */}
+              <div className={`p-6 border-t flex flex-wrap gap-3 ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
+                {!isEditing && (
+                  <>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className={`flex-1 min-w-[120px] text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 border ${
+                        isDarkMode 
+                          ? 'border-slate-700 text-slate-300 hover:bg-slate-800' 
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <Edit3 className="w-4 h-4" /> Edit Caption
+                    </button>
+                    <button
+                      onClick={() => handleDownloadImage()}
+                      disabled={downloading || !campaign.creative.imageUrls?.[0]}
+                      className={`flex-1 min-w-[120px] text-sm font-bold px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 border ${
+                        isDarkMode 
+                          ? 'border-slate-700 text-slate-300 hover:bg-slate-800' 
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                      } ${downloading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      Download
+                    </button>
+                    <button
+                      onClick={() => handlePost()}
+                      disabled={posting}
+                      className="flex-1 min-w-[120px] text-sm font-bold text-black bg-[#ffcc29] px-4 py-2.5 rounded-lg hover:bg-[#ffcc29]/80 flex items-center justify-center gap-2"
+                    >
+                      {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      Post Now
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// --- COMPREHENSIVE CAMPAIGN CREATION MODAL ---
+interface GeneratedPost {
+  id: string;
+  platform: string;
+  caption: string;
+  hashtags: string[];
+  imageUrl: string;
+  suggestedDate: string;
+  suggestedTime: string;
+  status: 'pending' | 'accepted' | 'edited' | 'rejected';
+}
+
 const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campaign) => void; isDarkMode: boolean; theme: ReturnType<typeof getThemeClasses> }> = ({ onClose, onSuccess, isDarkMode, theme }) => {
     const [step, setStep] = useState(1);
-    
-    // Form State (Simplified for this file size)
-    const [name, setName] = useState('');
-    const [objective, setObjective] = useState<'awareness' | 'traffic' | 'sales'>('awareness');
-    const [platform, setPlatform] = useState('Instagram');
-    const [startDate, setStartDate] = useState('');
-    const [postTime, setPostTime] = useState('');
-    const [creativeType, setCreativeType] = useState<'image' | 'video'>('image');
-    const [caption, setCaption] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
+    const [editingPostId, setEditingPostId] = useState<string | null>(null);
+    const [savingPosts, setSavingPosts] = useState(false);
+    const [previewPost, setPreviewPost] = useState<GeneratedPost | null>(null);
+    
+    // Step 1: Campaign Details
+    const [campaignName, setCampaignName] = useState('');
+    const [campaignDescription, setCampaignDescription] = useState('');
+    const [objective, setObjective] = useState<'awareness' | 'engagement' | 'traffic' | 'sales' | 'leads'>('awareness');
+    
+    // Step 2: Target Audience
+    const [targetAge, setTargetAge] = useState('18-35');
+    const [targetGender, setTargetGender] = useState('all');
+    const [targetLocation, setTargetLocation] = useState('');
+    const [targetInterests, setTargetInterests] = useState('');
+    const [audienceDescription, setAudienceDescription] = useState('');
+    
+    // Step 3: Content Preferences
+    const [platforms, setPlatforms] = useState<string[]>(['instagram']);
+    const [contentTone, setContentTone] = useState<'professional' | 'casual' | 'humorous' | 'inspirational' | 'educational'>('professional');
+    const [contentType, setContentType] = useState<'image' | 'video' | 'carousel' | 'story'>('image');
+    const [keyMessages, setKeyMessages] = useState('');
+    const [callToAction, setCallToAction] = useState('');
+    
+    // Step 4: Scheduling Preferences
+    const [campaignDuration, setCampaignDuration] = useState<'1week' | '2weeks' | '1month' | '3months'>('2weeks');
+    const [postsPerWeek, setPostsPerWeek] = useState(3);
+    const [preferredDays, setPreferredDays] = useState<string[]>(['monday', 'wednesday', 'friday']);
+    const [preferredTimes, setPreferredTimes] = useState<string[]>(['10:00', '18:00']);
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    
+    // Step 5: Budget & Goals
+    const [budget, setBudget] = useState('');
+    const [expectedReach, setExpectedReach] = useState('');
+    const [kpis, setKpis] = useState<string[]>(['impressions', 'engagement']);
 
-    const handleGenerateAI = async () => {
-        setIsGenerating(true);
-        try {
-            const res = await apiService.generateCaption(name || 'Campaign Idea');
-            setCaption(res.caption);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const handleSubmit = async () => {
-        try {
-            const { campaign } = await apiService.createCampaign({
-                name,
-                objective: objective as any,
-                platforms: [platform.toLowerCase()],
-                status: 'draft',
-                creative: { type: creativeType, textContent: caption, imageUrls: [] },
-                scheduling: { startDate: startDate || new Date().toISOString(), postTime: postTime }
-            });
-            onSuccess(campaign);
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    const inputClasses = `w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] ${
+    const inputClasses = `w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] transition-all ${
       isDarkMode 
         ? 'bg-[#0d1117] border-[#ffcc29]/20 text-white placeholder-slate-500' 
         : 'bg-white border-slate-200 text-slate-900'
     }`;
+    
+    const labelClasses = `block text-xs font-bold uppercase tracking-wide mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`;
+
+    const togglePlatform = (platform: string) => {
+      setPlatforms(prev => prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]);
+    };
+
+    const toggleDay = (day: string) => {
+      setPreferredDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+    };
+
+    const toggleKpi = (kpi: string) => {
+      setKpis(prev => prev.includes(kpi) ? prev.filter(k => k !== kpi) : [...prev, kpi]);
+    };
+
+    // Generate AI posts based on campaign details
+    const handleGeneratePosts = async () => {
+      setIsGenerating(true);
+      setGeneratedPosts([]);
+      
+      try {
+        const response = await fetch('http://localhost:5000/api/campaigns/generate-campaign-posts', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          },
+          body: JSON.stringify({
+            campaignName,
+            campaignDescription,
+            objective,
+            targetAudience: {
+              age: targetAge,
+              gender: targetGender,
+              location: targetLocation,
+              interests: targetInterests,
+              description: audienceDescription
+            },
+            content: {
+              platforms,
+              tone: contentTone,
+              type: contentType,
+              keyMessages,
+              callToAction
+            },
+            scheduling: {
+              duration: campaignDuration,
+              postsPerWeek,
+              preferredDays,
+              preferredTimes,
+              startDate
+            },
+            budget,
+            kpis
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.posts) {
+          setGeneratedPosts(data.posts.map((post: any, idx: number) => ({
+            ...post,
+            id: post.id || `post-${idx}`,
+            status: 'pending'
+          })));
+          setStep(6); // Go to review step
+        } else {
+          throw new Error(data.message || 'Failed to generate posts');
+        }
+      } catch (error) {
+        console.error('Error generating posts:', error);
+        alert('Failed to generate posts. Please try again.');
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+
+    // Update a generated post
+    const handleUpdatePost = (postId: string, updates: Partial<GeneratedPost>) => {
+      setGeneratedPosts(prev => prev.map(post => 
+        post.id === postId ? { ...post, ...updates, status: updates.status || 'edited' } : post
+      ));
+      setEditingPostId(null);
+    };
+
+    // Helper to parse age range string to object
+    const parseAgeRange = (ageStr: string): { min: number; max: number } => {
+      if (!ageStr || ageStr === 'all') return { min: 18, max: 65 };
+      const match = ageStr.match(/(\d+)-(\d+)/);
+      if (match) {
+        return { min: parseInt(match[1], 10), max: parseInt(match[2], 10) };
+      }
+      return { min: 18, max: 65 };
+    };
+
+    // Save all accepted posts as scheduled campaigns
+    const handleSaveAndSchedule = async () => {
+      setSavingPosts(true);
+      
+      const postsToSave = generatedPosts.filter(p => p.status !== 'rejected');
+      
+      try {
+        for (const post of postsToSave) {
+          await apiService.createCampaign({
+            name: `${campaignName} - ${post.platform}`,
+            objective: objective as any,
+            platforms: [post.platform.toLowerCase()],
+            status: 'scheduled',
+            creative: {
+              type: contentType,
+              textContent: post.caption,
+              imageUrls: [post.imageUrl],
+              captions: post.hashtags.join(' ')
+            },
+            scheduling: {
+              startDate: post.suggestedDate,
+              postTime: post.suggestedTime
+            },
+            budget: { allocated: parseFloat(budget) / postsToSave.length || 0, spent: 0 },
+            targeting: {
+              ageRange: parseAgeRange(targetAge),
+              gender: targetGender,
+              locations: targetLocation ? [targetLocation] : [],
+              interests: targetInterests.split(',').map(i => i.trim())
+            }
+          });
+        }
+        
+        // Create the parent campaign
+        const { campaign } = await apiService.createCampaign({
+          name: campaignName,
+          objective: objective as any,
+          platforms,
+          status: 'active',
+          creative: {
+            type: contentType,
+            textContent: campaignDescription,
+            imageUrls: postsToSave.map(p => p.imageUrl),
+            captions: keyMessages
+          },
+          scheduling: {
+            startDate,
+            postTime: preferredTimes[0] || '10:00'
+          },
+          budget: { allocated: parseFloat(budget) || 0, spent: 0 }
+        });
+        
+        onSuccess(campaign);
+      } catch (error) {
+        console.error('Error saving campaign:', error);
+        alert('Failed to save campaign. Please try again.');
+      } finally {
+        setSavingPosts(false);
+      }
+    };
+
+    const stepTitles = [
+      'Campaign Details',
+      'Target Audience',
+      'Content Preferences',
+      'Scheduling',
+      'Budget & Goals',
+      'Review Generated Posts'
+    ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className={`rounded-2xl shadow-xl w-full max-w-4xl h-[600px] flex overflow-hidden ${theme.bgCard}`}>
-                <div className={`w-64 border-r p-8 flex flex-col ${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-slate-50 border-slate-200'}`}>
-                    <h2 className={`text-lg font-bold mb-8 ${theme.text}`}>Create Campaign</h2>
-                    <div className="space-y-6">
-                         {[1, 2, 3].map(s => (
-                             <div key={s} className="flex items-center gap-3">
-                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${step === s ? 'bg-[#ffcc29] border-[#ffcc29] text-black' : isDarkMode ? 'border-slate-600 text-slate-400' : 'border-slate-300 text-slate-500'}`}>{s}</div>
-                                 <span className={step === s ? 'text-[#ffcc29] font-bold' : theme.textSecondary}>Step {s}</span>
-                             </div>
-                         ))}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className={`rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] flex overflow-hidden relative ${theme.bgCard}`}>
+                {/* Close Button - Top Right */}
+                <button
+                  onClick={onClose}
+                  className={`absolute top-4 right-4 z-10 p-2 rounded-full transition-colors ${
+                    isDarkMode ? 'hover:bg-slate-700 text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                
+                {/* Sidebar */}
+                <div className={`w-72 border-r p-6 flex flex-col shrink-0 ${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="flex items-center gap-3 mb-8">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ffcc29] to-[#ffa500] flex items-center justify-center">
+                        <Sparkles className="w-5 h-5 text-black" />
+                      </div>
+                      <div>
+                        <h2 className={`text-lg font-bold ${theme.text}`}>Create Campaign</h2>
+                        <p className={`text-xs ${theme.textMuted}`}>AI-Powered</p>
+                      </div>
                     </div>
+                    
+                    <div className="space-y-3 flex-1">
+                      {stepTitles.slice(0, 5).map((title, idx) => (
+                        <div 
+                          key={idx}
+                          className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                            step === idx + 1 
+                              ? 'bg-[#ffcc29]/20 border border-[#ffcc29]/30' 
+                              : step > idx + 1 
+                                ? isDarkMode ? 'bg-green-900/20' : 'bg-green-50'
+                                : ''
+                          }`}
+                          onClick={() => step > idx + 1 && setStep(idx + 1)}
+                        >
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                            step === idx + 1 
+                              ? 'bg-[#ffcc29] text-black' 
+                              : step > idx + 1 
+                                ? 'bg-green-500 text-white' 
+                                : isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'
+                          }`}>
+                            {step > idx + 1 ? <Check className="w-4 h-4" /> : idx + 1}
+                          </div>
+                          <span className={`text-sm ${step === idx + 1 ? 'text-[#ffcc29] font-bold' : theme.textSecondary}`}>
+                            {title}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {step === 6 && (
+                      <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-[#ffcc29]/20 to-[#ffa500]/10 border border-[#ffcc29]/30">
+                        <p className={`text-sm font-medium ${theme.text}`}>📊 Generated Posts</p>
+                        <p className={`text-xs ${theme.textMuted} mt-1`}>
+                          {generatedPosts.filter(p => p.status !== 'rejected').length} posts ready to schedule
+                        </p>
+                      </div>
+                    )}
                 </div>
-                <div className="flex-1 p-8 flex flex-col">
-                    <div className="flex-1 overflow-y-auto">
+                
+                {/* Main Content */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <div className="flex-1 overflow-y-auto p-8">
+                        {/* Step 1: Campaign Details */}
                         {step === 1 && (
-                            <div className="space-y-4">
-                                <h3 className={`text-xl font-bold ${theme.text}`}>Details</h3>
-                                <input className={inputClasses} placeholder="Campaign Name" value={name} onChange={e => setName(e.target.value)} />
-                                <div className="grid grid-cols-3 gap-2">{['Awareness', 'Traffic', 'Sales'].map(o => <button key={o} onClick={() => setObjective(o.toLowerCase() as any)} className={`p-2 border rounded transition-colors ${objective === o.toLowerCase() ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]' : isDarkMode ? 'border-slate-600 text-slate-400 hover:border-[#ffcc29]/50' : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'}`}>{o}</button>)}</div>
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div>
+                                  <h3 className={`text-xl font-bold ${theme.text}`}>Campaign Details</h3>
+                                  <p className={`text-sm ${theme.textSecondary} mt-1`}>Tell us about your campaign</p>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Campaign Name *</label>
+                                  <input 
+                                    className={inputClasses} 
+                                    placeholder="e.g., Summer Sale 2025, Product Launch..." 
+                                    value={campaignName} 
+                                    onChange={e => setCampaignName(e.target.value)} 
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Campaign Description *</label>
+                                  <textarea 
+                                    className={`${inputClasses} resize-none`} 
+                                    rows={3}
+                                    placeholder="Describe what this campaign is about, its goals, and key messages..."
+                                    value={campaignDescription} 
+                                    onChange={e => setCampaignDescription(e.target.value)} 
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Campaign Objective *</label>
+                                  <div className="grid grid-cols-5 gap-2">
+                                    {[
+                                      { id: 'awareness', label: 'Awareness', icon: '👁️', desc: 'Increase brand visibility' },
+                                      { id: 'engagement', label: 'Engagement', icon: '💬', desc: 'Boost interactions' },
+                                      { id: 'traffic', label: 'Traffic', icon: '🔗', desc: 'Drive website visits' },
+                                      { id: 'sales', label: 'Sales', icon: '💰', desc: 'Generate purchases' },
+                                      { id: 'leads', label: 'Leads', icon: '📧', desc: 'Collect contacts' }
+                                    ].map(obj => (
+                                      <button 
+                                        key={obj.id}
+                                        onClick={() => setObjective(obj.id as any)} 
+                                        className={`p-4 border rounded-xl transition-all text-center ${
+                                          objective === obj.id 
+                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]' 
+                                            : isDarkMode 
+                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50' 
+                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                        }`}
+                                      >
+                                        <span className="text-2xl block mb-1">{obj.icon}</span>
+                                        <span className="text-sm font-medium block">{obj.label}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                             </div>
                         )}
+
+                        {/* Step 2: Target Audience */}
                         {step === 2 && (
-                            <div className="space-y-4">
-                                <h3 className={`text-xl font-bold ${theme.text}`}>Schedule</h3>
-                                <input type="date" className={inputClasses} value={startDate} onChange={e => setStartDate(e.target.value)} />
-                                <input type="time" className={inputClasses} value={postTime} onChange={e => setPostTime(e.target.value)} />
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div>
+                                  <h3 className={`text-xl font-bold ${theme.text}`}>Target Audience</h3>
+                                  <p className={`text-sm ${theme.textSecondary} mt-1`}>Define who you want to reach</p>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className={labelClasses}>Age Range</label>
+                                    <ComboBox
+                                      value={targetAge}
+                                      onChange={setTargetAge}
+                                      className={inputClasses}
+                                      isDarkMode={isDarkMode}
+                                      placeholder="e.g., 25-40 or select from list"
+                                      options={[
+                                        { value: '13-17', label: '13-17 (Teens)' },
+                                        { value: '18-24', label: '18-24 (Young Adults)' },
+                                        { value: '18-35', label: '18-35 (Millennials)' },
+                                        { value: '25-44', label: '25-44 (Adults)' },
+                                        { value: '35-54', label: '35-54 (Middle Age)' },
+                                        { value: '45-65', label: '45-65 (Mature)' },
+                                        { value: '65+', label: '65+ (Seniors)' },
+                                        { value: 'all', label: 'All Ages' }
+                                      ]}
+                                    />
+                                  </div>
+                                  
+                                  <div>
+                                    <label className={labelClasses}>Gender</label>
+                                    <select 
+                                      className={inputClasses} 
+                                      value={targetGender} 
+                                      onChange={e => setTargetGender(e.target.value)}
+                                    >
+                                      <option value="all">All Genders</option>
+                                      <option value="male">Male</option>
+                                      <option value="female">Female</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Target Location</label>
+                                  <input 
+                                    className={inputClasses} 
+                                    placeholder="e.g., United States, California, New York City..."
+                                    value={targetLocation} 
+                                    onChange={e => setTargetLocation(e.target.value)} 
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Interests & Behaviors</label>
+                                  <input 
+                                    className={inputClasses} 
+                                    placeholder="e.g., fitness, technology, fashion, travel (comma separated)"
+                                    value={targetInterests} 
+                                    onChange={e => setTargetInterests(e.target.value)} 
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Describe Your Ideal Customer</label>
+                                  <textarea 
+                                    className={`${inputClasses} resize-none`} 
+                                    rows={3}
+                                    placeholder="e.g., Health-conscious millennials who value quality over price, active on social media, interested in sustainable products..."
+                                    value={audienceDescription} 
+                                    onChange={e => setAudienceDescription(e.target.value)} 
+                                  />
+                                </div>
                             </div>
                         )}
+
+                        {/* Step 3: Content Preferences */}
                         {step === 3 && (
-                             <div className="space-y-4">
-                                 <h3 className={`text-xl font-bold ${theme.text}`}>Creative</h3>
-                                 <div className="flex justify-between"><label className={theme.text}>Caption</label><button onClick={handleGenerateAI} className="text-[#ffcc29] font-bold flex gap-1 hover:text-[#ffcc29]/80"><Sparkles className="w-4 h-4"/> Generate AI</button></div>
-                                 <textarea className={`${inputClasses} h-32`} value={caption} onChange={e => setCaption(e.target.value)} placeholder="Ad copy..." />
-                             </div>
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div>
+                                  <h3 className={`text-xl font-bold ${theme.text}`}>Content Preferences</h3>
+                                  <p className={`text-sm ${theme.textSecondary} mt-1`}>How should your content look and feel?</p>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Platforms *</label>
+                                  <div className="flex flex-wrap gap-2">
+                                    {[
+                                      { id: 'instagram', label: 'Instagram', icon: <Instagram className="w-4 h-4" /> },
+                                      { id: 'facebook', label: 'Facebook', icon: <Facebook className="w-4 h-4" /> },
+                                      { id: 'twitter', label: 'Twitter/X', icon: <Twitter className="w-4 h-4" /> },
+                                      { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="w-4 h-4" /> },
+                                      { id: 'youtube', label: 'YouTube', icon: <Youtube className="w-4 h-4" /> }
+                                    ].map(p => (
+                                      <button
+                                        key={p.id}
+                                        onClick={() => togglePlatform(p.id)}
+                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all ${
+                                          platforms.includes(p.id)
+                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
+                                            : isDarkMode
+                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
+                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                        }`}
+                                      >
+                                        {p.icon}
+                                        <span className="text-sm font-medium">{p.label}</span>
+                                        {platforms.includes(p.id) && <Check className="w-4 h-4" />}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className={labelClasses}>Content Tone</label>
+                                    <ComboBox
+                                      value={contentTone}
+                                      onChange={(v) => setContentTone(v as any)}
+                                      className={inputClasses}
+                                      isDarkMode={isDarkMode}
+                                      placeholder="Select or type your own tone"
+                                      options={[
+                                        { value: 'professional', label: 'Professional & Formal' },
+                                        { value: 'casual', label: 'Casual & Friendly' },
+                                        { value: 'humorous', label: 'Witty & Humorous' },
+                                        { value: 'inspirational', label: 'Inspirational & Motivational' },
+                                        { value: 'educational', label: 'Educational & Informative' },
+                                        { value: 'bold', label: 'Bold & Confident' },
+                                        { value: 'empathetic', label: 'Empathetic & Caring' },
+                                        { value: 'luxurious', label: 'Premium & Luxurious' }
+                                      ]}
+                                    />
+                                  </div>
+                                  
+                                  <div>
+                                    <label className={labelClasses}>Content Type</label>
+                                    <ComboBox
+                                      value={contentType}
+                                      onChange={(v) => setContentType(v as any)}
+                                      className={inputClasses}
+                                      isDarkMode={isDarkMode}
+                                      placeholder="Select or type your own"
+                                      options={[
+                                        { value: 'image', label: 'Static Images' },
+                                        { value: 'video', label: 'Videos' },
+                                        { value: 'carousel', label: 'Carousels' },
+                                        { value: 'story', label: 'Stories/Reels' },
+                                        { value: 'infographic', label: 'Infographics' },
+                                        { value: 'quote', label: 'Quote Cards' },
+                                        { value: 'testimonial', label: 'Testimonials' }
+                                      ]}
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Key Messages to Convey</label>
+                                  <textarea 
+                                    className={`${inputClasses} resize-none`} 
+                                    rows={3}
+                                    placeholder="What are the main points you want to communicate? e.g., Quality, value for money, innovation..."
+                                    value={keyMessages} 
+                                    onChange={e => setKeyMessages(e.target.value)} 
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Call to Action</label>
+                                  <ComboBox
+                                    value={callToAction}
+                                    onChange={setCallToAction}
+                                    className={inputClasses}
+                                    isDarkMode={isDarkMode}
+                                    placeholder="Select or type your own CTA"
+                                    options={[
+                                      { value: 'Shop Now', label: 'Shop Now' },
+                                      { value: 'Learn More', label: 'Learn More' },
+                                      { value: 'Sign Up', label: 'Sign Up' },
+                                      { value: 'Get Started', label: 'Get Started' },
+                                      { value: 'Book Now', label: 'Book Now' },
+                                      { value: 'Download', label: 'Download' },
+                                      { value: 'Contact Us', label: 'Contact Us' },
+                                      { value: 'Follow Us', label: 'Follow Us' },
+                                      { value: 'Try Free', label: 'Try Free' },
+                                      { value: 'Get Quote', label: 'Get Quote' }
+                                    ]}
+                                  />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 4: Scheduling */}
+                        {step === 4 && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div>
+                                  <h3 className={`text-xl font-bold ${theme.text}`}>Scheduling Preferences</h3>
+                                  <p className={`text-sm ${theme.textSecondary} mt-1`}>When should your posts go live?</p>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className={labelClasses}>Campaign Duration</label>
+                                    <ComboBox
+                                      value={campaignDuration}
+                                      onChange={(v) => setCampaignDuration(v as any)}
+                                      className={inputClasses}
+                                      isDarkMode={isDarkMode}
+                                      placeholder="Select or enter custom duration"
+                                      options={[
+                                        { value: '1week', label: '1 Week' },
+                                        { value: '2weeks', label: '2 Weeks' },
+                                        { value: '1month', label: '1 Month' },
+                                        { value: '3months', label: '3 Months' },
+                                        { value: '6months', label: '6 Months' },
+                                        { value: '1year', label: '1 Year' }
+                                      ]}
+                                    />
+                                  </div>
+                                  
+                                  <div>
+                                    <label className={labelClasses}>Start Date</label>
+                                    <input 
+                                      type="date" 
+                                      className={inputClasses} 
+                                      value={startDate} 
+                                      onChange={e => setStartDate(e.target.value)} 
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Posts Per Week: {postsPerWeek}</label>
+                                  <input 
+                                    type="range" 
+                                    min="1" 
+                                    max="7" 
+                                    value={postsPerWeek}
+                                    onChange={e => setPostsPerWeek(parseInt(e.target.value))}
+                                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#ffcc29]"
+                                  />
+                                  <div className="flex justify-between text-xs text-slate-500 mt-1">
+                                    <span>1 post</span>
+                                    <span>7 posts</span>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Preferred Days</label>
+                                  <div className="flex flex-wrap gap-2">
+                                    {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => (
+                                      <button
+                                        key={day}
+                                        onClick={() => toggleDay(day)}
+                                        className={`px-4 py-2 rounded-lg border text-sm capitalize transition-all ${
+                                          preferredDays.includes(day)
+                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
+                                            : isDarkMode
+                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
+                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                        }`}
+                                      >
+                                        {day.slice(0, 3)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Preferred Posting Times</label>
+                                  <div className="grid grid-cols-4 gap-2">
+                                    {['09:00', '12:00', '15:00', '18:00', '10:00', '14:00', '17:00', '20:00'].map(time => (
+                                      <button
+                                        key={time}
+                                        onClick={() => setPreferredTimes(prev => 
+                                          prev.includes(time) ? prev.filter(t => t !== time) : [...prev, time]
+                                        )}
+                                        className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                                          preferredTimes.includes(time)
+                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
+                                            : isDarkMode
+                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
+                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                        }`}
+                                      >
+                                        {time}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 5: Budget & Goals */}
+                        {step === 5 && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div>
+                                  <h3 className={`text-xl font-bold ${theme.text}`}>Budget & Goals</h3>
+                                  <p className={`text-sm ${theme.textSecondary} mt-1`}>Set your investment and success metrics</p>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className={labelClasses}>Budget (Optional)</label>
+                                    <div className="relative">
+                                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                      <input 
+                                        type="number"
+                                        className={`${inputClasses} pl-10`} 
+                                        placeholder="Enter amount"
+                                        value={budget} 
+                                        onChange={e => setBudget(e.target.value)} 
+                                      />
+                                    </div>
+                                  </div>
+                                  
+                                  <div>
+                                    <label className={labelClasses}>Expected Reach</label>
+                                    <select 
+                                      className={inputClasses} 
+                                      value={expectedReach} 
+                                      onChange={e => setExpectedReach(e.target.value)}
+                                    >
+                                      <option value="">Select expected reach</option>
+                                      <option value="1k-5k">1K - 5K</option>
+                                      <option value="5k-10k">5K - 10K</option>
+                                      <option value="10k-50k">10K - 50K</option>
+                                      <option value="50k-100k">50K - 100K</option>
+                                      <option value="100k+">100K+</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className={labelClasses}>Key Performance Indicators (KPIs)</label>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                      { id: 'impressions', label: 'Impressions', icon: '👁️' },
+                                      { id: 'engagement', label: 'Engagement', icon: '💬' },
+                                      { id: 'clicks', label: 'Clicks', icon: '🔗' },
+                                      { id: 'conversions', label: 'Conversions', icon: '✅' },
+                                      { id: 'followers', label: 'New Followers', icon: '👥' },
+                                      { id: 'shares', label: 'Shares', icon: '📤' }
+                                    ].map(kpi => (
+                                      <button
+                                        key={kpi.id}
+                                        onClick={() => toggleKpi(kpi.id)}
+                                        className={`flex items-center gap-2 p-3 rounded-lg border text-sm transition-all ${
+                                          kpis.includes(kpi.id)
+                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
+                                            : isDarkMode
+                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
+                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                        }`}
+                                      >
+                                        <span>{kpi.icon}</span>
+                                        <span>{kpi.label}</span>
+                                        {kpis.includes(kpi.id) && <Check className="w-4 h-4 ml-auto" />}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                
+                                {/* Summary Card */}
+                                <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/20' : 'bg-slate-50 border-slate-200'}`}>
+                                  <h4 className={`font-bold ${theme.text} mb-3`}>📋 Campaign Summary</h4>
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div><span className={theme.textMuted}>Name:</span> <span className={theme.text}>{campaignName || '—'}</span></div>
+                                    <div><span className={theme.textMuted}>Objective:</span> <span className={theme.text}>{objective}</span></div>
+                                    <div><span className={theme.textMuted}>Platforms:</span> <span className={theme.text}>{platforms.join(', ') || '—'}</span></div>
+                                    <div><span className={theme.textMuted}>Duration:</span> <span className={theme.text}>{campaignDuration}</span></div>
+                                    <div><span className={theme.textMuted}>Posts/Week:</span> <span className={theme.text}>{postsPerWeek}</span></div>
+                                    <div><span className={theme.textMuted}>Target:</span> <span className={theme.text}>{targetAge}, {targetGender}</span></div>
+                                  </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 6: Review Generated Posts */}
+                        {step === 6 && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <h3 className={`text-xl font-bold ${theme.text}`}>Review Generated Posts</h3>
+                                    <p className={`text-sm ${theme.textSecondary} mt-1`}>
+                                      AI has created {generatedPosts.length} posts for your campaign. Review and customize them.
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={handleGeneratePosts}
+                                    disabled={isGenerating}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-200 hover:bg-slate-300'} ${theme.text}`}
+                                  >
+                                    <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
+                                    Regenerate All
+                                  </button>
+                                </div>
+                                
+                                <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
+                                  {generatedPosts.map((post, idx) => (
+                                    <div 
+                                      key={post.id}
+                                      onClick={() => editingPostId !== post.id && setPreviewPost(post)}
+                                      className={`p-4 rounded-xl border transition-all cursor-pointer hover:scale-[1.01] group ${
+                                        post.status === 'rejected' 
+                                          ? 'opacity-50 bg-red-500/5 border-red-500/20' 
+                                          : post.status === 'accepted' || post.status === 'edited'
+                                            ? isDarkMode ? 'bg-green-900/10 border-green-500/30' : 'bg-green-50 border-green-200'
+                                            : isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/20' : 'bg-white border-slate-200'
+                                      }`}
+                                    >
+                                      <div className="flex gap-4">
+                                        {/* Image Preview */}
+                                        <div className="w-32 h-32 rounded-lg overflow-hidden shrink-0 relative">
+                                          <img src={post.imageUrl} alt="" className="w-full h-full object-cover" />
+                                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <Eye className="w-6 h-6 text-white" />
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                              post.platform === 'instagram' ? 'bg-pink-100 text-pink-700' :
+                                              post.platform === 'facebook' ? 'bg-blue-100 text-blue-700' :
+                                              post.platform === 'twitter' ? 'bg-sky-100 text-sky-700' :
+                                              post.platform === 'linkedin' ? 'bg-blue-100 text-blue-800' :
+                                              'bg-slate-100 text-slate-700'
+                                            }`}>
+                                              {post.platform}
+                                            </span>
+                                            <span className={`text-xs ${theme.textMuted}`}>
+                                              📅 {post.suggestedDate} at {post.suggestedTime}
+                                            </span>
+                                            {post.status !== 'pending' && (
+                                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                                post.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                                'bg-green-100 text-green-700'
+                                              }`}>
+                                                {post.status}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {editingPostId === post.id ? (
+                                            <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                                              <textarea
+                                                className={`${inputClasses} text-sm resize-none`}
+                                                rows={3}
+                                                value={post.caption}
+                                                onChange={e => handleUpdatePost(post.id, { caption: e.target.value })}
+                                              />
+                                              <input
+                                                className={`${inputClasses} text-sm`}
+                                                value={post.hashtags.join(' ')}
+                                                onChange={e => handleUpdatePost(post.id, { hashtags: e.target.value.split(' ') })}
+                                                placeholder="Hashtags..."
+                                              />
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <input
+                                                  type="date"
+                                                  className={`${inputClasses} text-sm`}
+                                                  value={post.suggestedDate}
+                                                  onChange={e => handleUpdatePost(post.id, { suggestedDate: e.target.value })}
+                                                />
+                                                <input
+                                                  type="time"
+                                                  className={`${inputClasses} text-sm`}
+                                                  value={post.suggestedTime}
+                                                  onChange={e => handleUpdatePost(post.id, { suggestedTime: e.target.value })}
+                                                />
+                                              </div>
+                                              <button
+                                                onClick={() => setEditingPostId(null)}
+                                                className="text-xs text-[#ffcc29] font-medium"
+                                              >
+                                                Done Editing
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <p className={`text-sm ${theme.textSecondary} line-clamp-2 mb-1`}>{post.caption}</p>
+                                              <p className="text-xs text-[#ffcc29]">{post.hashtags.slice(0, 5).join(' ')}</p>
+                                            </>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Actions */}
+                                        <div className="flex flex-col gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                                          {post.status !== 'rejected' && editingPostId !== post.id && (
+                                            <>
+                                              <button
+                                                onClick={() => handleUpdatePost(post.id, { status: 'accepted' })}
+                                                className="p-2 rounded-lg bg-green-500/20 text-green-500 hover:bg-green-500/30 transition-colors"
+                                                title="Accept"
+                                              >
+                                                <Check className="w-4 h-4" />
+                                              </button>
+                                              <button
+                                                onClick={() => setEditingPostId(post.id)}
+                                                className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200'} transition-colors`}
+                                                title="Edit"
+                                              >
+                                                <Edit3 className="w-4 h-4" />
+                                              </button>
+                                            </>
+                                          )}
+                                          <button
+                                            onClick={() => handleUpdatePost(post.id, { status: post.status === 'rejected' ? 'pending' : 'rejected' })}
+                                            className={`p-2 rounded-lg ${post.status === 'rejected' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'} hover:opacity-80 transition-colors`}
+                                            title={post.status === 'rejected' ? 'Restore' : 'Reject'}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                            </div>
                         )}
                     </div>
-                    <div className={`flex justify-between pt-4 border-t ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
-                        <button onClick={step === 1 ? onClose : () => setStep(s => s - 1)} className={theme.textSecondary}>Back</button>
-                        <button onClick={step === 3 ? handleSubmit : () => setStep(s => s + 1)} className="px-6 py-2 bg-[#ffcc29] text-black rounded-lg font-medium hover:bg-[#ffcc29]/80">Next</button>
+                    
+                    {/* Preview Modal for Generated Posts */}
+                    {previewPost && (
+                      <div 
+                        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+                        onClick={() => setPreviewPost(null)}
+                      >
+                        <div 
+                          className={`rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 ${theme.bgCard}`}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {/* Header - Fixed */}
+                          <div className={`flex items-center justify-between p-4 border-b shrink-0 ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
+                            <div className="flex items-center gap-3">
+                              <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${
+                                previewPost.platform === 'instagram' ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white' :
+                                previewPost.platform === 'facebook' ? 'bg-blue-600 text-white' :
+                                previewPost.platform === 'twitter' ? 'bg-sky-500 text-white' :
+                                previewPost.platform === 'linkedin' ? 'bg-blue-700 text-white' :
+                                'bg-slate-500 text-white'
+                              }`}>
+                                {previewPost.platform.charAt(0).toUpperCase() + previewPost.platform.slice(1)}
+                              </span>
+                              {previewPost.status !== 'pending' && (
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                                  previewPost.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {previewPost.status.charAt(0).toUpperCase() + previewPost.status.slice(1)}
+                                </span>
+                              )}
+                            </div>
+                            <button 
+                              onClick={() => setPreviewPost(null)}
+                              className={`p-2 rounded-full ${isDarkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'} transition-colors`}
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                          
+                          {/* Scrollable Content */}
+                          <div className="flex-1 overflow-y-auto">
+                            {/* Image - Centered */}
+                            <div className={`flex items-center justify-center p-4 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                              <div className="relative w-full max-w-md aspect-square rounded-xl overflow-hidden shadow-lg">
+                                <img 
+                                  src={previewPost.imageUrl} 
+                                  alt="Post preview" 
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            </div>
+                            
+                            {/* Schedule Info */}
+                            <div className={`flex items-center justify-center gap-2 py-3 ${isDarkMode ? 'bg-[#ffcc29]/10' : 'bg-amber-50'}`}>
+                              <Calendar className="w-4 h-4 text-[#ffcc29]" />
+                              <span className={`text-sm font-medium ${theme.text}`}>
+                                Scheduled for {previewPost.suggestedDate} at {previewPost.suggestedTime}
+                              </span>
+                            </div>
+                            
+                            {/* Caption and Hashtags */}
+                            <div className="p-5 space-y-4">
+                              <p className={`text-sm leading-relaxed ${theme.text}`}>{previewPost.caption}</p>
+                              <div className="flex flex-wrap gap-2">
+                                {previewPost.hashtags.map((tag, idx) => (
+                                  <span 
+                                    key={idx} 
+                                    className={`text-xs px-2 py-1 rounded-full ${isDarkMode ? 'bg-[#ffcc29]/20 text-[#ffcc29]' : 'bg-amber-100 text-amber-700'}`}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Actions - Fixed */}
+                          <div className={`flex gap-3 p-4 border-t shrink-0 ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${previewPost.caption}\n\n${previewPost.hashtags.join(' ')}`);
+                              }}
+                              className={`flex-1 text-sm font-medium px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                                isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <Copy className="w-4 h-4" />
+                              Copy Caption
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingPostId(previewPost.id);
+                                setPreviewPost(null);
+                              }}
+                              className={`flex-1 text-sm font-medium px-4 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                                isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <Edit3 className="w-4 h-4" />
+                              Edit Post
+                            </button>
+                            <a
+                              href={previewPost.imageUrl}
+                              download={`post-${previewPost.platform}-${previewPost.id}.png`}
+                              className="flex-1 text-sm font-bold px-4 py-3 rounded-xl flex items-center justify-center gap-2 bg-[#ffcc29] text-black hover:bg-[#e6b825] transition-all shadow-md hover:shadow-lg"
+                            >
+                              <Download className="w-4 h-4" />
+                              Download
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Footer */}
+                    <div className={`flex justify-between items-center p-6 border-t ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
+                        <button 
+                          onClick={step === 1 ? onClose : () => setStep(s => s - 1)} 
+                          className={`px-4 py-2 rounded-lg font-medium ${theme.textSecondary} hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors`}
+                        >
+                          {step === 1 ? 'Cancel' : 'Back'}
+                        </button>
+                        
+                        {step < 5 && (
+                          <button 
+                            onClick={() => setStep(s => s + 1)} 
+                            disabled={step === 1 && !campaignName}
+                            className="px-6 py-2.5 bg-[#ffcc29] text-black rounded-lg font-semibold hover:bg-[#e6b825] transition-colors disabled:opacity-50 flex items-center gap-2"
+                          >
+                            Next
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        )}
+                        
+                        {step === 5 && (
+                          <button 
+                            onClick={handleGeneratePosts}
+                            disabled={isGenerating || !campaignName || platforms.length === 0}
+                            className="px-6 py-2.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {isGenerating ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Generating Posts...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4" />
+                                Generate AI Posts
+                              </>
+                            )}
+                          </button>
+                        )}
+                        
+                        {step === 6 && (
+                          <button 
+                            onClick={handleSaveAndSchedule}
+                            disabled={savingPosts || generatedPosts.filter(p => p.status !== 'rejected').length === 0}
+                            className="px-6 py-2.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {savingPosts ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Calendar className="w-4 h-4" />
+                                Save & Schedule ({generatedPosts.filter(p => p.status !== 'rejected').length} posts)
+                              </>
+                            )}
+                          </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -980,7 +2672,7 @@ const EditSuggestionModal: React.FC<EditSuggestionModalProps> = ({ suggestion, o
                                 <option>Facebook</option>
                                 <option>Twitter</option>
                                 <option>LinkedIn</option>
-                                <option>TikTok</option>
+                                <option>YouTube</option>
                                 <option>YouTube</option>
                             </select>
                         </div>

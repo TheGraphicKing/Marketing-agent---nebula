@@ -17,7 +17,7 @@ const influencerSchema = new mongoose.Schema({
   },
   platform: {
     type: String,
-    enum: ['instagram', 'youtube', 'tiktok', 'twitter', 'linkedin'],
+    enum: ['instagram', 'youtube', 'twitter', 'linkedin'],
     default: 'instagram'
   },
   profileImage: String,

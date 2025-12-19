@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const competitorPostSchema = new mongoose.Schema({
   platform: {
     type: String,
-    enum: ['instagram', 'facebook', 'twitter', 'linkedin', 'youtube', 'tiktok'],
+    enum: ['instagram', 'facebook', 'twitter', 'linkedin', 'youtube'],
     required: true
   },
   postUrl: String,
@@ -42,8 +42,7 @@ const competitorSchema = new mongoose.Schema({
     facebook: String,
     twitter: String,
     linkedin: String,
-    youtube: String,
-    tiktok: String
+    youtube: String
   },
   logo: String,
   description: String,

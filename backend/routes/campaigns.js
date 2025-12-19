@@ -556,4 +556,221 @@ Improve the campaign to be more engaging and effective. Return ONLY valid JSON:
   }
 });
 
+/**
+ * POST /api/campaigns/generate-campaign-posts
+ * Generate AI-powered posts for a campaign based on detailed inputs
+ */
+router.post('/generate-campaign-posts', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const user = await User.findById(userId);
+    const bp = user?.businessProfile || {};
+    
+    const {
+      campaignName,
+      campaignDescription,
+      objective,
+      targetAudience,
+      content,
+      scheduling,
+      budget,
+      kpis
+    } = req.body;
+
+    if (!campaignName) {
+      return res.status(400).json({ success: false, message: 'Campaign name is required' });
+    }
+
+    const platforms = content?.platforms || ['instagram'];
+    const duration = scheduling?.duration || '2weeks';
+    const postsPerWeek = scheduling?.postsPerWeek || 3;
+    const preferredDays = scheduling?.preferredDays || ['monday', 'wednesday', 'friday'];
+    const preferredTimes = scheduling?.preferredTimes || ['10:00', '18:00'];
+    const startDate = scheduling?.startDate || new Date().toISOString().split('T')[0];
+
+    // Calculate number of posts based on duration
+    const durationWeeks = {
+      '1week': 1,
+      '2weeks': 2,
+      '1month': 4,
+      '3months': 12
+    };
+    const totalPosts = Math.min(postsPerWeek * (durationWeeks[duration] || 2), 20); // Cap at 20 posts
+
+    console.log(`🎯 Generating ${totalPosts} posts for campaign: ${campaignName}`);
+
+    // Generate content calendar dates
+    const generateScheduleDates = () => {
+      const dates = [];
+      const start = new Date(startDate);
+      let postsCreated = 0;
+      let currentDay = 0;
+      
+      while (postsCreated < totalPosts && currentDay < 100) {
+        const checkDate = new Date(start);
+        checkDate.setDate(start.getDate() + currentDay);
+        const dayName = checkDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+        
+        if (preferredDays.includes(dayName) || preferredDays.length === 0) {
+          const time = preferredTimes[postsCreated % preferredTimes.length] || '10:00';
+          dates.push({
+            date: checkDate.toISOString().split('T')[0],
+            time: time
+          });
+          postsCreated++;
+        }
+        currentDay++;
+      }
+      
+      return dates;
+    };
+
+    const scheduleDates = generateScheduleDates();
+
+    // Build comprehensive prompt for Gemini
+    const prompt = `You are an expert social media marketing strategist. Create a series of ${totalPosts} engaging posts for a marketing campaign.
+
+CAMPAIGN DETAILS:
+- Campaign Name: "${campaignName}"
+- Description: ${campaignDescription || 'Not provided'}
+- Objective: ${objective || 'awareness'}
+- Budget: ${budget ? '$' + budget : 'Not specified'}
+- KPIs: ${kpis?.join(', ') || 'engagement, impressions'}
+
+TARGET AUDIENCE:
+- Age Range: ${targetAudience?.age || '18-35'}
+- Gender: ${targetAudience?.gender || 'all'}
+- Location: ${targetAudience?.location || 'Global'}
+- Interests: ${targetAudience?.interests || 'Not specified'}
+- Description: ${targetAudience?.description || 'General audience'}
+
+CONTENT PREFERENCES:
+- Platforms: ${platforms.join(', ')}
+- Tone: ${content?.tone || 'professional'}
+- Content Type: ${content?.type || 'image'}
+- Key Messages: ${content?.keyMessages || 'Not specified'}
+- Call to Action: ${content?.callToAction || 'Learn more'}
+
+BRAND CONTEXT:
+- Company Name: ${bp.companyName || bp.name || 'Brand'}
+- Industry: ${bp.industry || 'General'}
+- Brand Voice: ${bp.brandVoice || content?.tone || 'Professional'}
+- Niche: ${bp.niche || 'Not specified'}
+
+REQUIREMENTS:
+1. Create exactly ${totalPosts} unique, engaging posts
+2. Each post should be optimized for its target platform
+3. Vary content themes throughout the campaign (educational, promotional, engagement, storytelling)
+4. Include relevant emojis for visual appeal
+5. Each post needs a specific, actionable call-to-action
+6. Hashtags should be platform-appropriate (more for Instagram, fewer for LinkedIn/Twitter)
+7. Content must be relevant to the campaign objective: ${objective}
+8. Posts should build upon each other to tell a cohesive brand story
+
+For each post, provide a detailed "imageDescription" that describes exactly what visual should accompany the post - be specific about:
+- Subject matter (people, products, scenes)
+- Color palette and mood
+- Style (photography, illustration, minimalist, vibrant)
+- Any text overlays or graphics
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "posts": [
+    {
+      "platform": "platform_name",
+      "caption": "The full post caption with emojis and formatting",
+      "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3"],
+      "contentTheme": "educational|promotional|engagement|storytelling|behindthescenes",
+      "imageDescription": "Detailed description for AI image generation",
+      "callToAction": "Specific CTA for this post"
+    }
+  ]
+}`;
+
+    const response = await callGemini(prompt, { maxTokens: 4000, temperature: 0.8, skipCache: true });
+    const parsed = parseGeminiJSON(response);
+
+    if (!parsed || !parsed.posts || !Array.isArray(parsed.posts)) {
+      throw new Error('Invalid response format from AI');
+    }
+
+    // Import image generation function
+    const { getRelevantImage } = require('../services/geminiAI');
+
+    // Build rich brand context for image generation
+    const brandContext = {
+      companyName: bp.companyName || bp.name || 'Brand',
+      industry: bp.industry || 'business',
+      description: bp.description || campaignDescription || '',
+      products: bp.products?.map(p => p.name).join(', ') || '',
+      services: bp.services?.map(s => s.name).join(', ') || '',
+      usps: bp.uniqueSellingPoints?.join(', ') || bp.valuePropositions?.join(', ') || '',
+      niche: bp.niche || '',
+      targetAudience: targetAudience?.description || '',
+      brandVoice: bp.brandVoice || content?.tone || 'professional'
+    };
+
+    // Generate images for each post and add schedule
+    const postsWithImagesPromises = parsed.posts.slice(0, totalPosts).map(async (post, index) => {
+      const schedule = scheduleDates[index] || { date: startDate, time: '10:00' };
+      
+      // Generate image based on the description + brand context
+      let imageUrl;
+      try {
+        // Enhanced image description with brand context
+        const enhancedImageDesc = `${post.imageDescription || post.caption.substring(0, 100)}. Brand: ${brandContext.companyName}, Industry: ${brandContext.industry}. ${brandContext.products ? 'Products: ' + brandContext.products + '.' : ''} ${brandContext.usps ? 'Focus on: ' + brandContext.usps : ''}`;
+        
+        imageUrl = await getRelevantImage(
+          enhancedImageDesc,
+          brandContext.industry,
+          objective,
+          campaignName,
+          post.platform,
+          brandContext
+        );
+      } catch (imgError) {
+        console.error(`Error generating image for post ${index}:`, imgError);
+        // Fallback image
+        imageUrl = `https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop&seed=${Date.now() + index}`;
+      }
+
+      return {
+        id: `post-${index + 1}`,
+        platform: post.platform?.toLowerCase() || platforms[index % platforms.length],
+        caption: post.caption,
+        hashtags: Array.isArray(post.hashtags) 
+          ? post.hashtags.map(h => h.startsWith('#') ? h : `#${h}`)
+          : ['#marketing', '#brand'],
+        imageUrl,
+        suggestedDate: schedule.date,
+        suggestedTime: schedule.time,
+        contentTheme: post.contentTheme || 'promotional',
+        callToAction: post.callToAction || content?.callToAction || 'Learn more'
+      };
+    });
+
+    const postsWithImages = await Promise.all(postsWithImagesPromises);
+
+    console.log(`✅ Generated ${postsWithImages.length} posts with images for campaign: ${campaignName}`);
+
+    res.json({
+      success: true,
+      posts: postsWithImages,
+      contentCalendar: scheduleDates,
+      campaignSummary: {
+        name: campaignName,
+        objective,
+        platforms,
+        totalPosts: postsWithImages.length,
+        startDate,
+        endDate: scheduleDates[scheduleDates.length - 1]?.date || startDate
+      }
+    });
+
+  } catch (error) {
+    console.error('Generate campaign posts error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate posts', error: error.message });
+  }
+});
+
 module.exports = router;

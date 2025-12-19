@@ -10,11 +10,14 @@ const User = require('../models/User');
 const Campaign = require('../models/Campaign');
 const Competitor = require('../models/Competitor');
 const Influencer = require('../models/Influencer');
+const CachedCampaign = require('../models/CachedCampaign');
 const { 
   generateDashboardInsights,
   generateCampaignSuggestions,
   generateSectionSynopsis,
-  generateCompetitorActivity
+  generateCompetitorActivity,
+  generateSingleCampaign,
+  generateRivalPost
 } = require('../services/geminiAI');
 
 // Import socialMediaAPI for real competitor scraping
@@ -24,6 +27,35 @@ try {
 } catch (e) {
   console.warn('socialMediaAPI not available:', e.message);
 }
+
+// ============================================
+// In-memory cache for dashboard data
+// ============================================
+const dashboardCache = new Map();
+const DASHBOARD_CACHE_TTL = 60 * 1000; // 1 minute cache for dashboard
+const AI_INSIGHTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes for AI insights
+
+function getDashboardCache(userId) {
+  const cached = dashboardCache.get(userId);
+  if (cached && (Date.now() - cached.timestamp) < DASHBOARD_CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+}
+
+function setDashboardCache(userId, data) {
+  dashboardCache.set(userId, { data, timestamp: Date.now() });
+}
+
+// Cleanup old cache entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of dashboardCache.entries()) {
+    if (now - value.timestamp > DASHBOARD_CACHE_TTL * 2) {
+      dashboardCache.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Helper to generate post URL based on platform
 function generatePlatformPostUrl(platform, socialHandles) {
@@ -43,8 +75,6 @@ function generatePlatformPostUrl(platform, socialHandles) {
       return `https://www.linkedin.com/feed/update/urn:li:activity:${Date.now()}`;
     case 'youtube':
       return `https://www.youtube.com/watch?v=${postId}`;
-    case 'tiktok':
-      return `https://www.tiktok.com/@${cleanHandle}/video/${Date.now()}`;
     default:
       return `#`;
   }
@@ -57,14 +87,30 @@ function generatePlatformPostUrl(platform, socialHandles) {
 router.get('/overview', protect, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const user = await User.findById(userId);
+    const skipCache = req.query.refresh === 'true';
+    
+    // Check cache first (unless refresh requested)
+    if (!skipCache) {
+      const cached = getDashboardCache(userId);
+      if (cached) {
+        console.log('⚡ Returning cached dashboard data');
+        return res.json(cached);
+      }
+    }
+    
+    // Run initial database queries in parallel for better performance
+    const [user, allCampaigns, competitors, influencerCount] = await Promise.all([
+      User.findById(userId),
+      Campaign.find({ userId }).sort({ createdAt: -1 }).lean(), // Use lean() for faster read
+      Competitor.find({ userId }).limit(10).lean(),
+      Influencer.countDocuments({ userId })
+    ]);
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Get REAL campaign data from database
-    const allCampaigns = await Campaign.find({ userId }).sort({ createdAt: -1 });
+    // Process campaign data (already fetched)
     const activeCampaigns = allCampaigns.filter(c => ['active', 'posted', 'scheduled'].includes(c.status));
     const recentCampaigns = allCampaigns.slice(0, 10);
     
@@ -95,8 +141,7 @@ router.get('/overview', protect, async (req, res) => {
     const totalEngagement = allCampaigns.reduce((sum, c) => sum + (c.performance?.engagement || 0), 0);
     const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
     
-    // Get competitor data - prioritize database records, then sync from onboarding
-    let competitors = await Competitor.find({ userId }).limit(10);
+    // Process competitor data (already fetched)
     let competitorPosts = [];
     
     // Get competitor names from onboarding (businessProfile.competitors)
@@ -166,7 +211,7 @@ router.get('/overview', protect, async (req, res) => {
               name: c.name,
               instagram: c.socialHandles?.instagram || c.name.toLowerCase().replace(/\s+/g, ''),
               twitter: c.socialHandles?.twitter,
-              tiktok: c.socialHandles?.tiktok
+              facebook: c.socialHandles?.facebook
             }));
             
             const realPosts = await socialMediaAPI.fetchRealCompetitorPosts(competitorHandles, { limit: 3 });
@@ -211,19 +256,29 @@ router.get('/overview', protect, async (req, res) => {
       }
     }
 
-    // Get REAL influencer count
-    const influencerCount = await Influencer.countDocuments({ userId });
+    // influencerCount already fetched in parallel above
     
-    // Generate AI-powered insights using Gemini (with real context)
+    // Generate AI-powered insights using Gemini (with real context) - with timeout
     const metrics = {
       totalCampaigns: allCampaigns.length,
       activeCampaigns: activeCampaigns.length,
       totalSpent,
       engagementRate: totalImpressions > 0 ? ((totalEngagement / totalImpressions) * 100).toFixed(2) : 0
     };
-    const aiData = user.businessProfile?.name 
-      ? await generateDashboardInsights(user.businessProfile, metrics)
-      : { suggestedActions: [], trendingTopics: [], personalizedTips: [], brandScoreFactors: {} };
+    
+    // Use Promise.race to timeout AI generation if it takes too long
+    let aiData = { suggestedActions: [], trendingTopics: [], personalizedTips: [], brandScoreFactors: {} };
+    if (user.businessProfile?.name) {
+      try {
+        const aiPromise = generateDashboardInsights(user.businessProfile, metrics);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AI timeout')), 5000)
+        );
+        aiData = await Promise.race([aiPromise, timeoutPromise]);
+      } catch (aiError) {
+        console.warn('AI insights generation timed out or failed, using defaults');
+      }
+    }
     
     // Calculate brand score based on REAL data
     const brandScore = calculateRealBrandScore({
@@ -338,6 +393,9 @@ router.get('/overview', protect, async (req, res) => {
       }
     };
 
+    // Cache the response
+    setDashboardCache(userId, dashboardData);
+    
     res.json(dashboardData);
   } catch (error) {
     console.error('Dashboard overview error:', error);
@@ -375,7 +433,8 @@ router.get('/competitors', protect, async (req, res) => {
 
 /**
  * GET /api/dashboard/campaign-suggestions
- * Get AI-powered campaign suggestions using Gemini
+ * Get AI-powered campaign suggestions using Gemini with CACHING
+ * Returns cached campaigns instantly if available, otherwise generates new ones
  */
 router.get('/campaign-suggestions', protect, async (req, res) => {
   try {
@@ -394,12 +453,76 @@ router.get('/campaign-suggestions', protect, async (req, res) => {
     }
 
     const count = parseInt(req.query.count) || 6;
+    const forceRefresh = req.query.refresh === 'true';
+    
+    // Generate profile hash for cache invalidation
+    const profileHash = CachedCampaign.createProfileHash(user.businessProfile);
+    
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await CachedCampaign.getCachedForUser(
+        user._id, 
+        profileHash, 
+        count
+      );
+      
+      if (cached && cached.length >= count) {
+        console.log(`✅ Returning ${cached.length} cached campaigns for user ${user._id}`);
+        
+        // Transform cached data to match expected format
+        const campaigns = cached.map(c => ({
+          id: c.campaignId,
+          name: c.name,
+          title: c.name,
+          tagline: c.tagline,
+          objective: c.objective,
+          platforms: c.platforms,
+          platform: c.platform,
+          description: c.description,
+          caption: c.caption,
+          hashtags: c.hashtags,
+          imageUrl: c.imageUrl,
+          bestPostTime: c.bestPostTime,
+          expectedReach: c.estimatedReach,
+          estimatedReach: c.estimatedReach,
+          duration: c.duration,
+          estimatedBudget: c.estimatedBudget,
+          contentIdeas: c.contentIdeas
+        }));
+        
+        return res.json({
+          success: true,
+          data: { campaigns },
+          personalized: true,
+          cached: true,
+          businessContext: {
+            name: user.businessProfile.name,
+            industry: user.businessProfile.industry
+          }
+        });
+      }
+    }
+    
+    // No cache or force refresh - generate new suggestions
+    console.log(`🔄 Generating fresh campaigns for user ${user._id}`);
     const suggestions = await generateCampaignSuggestions(user.businessProfile, count);
+    
+    // Cache the new suggestions
+    if (suggestions.campaigns && suggestions.campaigns.length > 0) {
+      try {
+        await CachedCampaign.saveCampaigns(user._id, profileHash, suggestions.campaigns);
+        console.log(`💾 Cached ${suggestions.campaigns.length} new campaigns`);
+      } catch (cacheError) {
+        console.error('Failed to cache campaigns:', cacheError);
+        // Continue anyway - caching failure shouldn't break the response
+      }
+    }
 
     res.json({
       success: true,
       data: suggestions,
       personalized: true,
+      cached: false,
       businessContext: {
         name: user.businessProfile.name,
         industry: user.businessProfile.industry
@@ -408,6 +531,136 @@ router.get('/campaign-suggestions', protect, async (req, res) => {
   } catch (error) {
     console.error('Campaign suggestions error:', error);
     res.status(500).json({ success: false, message: 'Failed to generate suggestions', error: error.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/campaign-suggestions-stream
+ * Stream campaign suggestions using Server-Sent Events for PROGRESSIVE LOADING
+ * Campaigns appear one-by-one as they're generated
+ */
+router.get('/campaign-suggestions-stream', protect, async (req, res) => {
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      res.write(`data: ${JSON.stringify({ error: 'User not found' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    if (!user.businessProfile?.name) {
+      res.write(`data: ${JSON.stringify({ error: 'Please complete onboarding first' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const count = parseInt(req.query.count) || 6;
+    const forceRefresh = req.query.refresh === 'true';
+    const profileHash = CachedCampaign.createProfileHash(user.businessProfile);
+    
+    // Check cache first
+    if (!forceRefresh) {
+      const cached = await CachedCampaign.getCachedForUser(user._id, profileHash, count);
+      
+      if (cached && cached.length >= count) {
+        // Stream cached campaigns quickly (50ms apart for smooth UX)
+        for (let i = 0; i < cached.length; i++) {
+          const c = cached[i];
+          const campaign = {
+            id: c.campaignId,
+            name: c.name,
+            title: c.name,
+            objective: c.objective,
+            platforms: c.platforms,
+            platform: c.platform,
+            caption: c.caption,
+            hashtags: c.hashtags,
+            imageUrl: c.imageUrl,
+            bestPostTime: c.bestPostTime,
+            estimatedReach: c.estimatedReach
+          };
+          
+          res.write(`data: ${JSON.stringify({ 
+            type: 'campaign', 
+            index: i, 
+            total: cached.length,
+            campaign,
+            cached: true
+          })}\n\n`);
+          
+          // Small delay for smooth appearance
+          await new Promise(r => setTimeout(r, 50));
+        }
+        
+        res.write(`data: ${JSON.stringify({ type: 'complete', total: cached.length, cached: true })}\n\n`);
+        res.end();
+        return;
+      }
+    }
+    
+    // Generate campaigns one by one using streaming
+    res.write(`data: ${JSON.stringify({ type: 'start', total: count, message: 'Generating personalized campaigns...' })}\n\n`);
+    
+    const generatedCampaigns = [];
+    
+    for (let i = 0; i < count; i++) {
+      try {
+        // Generate single campaign
+        const campaign = await generateSingleCampaign(user.businessProfile, i, count);
+        
+        if (campaign) {
+          generatedCampaigns.push(campaign);
+          
+          res.write(`data: ${JSON.stringify({ 
+            type: 'campaign', 
+            index: i, 
+            total: count,
+            campaign,
+            cached: false
+          })}\n\n`);
+        }
+      } catch (err) {
+        console.error(`Error generating campaign ${i}:`, err);
+        res.write(`data: ${JSON.stringify({ type: 'error', index: i, message: err.message })}\n\n`);
+      }
+    }
+    
+    // Cache all generated campaigns
+    if (generatedCampaigns.length > 0) {
+      try {
+        await CachedCampaign.saveCampaigns(user._id, profileHash, generatedCampaigns);
+      } catch (cacheError) {
+        console.error('Failed to cache streamed campaigns:', cacheError);
+      }
+    }
+    
+    res.write(`data: ${JSON.stringify({ type: 'complete', total: generatedCampaigns.length })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Campaign streaming error:', error);
+    res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+/**
+ * DELETE /api/dashboard/campaign-cache
+ * Clear campaign cache for user (useful when profile changes)
+ */
+router.delete('/campaign-cache', protect, async (req, res) => {
+  try {
+    const result = await CachedCampaign.invalidateCache(req.user.userId || req.user.id);
+    res.json({ success: true, message: 'Cache cleared', deleted: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to clear cache' });
   }
 });
 
@@ -469,7 +722,7 @@ router.post('/refresh-competitor-posts', protect, async (req, res) => {
       name: c.name,
       instagram: c.socialHandles?.instagram || c.name.toLowerCase().replace(/\s+/g, ''),
       twitter: c.socialHandles?.twitter,
-      tiktok: c.socialHandles?.tiktok
+      facebook: c.socialHandles?.facebook
     }));
     
     console.log('Manual refresh: Fetching real posts for', competitorHandles.map(c => c.name));
@@ -549,6 +802,46 @@ router.post('/synopsis', protect, async (req, res) => {
   } catch (error) {
     console.error('Synopsis generation error:', error);
     res.status(500).json({ success: false, message: 'Failed to generate synopsis', error: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/generate-rival-post
+ * Generate a rival post to counter a competitor's content
+ */
+router.post('/generate-rival-post', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { competitorName, competitorContent, platform, sentiment, likes, comments } = req.body;
+    
+    if (!competitorContent) {
+      return res.status(400).json({ success: false, message: 'Competitor content is required' });
+    }
+
+    console.log(`🗡️ Generating rival post to counter ${competitorName} on ${platform}`);
+
+    // Generate the rival post using Gemini AI
+    const rivalPost = await generateRivalPost(
+      { competitorName, competitorContent, platform, sentiment, likes, comments },
+      user.businessProfile
+    );
+
+    console.log('✅ Rival post generated successfully');
+
+    res.json({
+      success: true,
+      caption: rivalPost.caption,
+      hashtags: rivalPost.hashtags,
+      imageUrl: rivalPost.imageUrl
+    });
+  } catch (error) {
+    console.error('Rival post generation error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate rival post', error: error.message });
   }
 });
 

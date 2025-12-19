@@ -90,6 +90,8 @@ export interface CompetitorPost {
   content: string;
   sentiment: 'positive' | 'neutral' | 'negative';
   postedAt: string;
+  postedAtRaw?: string; // Original date for filtering
+  postedAtDisplay?: string; // Formatted display string
   likes: number;
   comments: number;
   platform: string;
@@ -113,7 +115,7 @@ export interface Competitor {
 export interface Influencer {
   _id: string;
   name: string;
-  platform: 'instagram' | 'linkedin' | 'tiktok' | 'youtube' | 'twitter';
+  platform: 'instagram' | 'linkedin' | 'youtube' | 'twitter' | 'facebook';
   handle: string;
   followerCount: number;
   reach: number;

@@ -79,8 +79,7 @@ const brandProfileSchema = new mongoose.Schema({
     facebook: String,
     twitter: String,
     linkedin: String,
-    youtube: String,
-    tiktok: String
+    youtube: String
   },
   
   // Competitors

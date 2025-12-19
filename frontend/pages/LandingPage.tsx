@@ -340,7 +340,7 @@ const LandingPage: React.FC = () => {
               {
                 icon: <Globe className="w-6 h-6" />,
                 title: "Multi-Platform",
-                description: "Manage all channels from Instagram to TikTok in one place.",
+                description: "Manage all channels from Instagram to YouTube in one place.",
                 bgColor: theme === 'dark' ? "bg-teal-500/10" : "bg-teal-50",
                 iconColor: "text-teal-600"
               },

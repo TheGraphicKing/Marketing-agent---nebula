@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiService } from '../services/api';
 import { DashboardData, Campaign, CompetitorPost } from '../types';
-import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3 } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3, Swords, Sparkles, Download, Copy, Send, Save } from 'lucide-react';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 
 // Section info descriptions
@@ -346,6 +346,22 @@ const Dashboard: React.FC = () => {
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
   const [loadingMoreActions, setLoadingMoreActions] = useState(false);
   
+  // Rival Post State
+  const [showRivalPostModal, setShowRivalPostModal] = useState(false);
+  const [rivalPostLoading, setRivalPostLoading] = useState(false);
+  const [rivalPost, setRivalPost] = useState<{
+    caption: string;
+    hashtags: string[];
+    imageUrl: string;
+    platform: string;
+    competitorName: string;
+    originalContent: string;
+  } | null>(null);
+  const [editedCaption, setEditedCaption] = useState('');
+  const [editedHashtags, setEditedHashtags] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [postingDirectly, setPostingDirectly] = useState(false);
+  
   // Sample budget data points for the graph - use real data if available
   const budgetData = data?.overview?.dailySpend?.map((d: any) => d.spend) || [0, 0, 0, 0, 0, 0, 0];
   const days = data?.overview?.dailySpend?.map((d: any) => d.day) || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -377,6 +393,104 @@ const Dashboard: React.FC = () => {
   const handleNextCompetitor = () => {
     if (data?.competitorActivity) {
       setCompetitorIndex((prev) => (prev === data.competitorActivity.length - 1 ? 0 : prev + 1));
+    }
+  };
+
+  // Handle creating a rival post
+  const handleCreateRivalPost = async (competitor: any) => {
+    setRivalPostLoading(true);
+    setShowRivalPostModal(true);
+    setRivalPost(null);
+    
+    try {
+      const result = await apiService.generateRivalPost({
+        competitorName: competitor.competitorName,
+        competitorContent: competitor.content,
+        platform: competitor.platform,
+        sentiment: competitor.sentiment,
+        likes: competitor.likes,
+        comments: competitor.comments
+      });
+      
+      setRivalPost({
+        caption: result.caption,
+        hashtags: result.hashtags,
+        imageUrl: result.imageUrl,
+        platform: competitor.platform,
+        competitorName: competitor.competitorName,
+        originalContent: competitor.content
+      });
+      setEditedCaption(result.caption);
+      setEditedHashtags(result.hashtags.join(' '));
+    } catch (error) {
+      console.error('Failed to generate rival post:', error);
+      alert('Failed to generate rival post. Please try again.');
+      setShowRivalPostModal(false);
+    } finally {
+      setRivalPostLoading(false);
+    }
+  };
+
+  // Save rival post as draft
+  const handleSaveAsDraft = async () => {
+    if (!rivalPost) return;
+    setSavingDraft(true);
+    
+    try {
+      await apiService.createCampaign({
+        name: `Rival to ${rivalPost.competitorName}`,
+        objective: 'engagement',
+        platforms: [rivalPost.platform],
+        status: 'draft',
+        creative: {
+          type: 'image',
+          textContent: editedCaption,
+          imageUrls: [rivalPost.imageUrl],
+          captions: editedCaption,
+          hashtags: editedHashtags.split(/[\s#]+/).filter(t => t.trim())
+        },
+        scheduling: {
+          startDate: new Date().toISOString().split('T')[0],
+          postTime: '10:00'
+        }
+      });
+      
+      alert('Saved as draft! Check your Campaigns page.');
+      setShowRivalPostModal(false);
+      setRivalPost(null);
+    } catch (error) {
+      console.error('Failed to save draft:', error);
+      alert('Failed to save draft. Please try again.');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Copy caption to clipboard
+  const handleCopyCaption = () => {
+    const fullCaption = `${editedCaption}\n\n${editedHashtags}`;
+    navigator.clipboard.writeText(fullCaption);
+    alert('Caption and hashtags copied to clipboard!');
+  };
+
+  // Download image
+  const handleDownloadImage = async () => {
+    if (!rivalPost?.imageUrl) return;
+    
+    try {
+      const response = await fetch(rivalPost.imageUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rival-post-${rivalPost.platform}-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      // Fallback for CORS issues
+      window.open(rivalPost.imageUrl, '_blank');
     }
   };
 
@@ -1054,7 +1168,6 @@ const Dashboard: React.FC = () => {
                                           currentCompetitor.platform === 'twitter' ? 'bg-[#1DA1F2]' :
                                           currentCompetitor.platform === 'linkedin' ? 'bg-[#0A66C2]' :
                                           currentCompetitor.platform === 'facebook' ? 'bg-[#1877F2]' :
-                                          currentCompetitor.platform === 'tiktok' ? 'bg-black' :
                                           currentCompetitor.platform === 'youtube' ? 'bg-[#FF0000]' :
                                           'bg-slate-400'
                                         }`}></span>
@@ -1070,13 +1183,22 @@ const Dashboard: React.FC = () => {
                                     <span>❤️ {(currentCompetitor.likes || 0).toLocaleString()}</span>
                                     <span>💬 {currentCompetitor.comments || 0}</span>
                                 </div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
-                                    currentCompetitor.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700' : 
-                                    currentCompetitor.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
-                                    'bg-slate-200 text-slate-600'
-                                }`}>
-                                    {currentCompetitor.sentiment}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCreateRivalPost(currentCompetitor); }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black text-xs font-semibold rounded-full hover:shadow-lg hover:scale-105 transition-all"
+                                  >
+                                    <Swords className="w-3.5 h-3.5" />
+                                    Create Rival Post
+                                  </button>
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
+                                      currentCompetitor.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700' : 
+                                      currentCompetitor.sentiment === 'negative' ? 'bg-red-100 text-red-700' :
+                                      'bg-slate-200 text-slate-600'
+                                  }`}>
+                                      {currentCompetitor.sentiment}
+                                  </span>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1251,6 +1373,159 @@ const Dashboard: React.FC = () => {
          {/* Interactive Calendar */}
          <CalendarWidget campaigns={data?.recentCampaigns || []} dashboardData={data} onCampaignCreated={fetchData} />
       </div>
+
+      {/* Rival Post Modal */}
+      {showRivalPostModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => !rivalPostLoading && setShowRivalPostModal(false)}>
+          <div 
+            className={`${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-white border-slate-200'} border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-[#ffcc29]/20 bg-gradient-to-r from-[#0d1117] to-[#161b22]' : 'border-slate-100 bg-gradient-to-r from-white to-slate-50'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#ffcc29] to-[#ffa500] flex items-center justify-center">
+                    <Swords className="w-5 h-5 text-black" />
+                  </div>
+                  <div>
+                    <h3 className={`text-lg font-bold ${theme.text}`}>Create Rival Post</h3>
+                    <p className={`text-xs ${theme.textMuted}`}>
+                      {rivalPost ? `Countering ${rivalPost.competitorName}'s ${rivalPost.platform} post` : 'Generating your viral counter-post...'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowRivalPostModal(false)}
+                  disabled={rivalPostLoading}
+                  className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} transition-colors disabled:opacity-50`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              {rivalPostLoading ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-[#ffcc29] to-[#ffa500] flex items-center justify-center mb-4 animate-pulse">
+                    <Sparkles className="w-8 h-8 text-black animate-spin" />
+                  </div>
+                  <p className={`text-lg font-semibold ${theme.text} mb-2`}>Crafting Your Viral Post</p>
+                  <p className={`text-sm ${theme.textMuted} text-center max-w-sm`}>
+                    Our AI is analyzing the competitor's content and creating a unique, engaging post that will help you stand out...
+                  </p>
+                  <div className="flex items-center gap-2 mt-4">
+                    <div className="w-2 h-2 rounded-full bg-[#ffcc29] animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 rounded-full bg-[#ffcc29] animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 rounded-full bg-[#ffcc29] animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              ) : rivalPost ? (
+                <div className="space-y-6">
+                  {/* Original Post Reference */}
+                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/10' : 'bg-slate-50 border-slate-200'} border`}>
+                    <p className={`text-xs font-medium ${theme.textMuted} mb-2 flex items-center gap-1.5`}>
+                      <Eye className="w-3.5 h-3.5" /> Original Competitor Post
+                    </p>
+                    <p className={`text-sm ${theme.textSecondary} italic`}>"{rivalPost.originalContent}"</p>
+                  </div>
+
+                  {/* Generated Image */}
+                  <div className="relative">
+                    <p className={`text-xs font-medium ${theme.textMuted} mb-2 flex items-center gap-1.5`}>
+                      <Sparkles className="w-3.5 h-3.5 text-[#ffcc29]" /> AI Generated Image
+                    </p>
+                    <div className="relative rounded-xl overflow-hidden border border-[#ffcc29]/20">
+                      <img 
+                        src={rivalPost.imageUrl} 
+                        alt="Generated rival post" 
+                        className="w-full h-64 object-cover"
+                      />
+                      <button
+                        onClick={handleDownloadImage}
+                        className="absolute bottom-3 right-3 p-2 bg-black/60 hover:bg-black/80 rounded-lg text-white transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Caption */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className={`text-xs font-medium ${theme.textMuted} flex items-center gap-1.5`}>
+                        <MessageSquare className="w-3.5 h-3.5" /> Caption
+                      </p>
+                      <button
+                        onClick={handleCopyCaption}
+                        className={`flex items-center gap-1 text-xs ${theme.textMuted} hover:text-[#ffcc29] transition-colors`}
+                      >
+                        <Copy className="w-3 h-3" /> Copy
+                      </button>
+                    </div>
+                    <textarea
+                      value={editedCaption}
+                      onChange={(e) => setEditedCaption(e.target.value)}
+                      className={`w-full p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/20 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} border focus:ring-2 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] transition-all resize-none`}
+                      rows={4}
+                    />
+                  </div>
+
+                  {/* Hashtags */}
+                  <div>
+                    <p className={`text-xs font-medium ${theme.textMuted} mb-2 flex items-center gap-1.5`}>
+                      <FileText className="w-3.5 h-3.5" /> Hashtags
+                    </p>
+                    <input
+                      type="text"
+                      value={editedHashtags}
+                      onChange={(e) => setEditedHashtags(e.target.value)}
+                      className={`w-full p-3 rounded-xl ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/20 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} border focus:ring-2 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] transition-all`}
+                      placeholder="#trending #viral #marketing"
+                    />
+                    <p className={`text-xs ${theme.textMuted} mt-1`}>
+                      {editedHashtags.split(/[\s#]+/).filter(t => t.trim()).length} hashtags
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer Actions */}
+            {rivalPost && !rivalPostLoading && (
+              <div className={`px-6 py-4 border-t ${isDarkMode ? 'border-[#ffcc29]/20 bg-[#0d1117]' : 'border-slate-100 bg-white'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => setShowRivalPostModal(false)}
+                    className={`px-4 py-2.5 rounded-xl ${isDarkMode ? 'bg-[#161b22] hover:bg-[#21262d]' : 'bg-slate-100 hover:bg-slate-200'} ${theme.text} text-sm font-medium transition-colors`}
+                  >
+                    Cancel
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSaveAsDraft}
+                      disabled={savingDraft}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/30 hover:border-[#ffcc29]' : 'bg-white border-slate-200 hover:border-[#ffcc29]'} border ${theme.text} text-sm font-medium transition-all disabled:opacity-50`}
+                    >
+                      {savingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Save as Draft
+                    </button>
+                    <button
+                      onClick={handleCopyCaption}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black text-sm font-semibold hover:shadow-lg hover:scale-105 transition-all"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Copy & Post
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2260,7 +2535,6 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                     <option value="facebook">📘 Facebook</option>
                                     <option value="twitter">🐦 Twitter/X</option>
                                     <option value="linkedin">💼 LinkedIn</option>
-                                    <option value="tiktok">🎵 TikTok</option>
                                     <option value="youtube">▶️ YouTube</option>
                                   </select>
                                 </div>

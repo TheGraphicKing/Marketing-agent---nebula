@@ -49,7 +49,7 @@ Generate a JSON response with the following structure (return ONLY valid JSON, n
     {
       "id": "c1",
       "competitorName": "Relevant competitor name",
-      "platform": "instagram|facebook|linkedin|twitter|tiktok",
+      "platform": "instagram|facebook|linkedin|twitter|youtube",
       "content": "Example of what they might be posting",
       "sentiment": "positive|neutral|negative",
       "likes": number,
@@ -335,7 +335,7 @@ function getDefaultDashboardData(businessProfile) {
     ],
     trendingTopics: [
       { id: 't1', title: 'AI in Marketing', description: 'Leverage AI for personalized content', category: 'Technology', relevanceScore: 0.9 },
-      { id: 't2', title: 'Short-form Video', description: 'Reels and TikTok continue to dominate', category: 'Content', relevanceScore: 0.85 }
+      { id: 't2', title: 'Short-form Video', description: 'Instagram Reels and YouTube Shorts continue to dominate', category: 'Content', relevanceScore: 0.85 }
     ],
     campaignIdeas: [
       { id: 'camp1', name: 'Brand Awareness Push', objective: 'awareness', platforms: ['instagram', 'facebook'], description: `Introduce your brand to ${audience}`, estimatedBudget: '$200-$500' }
