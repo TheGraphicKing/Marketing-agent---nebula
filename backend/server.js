@@ -50,7 +50,14 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173'],
+  origin: [
+    'http://localhost:3000', 
+    'http://localhost:5173', 
+    'http://127.0.0.1:3000', 
+    'http://127.0.0.1:5173',
+    'https://marketing-agent-nebula.onrender.com',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -85,6 +92,25 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
+});
+
+// Root endpoint - API status page
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    name: 'Gravity Marketing API',
+    version: '1.0.0',
+    status: 'running',
+    message: 'Welcome to Gravity API! Use /api/* endpoints to interact.',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      dashboard: '/api/dashboard',
+      campaigns: '/api/campaigns',
+      chat: '/api/chat'
+    },
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Routes - Core
