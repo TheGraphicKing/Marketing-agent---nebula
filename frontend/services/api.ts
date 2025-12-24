@@ -1,8 +1,6 @@
 import { AuthResponse, BusinessProfile, Campaign, DashboardData, SocialConnection, User } from '../types';
 
 const API_BASE_URL = 'http://localhost:5000/api';
-const DEFAULT_TIMEOUT = 10000; // 10 second default timeout
-const AI_TIMEOUT = 30000; // 30 seconds for AI operations (campaign generation, etc.)
 
 // Helper to get auth token
 const getToken = (): string | null => localStorage.getItem('authToken');
@@ -13,37 +11,11 @@ const setToken = (token: string): void => localStorage.setItem('authToken', toke
 // Helper to remove auth token
 const removeToken = (): void => localStorage.removeItem('authToken');
 
-// Fetch with timeout helper
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeout: number = DEFAULT_TIMEOUT
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error('Request timed out. Please try again.');
-    }
-    throw error;
-  }
-}
-
 // Generic API call function with real backend integration
 async function apiCall<T>(
   endpoint: string, 
   options: RequestInit = {},
-  requiresAuth: boolean = false,
-  timeout: number = DEFAULT_TIMEOUT
+  requiresAuth: boolean = false
 ): Promise<T> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -59,10 +31,10 @@ async function apiCall<T>(
   }
 
   try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-    }, timeout);
+    });
 
     const data = await response.json();
 

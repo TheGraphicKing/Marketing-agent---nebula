@@ -90,8 +90,6 @@ export interface CompetitorPost {
   content: string;
   sentiment: 'positive' | 'neutral' | 'negative';
   postedAt: string;
-  postedAtRaw?: string; // Original date for filtering
-  postedAtDisplay?: string; // Formatted display string
   likes: number;
   comments: number;
   platform: string;

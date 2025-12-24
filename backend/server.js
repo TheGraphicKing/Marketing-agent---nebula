@@ -50,67 +50,18 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'http://localhost:5173', 
-    'http://127.0.0.1:3000', 
-    'http://127.0.0.1:5173',
-    'https://marketing-agent-nebula.onrender.com',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Response time monitoring middleware - warn if > 3 seconds
-app.use((req, res, next) => {
-  const start = Date.now();
-  const originalEnd = res.end;
-  
-  res.end = function(...args) {
-    const duration = Date.now() - start;
-    const threshold = 3000; // 3 seconds
-    
-    if (duration > threshold) {
-      console.warn(`⚠️  SLOW REQUEST: ${req.method} ${req.path} took ${duration}ms (>${threshold}ms threshold)`);
-    } else if (duration > 1000) {
-      console.log(`⏱️  ${req.method} ${req.path} - ${duration}ms`);
-    }
-    
-    // Add response time header
-    res.setHeader('X-Response-Time', `${duration}ms`);
-    return originalEnd.apply(this, args);
-  };
-  
-  next();
-});
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
-});
-
-// Root endpoint - API status page
-app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    name: 'Gravity Marketing API',
-    version: '1.0.0',
-    status: 'running',
-    message: 'Welcome to Gravity API! Use /api/* endpoints to interact.',
-    endpoints: {
-      health: '/api/health',
-      auth: '/api/auth',
-      dashboard: '/api/dashboard',
-      campaigns: '/api/campaigns',
-      chat: '/api/chat'
-    },
-    timestamp: new Date().toISOString()
-  });
 });
 
 // Routes - Core

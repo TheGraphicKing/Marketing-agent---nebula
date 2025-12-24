@@ -296,11 +296,10 @@ router.get('/posts', protect, async (req, res) => {
     // Sort by posted date (most recent first)
     allPosts.sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
     
-    // Add formatted time for display while keeping original date for filtering
+    // Format postedAt for display
     allPosts = allPosts.map(post => ({
       ...post,
-      postedAtRaw: post.postedAt, // Keep original date for filtering
-      postedAtDisplay: formatTimeAgo(post.postedAt) // Formatted for display
+      postedAt: formatTimeAgo(post.postedAt)
     }));
     
     res.json({

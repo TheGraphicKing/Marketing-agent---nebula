@@ -155,37 +155,10 @@ const Competitors: React.FC = () => {
     loadPosts();
   }, []);
 
-  // Get date range based on filter selection
-  const getFilterDateRange = (filter: string): Date => {
-    const now = new Date();
-    switch (filter) {
-      case 'Last 7 days':
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      case 'Last 1 month':
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      case 'Last 3 months':
-        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      default:
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    }
-  };
-
-  const filteredPosts = posts.filter(post => {
-    // Search filter
-    const matchesSearch = 
-      post.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      post.competitorName?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Time range filter - use postedAtRaw if available, otherwise postedAt
-    const filterDate = getFilterDateRange(selectedFilter);
-    const postDateStr = post.postedAtRaw || post.postedAt;
-    const postDate = new Date(postDateStr);
-    
-    // Check if postDate is a valid date
-    const matchesTimeRange = !isNaN(postDate.getTime()) ? postDate >= filterDate : true;
-    
-    return matchesSearch && matchesTimeRange;
-  });
+  const filteredPosts = posts.filter(post =>
+    post.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    post.competitorName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleRefresh = async () => {
     await loadPosts();
@@ -265,7 +238,7 @@ const Competitors: React.FC = () => {
                                 <div>
                                     <h3 className={`text-sm font-bold ${theme.text}`}>{post.competitorName}</h3>
                                     <p className={`text-xs flex items-center gap-1 ${theme.textMuted}`}>
-                                      {platformIcons[post.platform] || post.platform} • {post.postedAtDisplay || post.postedAt}
+                                      {platformIcons[post.platform] || post.platform} • {post.postedAt}
                                     </p>
                                 </div>
                             </div>

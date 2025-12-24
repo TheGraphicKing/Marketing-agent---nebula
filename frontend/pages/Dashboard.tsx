@@ -362,6 +362,13 @@ const Dashboard: React.FC = () => {
   const [savingDraft, setSavingDraft] = useState(false);
   const [postingDirectly, setPostingDirectly] = useState(false);
   
+  // Image editing states
+  const [imageMode, setImageMode] = useState<'ai' | 'upload'>('ai');
+  const [customImagePrompt, setCustomImagePrompt] = useState('');
+  const [regeneratingImage, setRegeneratingImage] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   // Sample budget data points for the graph - use real data if available
   const budgetData = data?.overview?.dailySpend?.map((d: any) => d.spend) || [0, 0, 0, 0, 0, 0, 0];
   const days = data?.overview?.dailySpend?.map((d: any) => d.day) || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -401,6 +408,10 @@ const Dashboard: React.FC = () => {
     setRivalPostLoading(true);
     setShowRivalPostModal(true);
     setRivalPost(null);
+    // Reset image editing states
+    setImageMode('ai');
+    setCustomImagePrompt('');
+    setUploadedImageUrl(null);
     
     try {
       const result = await apiService.generateRivalPost({
@@ -475,23 +486,97 @@ const Dashboard: React.FC = () => {
 
   // Download image
   const handleDownloadImage = async () => {
-    if (!rivalPost?.imageUrl) return;
+    const imageUrl = imageMode === 'upload' && uploadedImageUrl ? uploadedImageUrl : rivalPost?.imageUrl;
+    if (!imageUrl) return;
     
     try {
-      const response = await fetch(rivalPost.imageUrl);
+      // For data URLs (uploaded images), create a direct download
+      if (imageUrl.startsWith('data:')) {
+        const a = document.createElement('a');
+        a.href = imageUrl;
+        a.download = `rival-post-${rivalPost?.platform || 'post'}-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+      
+      const response = await fetch(imageUrl);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `rival-post-${rivalPost.platform}-${Date.now()}.png`;
+      a.download = `rival-post-${rivalPost?.platform || 'post'}-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
       // Fallback for CORS issues
-      window.open(rivalPost.imageUrl, '_blank');
+      window.open(imageUrl, '_blank');
     }
+  };
+
+  // Regenerate image with custom prompt
+  const handleRegenerateImage = async () => {
+    if (!customImagePrompt.trim() || !rivalPost) return;
+    
+    setRegeneratingImage(true);
+    try {
+      const result = await apiService.regenerateImage({
+        prompt: customImagePrompt,
+        industry: data?.brand?.industry || 'general',
+        platform: rivalPost.platform
+      });
+      if (result.imageUrl) {
+        setRivalPost({
+          ...rivalPost,
+          imageUrl: result.imageUrl
+        });
+        setUploadedImageUrl(null);
+        setImageMode('ai');
+        setCustomImagePrompt('');
+      }
+    } catch (error) {
+      console.error('Failed to regenerate image:', error);
+      alert('Failed to regenerate image. Please try again.');
+    } finally {
+      setRegeneratingImage(false);
+    }
+  };
+
+  // Handle file upload
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file');
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size should be less than 5MB');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setUploadedImageUrl(dataUrl);
+      setImageMode('upload');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Get current display image
+  const getCurrentImageUrl = () => {
+    if (imageMode === 'upload' && uploadedImageUrl) {
+      return uploadedImageUrl;
+    }
+    return rivalPost?.imageUrl || '';
   };
 
   const getActionButton = (actionType: string, title: string) => {
@@ -1432,15 +1517,37 @@ const Dashboard: React.FC = () => {
                     <p className={`text-sm ${theme.textSecondary} italic`}>"{rivalPost.originalContent}"</p>
                   </div>
 
-                  {/* Generated Image */}
-                  <div className="relative">
-                    <p className={`text-xs font-medium ${theme.textMuted} mb-2 flex items-center gap-1.5`}>
-                      <Sparkles className="w-3.5 h-3.5 text-[#ffcc29]" /> AI Generated Image
-                    </p>
+                  {/* Image Section with Editing Options */}
+                  <div className="space-y-4">
+                    {/* Image Mode Toggle */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setImageMode('ai')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          imageMode === 'ai' 
+                            ? 'bg-[#ffcc29] text-black' 
+                            : `${isDarkMode ? 'bg-[#161b22] text-white hover:bg-[#21262d]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`
+                        }`}
+                      >
+                        <Sparkles className="w-3 h-3" /> AI Image
+                      </button>
+                      <button
+                        onClick={() => setImageMode('upload')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          imageMode === 'upload' 
+                            ? 'bg-[#ffcc29] text-black' 
+                            : `${isDarkMode ? 'bg-[#161b22] text-white hover:bg-[#21262d]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`
+                        }`}
+                      >
+                        <Download className="w-3 h-3 rotate-180" /> Upload Image
+                      </button>
+                    </div>
+
+                    {/* Image Display */}
                     <div className="relative rounded-xl overflow-hidden border border-[#ffcc29]/20">
                       <img 
-                        src={rivalPost.imageUrl} 
-                        alt="Generated rival post" 
+                        src={getCurrentImageUrl()} 
+                        alt="Post image" 
                         className="w-full h-64 object-cover"
                       />
                       <button
@@ -1449,7 +1556,82 @@ const Dashboard: React.FC = () => {
                       >
                         <Download className="w-4 h-4" />
                       </button>
+                      {imageMode === 'upload' && uploadedImageUrl && (
+                        <div className="absolute top-3 left-3 px-2 py-1 bg-[#ffcc29] text-black text-xs font-medium rounded-lg">
+                          Custom Image
+                        </div>
+                      )}
                     </div>
+
+                    {/* AI Image Regeneration */}
+                    {imageMode === 'ai' && (
+                      <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/10' : 'bg-slate-50 border-slate-200'} border`}>
+                        <p className={`text-xs font-medium ${theme.textMuted} mb-2 flex items-center gap-1.5`}>
+                          <Edit3 className="w-3.5 h-3.5" /> Regenerate with Custom Prompt
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={customImagePrompt}
+                            onChange={(e) => setCustomImagePrompt(e.target.value)}
+                            placeholder="Describe the image you want..."
+                            className={`flex-1 px-3 py-2 rounded-lg text-sm ${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20 text-white placeholder-gray-500' : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400'} border focus:ring-2 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] transition-all`}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !regeneratingImage) {
+                                handleRegenerateImage();
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={handleRegenerateImage}
+                            disabled={regeneratingImage || !customImagePrompt.trim()}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black text-sm font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {regeneratingImage ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-4 h-4" />
+                            )}
+                            {regeneratingImage ? 'Generating...' : 'Generate'}
+                          </button>
+                        </div>
+                        <p className={`text-xs ${theme.textMuted} mt-2`}>
+                          E.g., "Modern office with team collaboration", "Product showcase on white background"
+                        </p>
+                      </div>
+                    )}
+
+                    {/* File Upload */}
+                    {imageMode === 'upload' && (
+                      <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22] border-[#ffcc29]/10' : 'bg-slate-50 border-slate-200'} border`}>
+                        <p className={`text-xs font-medium ${theme.textMuted} mb-2 flex items-center gap-1.5`}>
+                          <Download className="w-3.5 h-3.5 rotate-180" /> Upload Your Own Image
+                        </p>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed ${
+                            isDarkMode 
+                              ? 'border-[#ffcc29]/30 hover:border-[#ffcc29] bg-[#0d1117]' 
+                              : 'border-slate-300 hover:border-[#ffcc29] bg-white'
+                          } transition-all`}
+                        >
+                          <Plus className="w-5 h-5 text-[#ffcc29]" />
+                          <span className={`text-sm ${theme.text}`}>
+                            {uploadedImageUrl ? 'Change Image' : 'Select Image'}
+                          </span>
+                        </button>
+                        <p className={`text-xs ${theme.textMuted} mt-2`}>
+                          Supported: JPG, PNG, GIF, WebP (max 5MB)
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Caption */}

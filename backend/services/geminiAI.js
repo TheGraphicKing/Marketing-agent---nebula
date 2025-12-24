@@ -14,7 +14,8 @@ const GEMINI_MODELS = [
 // Simple in-memory cache for API responses
 const responseCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
-const API_TIMEOUT = 8000; // 8 second timeout for API calls (leaving 1s buffer for processing)
+const API_TIMEOUT = 15000; // 15 second timeout for API calls (increased for complex generation)
+const EXTENDED_TIMEOUT = 30000; // 30 second timeout for heavy content generation
 
 // Cache cleanup - run every 10 minutes
 setInterval(() => {
@@ -282,42 +283,63 @@ async function generateSingleCampaign(businessProfile, index, total) {
   const brandVoice = businessProfile.brandVoice || 'Professional';
   const marketingGoals = (businessProfile.marketingGoals || []).join(', ') || 'Brand awareness';
   
-  // Vary objectives for diversity
+  // Vary objectives for diversity with randomness
   const objectives = ['awareness', 'engagement', 'sales', 'traffic', 'trust', 'conversion'];
   const platforms = ['instagram', 'facebook', 'linkedin', 'twitter', 'youtube'];
-  const objective = objectives[index % objectives.length];
-  const platform = platforms[index % platforms.length];
   
-  const prompt = `Generate ONE ${objective}-focused social media campaign for "${companyName}" (${industry}/${niche}).
+  // Add randomness to selection to ensure variety on regeneration
+  const randomSeed = Date.now() + index;
+  const shuffledObjectives = [...objectives].sort(() => Math.sin(randomSeed) - 0.5);
+  const shuffledPlatforms = [...platforms].sort(() => Math.cos(randomSeed) - 0.5);
+  
+  const objective = shuffledObjectives[index % shuffledObjectives.length];
+  const platform = shuffledPlatforms[index % shuffledPlatforms.length];
+  
+  // Add variety triggers based on time
+  const varietyHooks = [
+    'Create a FRESH and UNIQUE',
+    'Design an INNOVATIVE',
+    'Craft a CREATIVE and ORIGINAL',
+    'Develop a COMPELLING',
+    'Build an ENGAGING',
+    'Generate a STANDOUT'
+  ];
+  const hookIndex = (Date.now() + index) % varietyHooks.length;
+  
+  const prompt = `${varietyHooks[hookIndex]} ${objective}-focused social media campaign for "${companyName}" (${industry}/${niche}).
+
+IMPORTANT: Generate COMPLETELY NEW and DIFFERENT content from any previous campaigns. Be creative and original.
 
 Target: ${targetAudience}
 Voice: ${brandVoice}
 Platform: ${platform}
 Goals: ${marketingGoals}
+Timestamp: ${Date.now()}
 
 Return ONLY valid JSON (no markdown):
 {
-  "id": "campaign_${index + 1}",
-  "name": "Campaign title",
+  "id": "campaign_${Date.now()}_${index}",
+  "name": "Unique creative campaign title",
   "objective": "${objective}",
   "platforms": ["${platform}"],
-  "caption": "Ready-to-post caption with emojis, in ${brandVoice} voice. Include call-to-action.",
-  "hashtags": ["#BrandHashtag", "#Industry", "#Relevant"],
-  "bestPostTime": "9:00 AM",
+  "caption": "FRESH ready-to-post caption with emojis, in ${brandVoice} voice. Include compelling call-to-action. Make it unique!",
+  "hashtags": ["#BrandHashtag", "#Industry", "#Relevant", "#Trending"],
+  "bestPostTime": "Choose optimal time like 9:00 AM, 12:00 PM, 3:00 PM, 6:00 PM, or 8:00 PM",
   "estimatedReach": "10K - 25K"
 }`;
 
   try {
-    const response = await callGemini(prompt, { temperature: 0.9, maxTokens: 1024 });
+    const response = await callGemini(prompt, { temperature: 0.95, maxTokens: 1024, skipCache: true });
     const campaign = parseGeminiJSON(response);
     
-    // Generate AI image for this campaign
+    // Generate AI image for this campaign with unique seed
     const imageUrl = await getRelevantImage(
       campaign.caption || campaign.name || `${industry} ${objective} marketing`,
       industry,
       objective,
       campaign.name,
-      platform
+      platform,
+      { timestamp: Date.now() } // Add timestamp for variety
     );
     
     return {
@@ -530,6 +552,111 @@ function getRelevantStockImage(campaignTitle, industry, objective, platform) {
   
   console.log('Using general default image');
   return industryDefaults.default;
+}
+
+/**
+ * Generate image from a custom user prompt
+ * This function uses the user's exact prompt to generate an image
+ */
+async function generateImageFromCustomPrompt(customPrompt, platform = 'instagram') {
+  console.log(`🎨 Generating image from custom prompt: "${customPrompt.substring(0, 100)}..."`);
+  
+  // Enhance the prompt for better image generation while keeping user's intent
+  const enhancedPrompt = `Create a high-quality, professional image based on this description: ${customPrompt}. 
+Style requirements: High resolution, suitable for ${platform} social media, professional photography or digital art quality, visually appealing, no text or watermarks in the image.`;
+
+  try {
+    // Try Gemini Imagen 3 first - this is the best for image generation
+    console.log('Trying Gemini Imagen 3...');
+    const imagenResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt: enhancedPrompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
+            safetyFilterLevel: 'block_few',
+            personGeneration: 'allow_adult'
+          }
+        })
+      }
+    );
+
+    const imagenData = await imagenResponse.json();
+    
+    if (imagenData.predictions && imagenData.predictions[0]?.bytesBase64Encoded) {
+      console.log('✅ Gemini Imagen 3 generated image from custom prompt successfully');
+      return `data:image/png;base64,${imagenData.predictions[0].bytesBase64Encoded}`;
+    }
+    
+    console.log('Imagen 3 did not return image, trying Gemini Flash...', JSON.stringify(imagenData).substring(0, 200));
+    
+  } catch (error) {
+    console.error('Imagen 3 error:', error.message);
+  }
+
+  // Try Gemini 2.0 Flash with image generation
+  try {
+    console.log('Trying Gemini 2.0 Flash Experimental...');
+    const flashResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: `Generate an image: ${enhancedPrompt}` }]
+          }],
+          generationConfig: {
+            responseModalities: ['IMAGE', 'TEXT']
+          }
+        })
+      }
+    );
+
+    const flashData = await flashResponse.json();
+    
+    const parts = flashData.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.mimeType?.startsWith('image/')) {
+        console.log('✅ Gemini Flash generated image from custom prompt successfully');
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    
+    console.log('Gemini Flash did not return image:', JSON.stringify(flashData).substring(0, 300));
+    
+  } catch (error) {
+    console.error('Gemini Flash error:', error.message);
+  }
+
+  // Last resort: Use Unsplash API with search based on prompt keywords
+  console.log('AI image generation unavailable, falling back to Unsplash search...');
+  return await searchUnsplashImage(customPrompt);
+}
+
+/**
+ * Search Unsplash for relevant images based on keywords
+ */
+async function searchUnsplashImage(query) {
+  // Extract key terms from the query
+  const keywords = query.toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(' ')
+    .filter(word => word.length > 3)
+    .slice(0, 3)
+    .join(',');
+  
+  const searchTerm = keywords || 'professional,business,modern';
+  
+  // Use Unsplash Source for direct image URLs
+  const unsplashUrl = `https://source.unsplash.com/800x600/?${encodeURIComponent(searchTerm)}`;
+  console.log(`📷 Using Unsplash search for: ${searchTerm}`);
+  
+  return unsplashUrl;
 }
 
 /**
@@ -756,10 +883,10 @@ Return ONLY valid JSON (no markdown, no code blocks):
     "Content idea aligned with ${businessProfile.brandVoice || 'your brand'} voice"
   ],
   "brandScoreFactors": {
-    "engagement": { "score": ${hasNoCampaigns ? 50 : 70}, "reason": "${hasNoCampaigns ? 'Create your first campaign to start tracking' : 'Based on current engagement metrics'}" },
-    "consistency": { "score": ${hasNoCampaigns ? 40 : 65}, "reason": "${hasNoCampaigns ? 'Start posting regularly to improve' : 'Based on posting frequency'}" },
-    "audienceGrowth": { "score": ${hasNoCampaigns ? 55 : 60}, "reason": "Potential based on ${businessProfile.industry || 'your'} industry benchmarks" },
-    "contentQuality": { "score": ${hasNoCampaigns ? 60 : 75}, "reason": "Aligned with ${businessProfile.brandVoice || 'your'} brand voice" }
+    "engagement": { "score": ${hasNoCampaigns ? 0 : 70}, "reason": "${hasNoCampaigns ? 'Create your first campaign to start tracking' : 'Based on current engagement metrics'}" },
+    "consistency": { "score": ${hasNoCampaigns ? 0 : 65}, "reason": "${hasNoCampaigns ? 'Start posting regularly to improve' : 'Based on posting frequency'}" },
+    "audienceGrowth": { "score": ${hasNoCampaigns ? 0 : 60}, "reason": "${hasNoCampaigns ? 'Connect social accounts to track growth' : 'Based on ' + (businessProfile.industry || 'your') + ' industry benchmarks'}" },
+    "contentQuality": { "score": ${hasNoCampaigns ? 0 : 75}, "reason": "${hasNoCampaigns ? 'Create content to measure quality' : 'Aligned with ' + (businessProfile.brandVoice || 'your') + ' brand voice'}" }
   }
 }
 
@@ -1231,74 +1358,148 @@ function generatePostUrl(platform, competitorName) {
  */
 async function generateRivalPost(competitorData, brandProfile) {
   const { competitorName, competitorContent, platform, sentiment, likes, comments } = competitorData;
-  const { companyName, industry, targetAudience } = brandProfile || {};
+  const bp = brandProfile || {};
+  
+  // Extract comprehensive brand context
+  const brandContext = {
+    companyName: bp.companyName || bp.name || 'Our Brand',
+    industry: bp.industry || 'business',
+    description: bp.description || '',
+    products: bp.products?.map(p => typeof p === 'string' ? p : p.name).join(', ') || '',
+    services: bp.services?.map(s => typeof s === 'string' ? s : s.name).join(', ') || '',
+    usps: bp.uniqueSellingPoints?.join(', ') || bp.valuePropositions?.join(', ') || '',
+    niche: bp.niche || '',
+    targetAudience: bp.targetAudience || '',
+    brandVoice: bp.brandVoice || 'professional yet bold',
+    competitors: bp.competitors?.join(', ') || competitorName
+  };
   
   // Extract key themes from competitor content for relevance
   const contentLower = (competitorContent || '').toLowerCase();
   
-  // Determine content themes
+  // Expanded theme detection
   let contentThemes = [];
-  if (contentLower.includes('sneaker') || contentLower.includes('shoe') || contentLower.includes('footwear')) contentThemes.push('footwear', 'sneakers');
-  if (contentLower.includes('fitness') || contentLower.includes('exercise') || contentLower.includes('workout')) contentThemes.push('fitness', 'workout');
-  if (contentLower.includes('run') || contentLower.includes('sport')) contentThemes.push('running', 'sports');
-  if (contentLower.includes('mind') || contentLower.includes('body') || contentLower.includes('wellness')) contentThemes.push('wellness', 'mindfulness');
-  if (contentLower.includes('fashion') || contentLower.includes('style')) contentThemes.push('fashion', 'style');
-  if (contentLower.includes('tech') || contentLower.includes('innovation')) contentThemes.push('technology', 'innovation');
-  if (contentLower.includes('restock') || contentLower.includes('new') || contentLower.includes('launch')) contentThemes.push('product launch', 'new arrival');
-  if (contentLower.includes('collaboration') || contentLower.includes('team') || contentLower.includes('partner')) contentThemes.push('collaboration', 'partnership');
+  const themePatterns = {
+    'footwear': ['sneaker', 'shoe', 'footwear', 'kicks', 'boots', 'sandal'],
+    'fitness': ['fitness', 'exercise', 'workout', 'gym', 'training', 'muscle'],
+    'running': ['run', 'marathon', 'jog', 'sprint', 'race', 'track'],
+    'sports': ['sport', 'athlete', 'game', 'team', 'champion', 'win'],
+    'wellness': ['mind', 'body', 'wellness', 'health', 'mental', 'balance'],
+    'fashion': ['fashion', 'style', 'trend', 'outfit', 'look', 'wear'],
+    'technology': ['tech', 'innovation', 'smart', 'digital', 'ai', 'future'],
+    'launch': ['restock', 'new', 'launch', 'drop', 'release', 'coming'],
+    'collaboration': ['collaboration', 'collab', 'partner', 'feature', 'with'],
+    'sustainability': ['eco', 'sustainable', 'green', 'recycle', 'planet', 'environment'],
+    'premium': ['luxury', 'premium', 'exclusive', 'limited', 'elite', 'vip'],
+    'comfort': ['comfort', 'cozy', 'soft', 'cushion', 'support', 'feel'],
+    'performance': ['performance', 'speed', 'power', 'energy', 'boost', 'max']
+  };
+  
+  for (const [theme, keywords] of Object.entries(themePatterns)) {
+    if (keywords.some(kw => contentLower.includes(kw))) {
+      contentThemes.push(theme);
+    }
+  }
+  
+  // Add industry-specific themes
+  if (brandContext.industry) {
+    contentThemes.push(brandContext.industry.toLowerCase());
+  }
   
   if (contentThemes.length === 0) contentThemes = ['quality', 'excellence', 'innovation'];
   
-  // Generate caption and hashtags using Gemini with enhanced context
-  const prompt = `You are an expert social media strategist creating a VIRAL counter-post. 
+  // Extract competitor claims to mock
+  const competitorClaims = [];
+  if (contentLower.includes('best')) competitorClaims.push('claims to be the best');
+  if (contentLower.includes('first')) competitorClaims.push('claims to be first');
+  if (contentLower.includes('only')) competitorClaims.push('claims exclusivity');
+  if (contentLower.includes('#1') || contentLower.includes('number one')) competitorClaims.push('claims #1 position');
+  if (contentLower.includes('revolutionary')) competitorClaims.push('claims revolutionary product');
+  
+  // Build a powerful mocking prompt
+  const prompt = `You are an ELITE social media strategist creating a SAVAGE yet professional counter-post that DESTROYS the competition while showcasing YOUR brand's superiority.
 
-COMPETITOR ANALYSIS:
-- Competitor: "${competitorName}"
+🎯 COMPETITOR INTELLIGENCE:
+- Competitor Name: "${competitorName}"
 - Platform: ${platform}
-- Their Post: "${competitorContent}"
-- Engagement: ${likes || 0} likes, ${comments || 0} comments
+- Their Post Content: "${competitorContent}"
+- Their Engagement: ${likes || 0} likes, ${comments || 0} comments (${likes > 1000 ? 'HIGH engagement - we need to outperform!' : 'moderate engagement'})
 - Sentiment: ${sentiment || 'neutral'}
-- Key Themes Detected: ${contentThemes.join(', ')}
+- Key Themes They're Targeting: ${contentThemes.slice(0, 4).join(', ')}
+${competitorClaims.length > 0 ? `- Competitor Claims to Mock: ${competitorClaims.join(', ')}` : ''}
 
-YOUR BRAND:
-- Brand Name: "${companyName || 'Our Brand'}"
-- Industry: ${industry || 'retail/consumer goods'}
-- Target Audience: ${targetAudience || 'health-conscious consumers'}
+🏆 YOUR BRAND ARSENAL:
+- Brand Name: "${brandContext.companyName}"
+- Industry: ${brandContext.industry}
+- What You Sell: ${brandContext.products || brandContext.services || 'premium products/services'}
+- Your Unique Edge: ${brandContext.usps || 'superior quality and customer focus'}
+- Target Audience: ${brandContext.targetAudience || 'discerning customers who demand the best'}
+- Brand Voice: ${brandContext.brandVoice}
+- Your Niche: ${brandContext.niche || brandContext.industry}
 
-MISSION: Create a RIVAL POST that directly competes with and OUTPERFORMS the competitor's content.
+🔥 YOUR MISSION - CREATE A RIVAL POST THAT:
+1. **MOCKS the competitor SUBTLY but EFFECTIVELY** - Use wit, not insults. Make people think "ohhh they went there!" Examples:
+   - "While others talk about innovation, we've been LIVING it since day one 💅"
+   - "Some brands just discovered what we perfected years ago..."
+   - "Cute launch! But we've been setting the standard for [X] 🏆"
+   
+2. **HIGHLIGHTS YOUR SUPERIORITY** on the EXACT same topic (${contentThemes[0]})
+   - If they talk about comfort, you talk about ULTIMATE comfort
+   - If they launch something new, you remind people you've been innovating longer
+   
+3. **CREATES VIRAL ENGAGEMENT** with:
+   - A controversial or bold opening hook that stops scrollers
+   - Strategic emoji placement (not too many, not too few)
+   - A question or challenge that DEMANDS comments
+   - FOMO-inducing language
+   
+4. **STAYS ON-BRAND** for ${brandContext.companyName}
+   - Voice: ${brandContext.brandVoice}
+   - Highlight: ${brandContext.usps || 'your unique value'}
 
-REQUIREMENTS:
-1. DIRECTLY address the SAME TOPIC/THEME as the competitor (${contentThemes.slice(0, 3).join(', ')})
-2. Highlight YOUR BRAND's unique value proposition
-3. Use ${platform}-optimized format (${platform === 'twitter' ? 'max 280 chars' : 'engaging story format'})
-4. Include emotional hooks and a compelling call-to-action
-5. Make it SHAREABLE and engagement-worthy
-6. The image description MUST be specific and directly related to: ${contentThemes.slice(0, 2).join(' and ')}
+5. **OPTIMIZED FOR ${platform.toUpperCase()}**
+   ${platform === 'instagram' ? '- Use line breaks, emojis, and a strong visual hook. Max 2200 chars but sweet spot is 150-300 chars' : ''}
+   ${platform === 'twitter' ? '- Punchy, quotable, under 280 chars. Meme-worthy if possible' : ''}
+   ${platform === 'linkedin' ? '- Professional wit, thought leadership angle, spark discussion' : ''}
+   ${platform === 'facebook' ? '- Conversational, shareable, community-building' : ''}
 
-Return ONLY valid JSON (no markdown, no code blocks):
+📸 IMAGE REQUIREMENTS:
+The image MUST visually one-up the competitor. Describe an image that:
+- Directly relates to ${contentThemes.slice(0, 2).join(' and ')}
+- Features ${brandContext.products || brandContext.services || 'your premium offering'}
+- Has ${platform === 'instagram' ? 'square 1:1' : '16:9 landscape'} composition
+- Uses professional commercial photography style
+- Conveys superiority, innovation, and desirability
+- Could include: product shots, lifestyle imagery, or bold graphics
+
+Return ONLY valid JSON (no markdown, no explanations):
 {
-  "caption": "Your viral caption that directly addresses ${contentThemes[0] || 'the topic'} - use emojis strategically",
-  "hashtags": ["#relevant", "#trending", "#niche", "#branded", "#viral"],
-  "imageDescription": "SPECIFIC description for AI image generation: A professional ${contentThemes[0] || 'product'} photo showing [exact visual elements related to ${contentThemes.slice(0, 2).join(' and ')}], modern lighting, ${platform === 'instagram' ? 'square format' : 'landscape'}, commercial quality"
+  "caption": "Your SAVAGE yet professional caption that mocks ${competitorName} while making ${brandContext.companyName} look superior. Include emojis and a killer CTA.",
+  "hashtags": ["#YourBrand", "#Trending", "#Niche", "#Industry", "#Viral"],
+  "imageDescription": "Ultra-detailed image description: [Exact scene, subjects, products, colors, mood, lighting, style] that directly competes with ${competitorName}'s ${contentThemes[0]} content and showcases ${brandContext.companyName}'s superiority in ${brandContext.industry}"
 }`;
 
   try {
-    const response = await callGemini(prompt, { skipCache: true, temperature: 0.8 });
+    console.log(`🎯 Generating SAVAGE rival post against ${competitorName} for ${brandContext.companyName}`);
+    const response = await callGemini(prompt, { skipCache: true, temperature: 0.9, maxTokens: 1500, timeout: 25000 });
     const parsed = parseGeminiJSON(response);
     
     if (!parsed || !parsed.caption) {
       throw new Error('Invalid response format');
     }
     
-    // Generate AI image based on the specific image description
-    const imagePrompt = parsed.imageDescription || `Professional ${contentThemes.join(' ')} marketing photo, ${industry} brand, modern aesthetic`;
+    console.log(`✅ Generated mocking caption for ${brandContext.companyName}`);
+    
+    // Generate AI image with rich brand context
+    const imagePrompt = `${parsed.imageDescription}. Brand: ${brandContext.companyName}. Industry: ${brandContext.industry}. Products: ${brandContext.products || 'premium products'}. Style: modern, premium, commercial photography, high-end advertising quality.`;
     
     const imageUrl = await getRelevantImage(
       imagePrompt,
-      industry || contentThemes[0] || 'business',
+      brandContext.industry,
       'engagement',
-      contentThemes.slice(0, 2).join(' '),
-      platform
+      `${brandContext.companyName} ${contentThemes.slice(0, 2).join(' ')}`,
+      platform,
+      brandContext
     );
     
     // Clean and format hashtags
@@ -1317,32 +1518,464 @@ Return ONLY valid JSON (no markdown, no code blocks):
   } catch (error) {
     console.error('Error generating rival post:', error);
     
-    // Fallback response based on detected themes
+    // Enhanced fallback response with brand context and mocking tone
+    const brandName = brandContext.companyName || 'Our Brand';
     const themeBasedCaption = contentThemes.includes('footwear') || contentThemes.includes('sneakers')
-      ? `👟 Step into excellence! While others follow trends, we SET them. Our latest collection redefines what ${contentThemes[0]} should be.\n\n💪 Built for those who demand more. Ready to elevate your game?\n\n👉 Drop a 🔥 if you're ready!`
+      ? `👟 Oh, ${competitorName} just dropped something? That's cute.\n\nAt ${brandName}, we've been perfecting ${contentThemes[0]} since before it was "trendy." 💅\n\n🔥 Real ones know the difference. Our ${brandContext.products || 'collection'} isn't just footwear – it's a statement.\n\n💬 Tag someone who needs an upgrade from the basics!\n\n#${brandName.replace(/\s+/g, '')} #LevelsAbove`
       : contentThemes.includes('fitness') || contentThemes.includes('wellness')
-      ? `🏃‍♂️ Transform your ${contentThemes[0]} journey with us! We don't just talk about results – we DELIVER them.\n\n✨ Join thousands who've already made the switch.\n\n💬 What's your fitness goal? Tell us below!`
-      : `💫 Excellence isn't just a word – it's our standard. While competitors talk, we deliver results that speak for themselves.\n\n🎯 Ready to experience the difference?\n\n👇 Let us know what you're looking for!`;
+      ? `🏆 While ${competitorName} is just getting started, ${brandName} has been transforming ${contentThemes[0]} for years.\n\n💪 Our community doesn't just talk about results – we LIVE them.\n\n✨ ${brandContext.usps || 'Premium quality meets unmatched performance.'}\n\n🔥 Ready to join the winning side?\n\n👇 Drop a 💪 if you're serious about your ${contentThemes[0]} journey!`
+      : contentThemes.includes('technology') || contentThemes.includes('innovation')
+      ? `🚀 Innovation? ${competitorName}, welcome to 2020. We've been there.\n\n${brandName} has been pioneering ${contentThemes[0]} while others played catch-up. 🏅\n\n⚡ ${brandContext.usps || 'Cutting-edge technology meets exceptional design.'}\n\n💡 The future isn't coming – we're already living it.\n\n📱 Tag a friend who's ready to upgrade!`
+      : `💫 Spotted: ${competitorName} trying their best. Adorable.\n\nMeanwhile, at ${brandName}? We've been setting the standard in ${brandContext.industry || contentThemes[0]} that others dream of reaching. 👑\n\n🎯 ${brandContext.usps || 'Excellence isn\'t a goal – it\'s our baseline.'}\n\n🔥 There's a reason the best choose ${brandName}.\n\n💬 Ready to experience the difference? Drop a 🙋‍♂️ below!`;
     
+    // Brand-relevant hashtags
     const fallbackHashtags = [
-      `#${contentThemes[0] || 'trending'}`,
-      `#${contentThemes[1] || 'quality'}`,
-      `#${(companyName || 'brand').replace(/\s+/g, '')}`,
-      '#excellence',
-      '#viral'
-    ];
+      `#${brandName.replace(/\s+/g, '')}`,
+      `#${contentThemes[0]?.replace(/\s+/g, '') || 'trending'}`,
+      `#BetterThan${competitorName?.replace(/\s+/g, '') || 'TheRest'}`,
+      `#${brandContext.industry?.replace(/\s+/g, '') || 'excellence'}`,
+      '#LevelsAbove',
+      '#TheOriginal'
+    ].slice(0, 6);
     
     return {
       caption: themeBasedCaption,
       hashtags: fallbackHashtags,
       imageUrl: await getRelevantImage(
-        `Professional ${contentThemes.join(' ')} marketing photo, modern aesthetic, high quality`,
-        industry || contentThemes[0] || 'business',
+        `Professional ${brandContext.industry} ${contentThemes.join(' ')} marketing photo showcasing ${brandName} superiority, premium aesthetic, commercial quality, modern studio lighting`,
+        brandContext.industry || contentThemes[0] || 'business',
         'engagement',
-        contentThemes[0] || 'excellence',
-        platform
+        `${brandName} ${contentThemes[0] || 'excellence'}`,
+        platform,
+        brandContext
       )
     };
+  }
+}
+
+/**
+ * Generate A/B test variations for content
+ */
+async function generateABTestVariations(baseContent, businessProfile, count = 3, contentType = 'full', platform = 'all') {
+  const companyName = businessProfile.name || 'Your Company';
+  const industry = businessProfile.industry || 'General';
+  const brandVoice = businessProfile.brandVoice || 'Professional';
+  const targetAudience = businessProfile.targetAudience || 'General audience';
+  
+  const prompt = `You are an expert A/B testing strategist for social media marketing. Generate ${count} unique variations of the following content for "${companyName}".
+
+=== BASE CONTENT ===
+Caption: ${baseContent.caption || 'Not provided'}
+Hashtags: ${(baseContent.hashtags || []).join(' ')}
+Call to Action: ${baseContent.callToAction || 'Not specified'}
+Content Type: ${contentType}
+Platform: ${platform}
+
+=== BUSINESS CONTEXT ===
+Company: ${companyName}
+Industry: ${industry}
+Brand Voice: ${brandVoice}
+Target Audience: ${targetAudience}
+
+=== INSTRUCTIONS ===
+Create ${count} DISTINCTLY DIFFERENT variations. Each should test a different approach:
+1. First variation: More emotional/storytelling approach
+2. Second variation: Direct/action-oriented approach  
+3. Third variation: Question-based/engaging approach
+(If more variations needed, mix creative angles like humor, FOMO, social proof, etc.)
+
+For EACH variation, provide:
+- A unique name (e.g., "Emotional Story", "Bold CTA", "Curiosity Hook")
+- Caption (matching brand voice but with the specific angle)
+- Hashtags (5-8 relevant hashtags)
+- Call to action
+- Predicted engagement metrics (score 0-100 for each):
+  * engagementRate: Likelihood of likes/comments
+  * reachPotential: Viral potential
+  * clickPotential: CTA click likelihood
+  * conversionPotential: Conversion probability
+  * overallScore: Weighted average
+
+Return ONLY valid JSON in this exact format:
+{
+  "variations": [
+    {
+      "id": "var_1",
+      "name": "Variation Name",
+      "caption": "Full caption text here",
+      "hashtags": ["hashtag1", "hashtag2"],
+      "callToAction": "CTA text",
+      "predictedMetrics": {
+        "engagementRate": 75,
+        "reachPotential": 80,
+        "clickPotential": 65,
+        "conversionPotential": 70,
+        "overallScore": 73
+      },
+      "aiAnalysis": {
+        "strengths": ["Strength 1", "Strength 2"],
+        "weaknesses": ["Weakness 1"],
+        "targetAudienceFit": "Analysis of fit with target audience",
+        "toneAnalysis": "Analysis of tone and voice",
+        "recommendation": "When to use this variation"
+      }
+    }
+  ]
+}`;
+
+  try {
+    const response = await callGemini(prompt, { skipCache: true, timeout: EXTENDED_TIMEOUT, temperature: 0.8 });
+    const parsed = parseGeminiJSON(response);
+    
+    if (parsed.variations && Array.isArray(parsed.variations)) {
+      return parsed.variations.map((v, i) => ({
+        id: v.id || `var_${i + 1}`,
+        name: v.name || `Variation ${i + 1}`,
+        caption: v.caption || baseContent.caption,
+        hashtags: v.hashtags || baseContent.hashtags,
+        callToAction: v.callToAction || baseContent.callToAction,
+        aiGenerated: true,
+        predictedMetrics: v.predictedMetrics || {
+          engagementRate: 50,
+          reachPotential: 50,
+          clickPotential: 50,
+          conversionPotential: 50,
+          overallScore: 50
+        },
+        aiAnalysis: v.aiAnalysis || {
+          strengths: [],
+          weaknesses: [],
+          targetAudienceFit: 'Analysis pending',
+          toneAnalysis: 'Analysis pending',
+          recommendation: 'Standard variation'
+        }
+      }));
+    }
+    
+    throw new Error('Invalid response format');
+  } catch (error) {
+    console.error('Error generating A/B variations:', error);
+    
+    // Generate basic fallback variations
+    return Array.from({ length: count }, (_, i) => ({
+      id: `var_${i + 1}`,
+      name: ['Emotional Hook', 'Direct CTA', 'Curiosity Builder'][i] || `Variation ${i + 1}`,
+      caption: baseContent.caption || 'Your caption here',
+      hashtags: baseContent.hashtags || ['#marketing', '#brand'],
+      callToAction: baseContent.callToAction || 'Learn More',
+      aiGenerated: true,
+      predictedMetrics: {
+        engagementRate: 50 + Math.floor(Math.random() * 30),
+        reachPotential: 50 + Math.floor(Math.random() * 30),
+        clickPotential: 50 + Math.floor(Math.random() * 30),
+        conversionPotential: 50 + Math.floor(Math.random() * 30),
+        overallScore: 55 + Math.floor(Math.random() * 25)
+      },
+      aiAnalysis: {
+        strengths: ['Standard approach'],
+        weaknesses: ['Could be more targeted'],
+        targetAudienceFit: 'General fit',
+        toneAnalysis: 'Matches brand voice',
+        recommendation: 'Good starting point'
+      }
+    }));
+  }
+}
+
+/**
+ * Analyze A/B test variations and provide detailed comparison
+ */
+async function analyzeABTestVariations(variations, businessProfile, evaluationCriteria = 'balanced') {
+  const companyName = businessProfile.name || 'Your Company';
+  const targetAudience = businessProfile.targetAudience || 'General audience';
+  
+  const variationsContext = variations.map((v, i) => `
+Variation ${i + 1} (${v.name || 'Unnamed'}):
+- Caption: ${v.caption?.substring(0, 200)}...
+- Hashtags: ${(v.hashtags || []).slice(0, 5).join(' ')}
+- CTA: ${v.callToAction || 'None'}
+`).join('\n');
+
+  const prompt = `You are an A/B testing expert. Analyze these ${variations.length} content variations for "${companyName}" targeting "${targetAudience}".
+
+=== VARIATIONS ===
+${variationsContext}
+
+=== EVALUATION CRITERIA ===
+Primary focus: ${evaluationCriteria}
+- engagement: Focus on likes, comments, shares
+- reach: Focus on viral potential and impressions
+- clicks: Focus on link clicks and CTA performance
+- conversions: Focus on sales/signup potential
+- balanced: Equal weight to all factors
+
+Provide a detailed analysis with scores and a recommendation. Consider:
+1. Which variation will perform best for the given criteria
+2. Specific strengths/weaknesses of each
+3. Target audience resonance
+4. Platform optimization
+
+Return ONLY valid JSON:
+{
+  "variations": [
+    {
+      "id": "var_1",
+      "predictedMetrics": {
+        "engagementRate": 75,
+        "reachPotential": 80,
+        "clickPotential": 65,
+        "conversionPotential": 70,
+        "overallScore": 73
+      },
+      "aiAnalysis": {
+        "strengths": ["Strong emotional hook", "Clear value prop"],
+        "weaknesses": ["CTA could be stronger"],
+        "targetAudienceFit": "Excellent fit for millennials interested in...",
+        "toneAnalysis": "Matches brand voice with slight humor",
+        "recommendation": "Best for awareness campaigns"
+      }
+    }
+  ],
+  "recommendation": {
+    "winnerId": "var_1",
+    "reason": "Detailed explanation of why this variation is recommended",
+    "confidenceLevel": 85,
+    "alternativeWinner": "var_2",
+    "alternativeReason": "If prioritizing X, consider this instead"
+  }
+}`;
+
+  try {
+    const response = await callGemini(prompt, { skipCache: true, timeout: EXTENDED_TIMEOUT });
+    return parseGeminiJSON(response);
+  } catch (error) {
+    console.error('Error analyzing A/B variations:', error);
+    
+    return {
+      variations: variations.map((v, i) => ({
+        id: v.id,
+        predictedMetrics: v.predictedMetrics || {
+          engagementRate: 50 + i * 5,
+          reachPotential: 55 + i * 3,
+          clickPotential: 45 + i * 7,
+          conversionPotential: 50 + i * 4,
+          overallScore: 52 + i * 5
+        },
+        aiAnalysis: v.aiAnalysis || {
+          strengths: ['Standard content'],
+          weaknesses: ['Needs optimization'],
+          targetAudienceFit: 'Moderate fit',
+          toneAnalysis: 'Acceptable',
+          recommendation: 'Test with small audience first'
+        }
+      })),
+      recommendation: {
+        winnerId: variations[0]?.id || 'var_1',
+        reason: 'First variation selected as default - manual review recommended',
+        confidenceLevel: 50
+      }
+    };
+  }
+}
+
+/**
+ * AI selects the winner from A/B test variations
+ */
+async function selectABTestWinner(variations, businessProfile, evaluationCriteria = 'balanced') {
+  const companyName = businessProfile.name || 'Your Company';
+  
+  const variationsContext = variations.map((v, i) => `
+Variation ${i + 1} - ${v.name}:
+- Caption Preview: ${v.caption?.substring(0, 150)}...
+- Predicted Score: ${v.predictedMetrics?.overallScore || 'N/A'}
+- Key Strengths: ${(v.aiAnalysis?.strengths || []).join(', ')}
+`).join('\n');
+
+  const prompt = `You are selecting the WINNER of an A/B test for "${companyName}".
+
+=== VARIATIONS ===
+${variationsContext}
+
+=== CRITERIA ===
+Optimization goal: ${evaluationCriteria}
+
+Select the SINGLE BEST variation that will perform optimally. Consider all factors.
+
+Return ONLY valid JSON:
+{
+  "winnerId": "var_1",
+  "reason": "Comprehensive explanation of why this variation wins (2-3 sentences)",
+  "confidenceLevel": 85,
+  "expectedLift": "15-20% improvement over baseline"
+}`;
+
+  try {
+    const response = await callGemini(prompt, { skipCache: true, timeout: API_TIMEOUT });
+    const parsed = parseGeminiJSON(response);
+    
+    return {
+      winnerId: parsed.winnerId || variations[0]?.id,
+      reason: parsed.reason || 'Selected as best performer based on overall metrics',
+      confidenceLevel: parsed.confidenceLevel || 70,
+      expectedLift: parsed.expectedLift || '10-15% improvement'
+    };
+  } catch (error) {
+    console.error('Error selecting winner:', error);
+    
+    // Select variation with highest overall score
+    const winner = variations.reduce((best, current) => {
+      const bestScore = best.predictedMetrics?.overallScore || 0;
+      const currentScore = current.predictedMetrics?.overallScore || 0;
+      return currentScore > bestScore ? current : best;
+    }, variations[0]);
+    
+    return {
+      winnerId: winner?.id || 'var_1',
+      reason: 'Selected based on highest predicted overall score',
+      confidenceLevel: 60
+    };
+  }
+}
+
+/**
+ * Analyze goal progress and provide AI insights
+ */
+async function analyzeGoalProgress(goal, businessProfile, recentCampaigns = []) {
+  const companyName = businessProfile.name || 'Your Company';
+  
+  const progressPercentage = goal.target > goal.startValue 
+    ? ((goal.currentValue - goal.startValue) / (goal.target - goal.startValue)) * 100 
+    : 0;
+  
+  const daysTotal = Math.ceil((new Date(goal.endDate) - new Date(goal.startDate)) / (1000 * 60 * 60 * 24));
+  const daysPassed = Math.ceil((new Date() - new Date(goal.startDate)) / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, daysTotal - daysPassed);
+  
+  const campaignContext = recentCampaigns.slice(0, 5).map(c => 
+    `- ${c.name}: ${c.status}, engagement: ${c.performance?.engagement || 0}`
+  ).join('\n');
+
+  const prompt = `You are an AI marketing analyst for "${companyName}". Analyze this marketing goal progress.
+
+=== GOAL ===
+Name: ${goal.name}
+Type: ${goal.type}
+Target: ${goal.target} ${goal.unit}
+Current: ${goal.currentValue} ${goal.unit}
+Start Value: ${goal.startValue} ${goal.unit}
+Progress: ${progressPercentage.toFixed(1)}%
+Days Passed: ${daysPassed}/${daysTotal}
+Days Remaining: ${daysRemaining}
+
+=== RECENT ACTIVITY ===
+${campaignContext || 'No recent campaigns'}
+
+=== PROGRESS HISTORY ===
+${(goal.progressHistory || []).slice(-5).map(p => 
+  `- ${new Date(p.date).toLocaleDateString()}: ${p.value} ${goal.unit}`
+).join('\n') || 'No history'}
+
+Analyze if this goal is on track and provide actionable insights.
+
+Return ONLY valid JSON:
+{
+  "onTrack": true,
+  "projectedCompletion": "2025-01-15",
+  "confidence": 75,
+  "currentPace": "5.2 per day",
+  "requiredPace": "6.1 per day",
+  "recommendation": "Specific, actionable recommendation (2-3 sentences)",
+  "riskLevel": "low",
+  "opportunities": ["Opportunity 1", "Opportunity 2"],
+  "potentialBlockers": ["Blocker 1"]
+}`;
+
+  try {
+    const response = await callGemini(prompt, { skipCache: true, timeout: API_TIMEOUT });
+    const parsed = parseGeminiJSON(response);
+    
+    return {
+      onTrack: parsed.onTrack ?? progressPercentage >= (daysPassed / daysTotal) * 100 * 0.8,
+      projectedCompletion: parsed.projectedCompletion ? new Date(parsed.projectedCompletion) : goal.endDate,
+      confidence: parsed.confidence || 70,
+      recommendation: parsed.recommendation || 'Continue current strategy and monitor progress',
+      currentPace: parsed.currentPace || 'Unknown',
+      requiredPace: parsed.requiredPace || 'Unknown',
+      riskLevel: parsed.riskLevel || 'medium',
+      opportunities: parsed.opportunities || [],
+      potentialBlockers: parsed.potentialBlockers || []
+    };
+  } catch (error) {
+    console.error('Error analyzing goal:', error);
+    
+    const onTrack = progressPercentage >= (daysPassed / daysTotal) * 100 * 0.8;
+    
+    return {
+      onTrack,
+      projectedCompletion: goal.endDate,
+      confidence: 50,
+      recommendation: onTrack 
+        ? 'Goal is on track. Maintain current efforts.' 
+        : 'Goal is behind schedule. Consider increasing campaign frequency.',
+      riskLevel: onTrack ? 'low' : 'medium'
+    };
+  }
+}
+
+/**
+ * Generate recommendations for achieving goals
+ */
+async function generateGoalRecommendations(goals, businessProfile) {
+  const companyName = businessProfile.name || 'Your Company';
+  const industry = businessProfile.industry || 'General';
+  
+  const goalsContext = goals.map(g => {
+    const progress = g.target > g.startValue 
+      ? ((g.currentValue - g.startValue) / (g.target - g.startValue)) * 100 
+      : 0;
+    return `- ${g.name} (${g.type}): ${progress.toFixed(0)}% complete, ${g.daysRemaining || 0} days left`;
+  }).join('\n');
+
+  const prompt = `You are a marketing strategist for "${companyName}" in the ${industry} industry. Review their active goals and provide prioritized recommendations.
+
+=== ACTIVE GOALS ===
+${goalsContext}
+
+Provide 3-5 specific, actionable recommendations to help achieve these goals faster. Focus on high-impact activities.
+
+Return ONLY valid JSON:
+{
+  "recommendations": [
+    {
+      "id": "rec_1",
+      "title": "Short action title",
+      "description": "Detailed explanation of what to do and why",
+      "priority": "high",
+      "relatedGoals": ["goal_type_1"],
+      "estimatedImpact": "Could increase progress by 20%",
+      "effort": "low"
+    }
+  ],
+  "overallAssessment": "Brief summary of goal health and priority focus"
+}`;
+
+  try {
+    const response = await callGemini(prompt, { skipCache: true, timeout: API_TIMEOUT });
+    const parsed = parseGeminiJSON(response);
+    
+    return parsed.recommendations || [];
+  } catch (error) {
+    console.error('Error generating recommendations:', error);
+    return [
+      {
+        id: 'rec_default',
+        title: 'Review and adjust strategy',
+        description: 'Analyze current performance and adjust your approach based on what\'s working',
+        priority: 'medium',
+        estimatedImpact: 'Varies',
+        effort: 'medium'
+      }
+    ];
   }
 }
 
@@ -1358,5 +1991,13 @@ module.exports = {
   generateChatSuggestions,
   generateCompetitorActivity,
   generateRivalPost,
-  getRelevantImage
+  getRelevantImage,
+  generateImageFromCustomPrompt,
+  // New A/B testing functions
+  generateABTestVariations,
+  analyzeABTestVariations,
+  selectABTestWinner,
+  // New goal tracking functions
+  analyzeGoalProgress,
+  generateGoalRecommendations
 };

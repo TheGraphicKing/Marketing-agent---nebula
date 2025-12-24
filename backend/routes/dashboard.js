@@ -28,35 +28,6 @@ try {
   console.warn('socialMediaAPI not available:', e.message);
 }
 
-// ============================================
-// In-memory cache for dashboard data
-// ============================================
-const dashboardCache = new Map();
-const DASHBOARD_CACHE_TTL = 60 * 1000; // 1 minute cache for dashboard
-const AI_INSIGHTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes for AI insights
-
-function getDashboardCache(userId) {
-  const cached = dashboardCache.get(userId);
-  if (cached && (Date.now() - cached.timestamp) < DASHBOARD_CACHE_TTL) {
-    return cached.data;
-  }
-  return null;
-}
-
-function setDashboardCache(userId, data) {
-  dashboardCache.set(userId, { data, timestamp: Date.now() });
-}
-
-// Cleanup old cache entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of dashboardCache.entries()) {
-    if (now - value.timestamp > DASHBOARD_CACHE_TTL * 2) {
-      dashboardCache.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
-
 // Helper to generate post URL based on platform
 function generatePlatformPostUrl(platform, socialHandles) {
   const handle = socialHandles?.[platform] || 'user';
@@ -87,30 +58,14 @@ function generatePlatformPostUrl(platform, socialHandles) {
 router.get('/overview', protect, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const skipCache = req.query.refresh === 'true';
-    
-    // Check cache first (unless refresh requested)
-    if (!skipCache) {
-      const cached = getDashboardCache(userId);
-      if (cached) {
-        console.log('⚡ Returning cached dashboard data');
-        return res.json(cached);
-      }
-    }
-    
-    // Run initial database queries in parallel for better performance
-    const [user, allCampaigns, competitors, influencerCount] = await Promise.all([
-      User.findById(userId),
-      Campaign.find({ userId }).sort({ createdAt: -1 }).lean(), // Use lean() for faster read
-      Competitor.find({ userId }).limit(10).lean(),
-      Influencer.countDocuments({ userId })
-    ]);
+    const user = await User.findById(userId);
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Process campaign data (already fetched)
+    // Get REAL campaign data from database
+    const allCampaigns = await Campaign.find({ userId }).sort({ createdAt: -1 });
     const activeCampaigns = allCampaigns.filter(c => ['active', 'posted', 'scheduled'].includes(c.status));
     const recentCampaigns = allCampaigns.slice(0, 10);
     
@@ -141,7 +96,8 @@ router.get('/overview', protect, async (req, res) => {
     const totalEngagement = allCampaigns.reduce((sum, c) => sum + (c.performance?.engagement || 0), 0);
     const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
     
-    // Process competitor data (already fetched)
+    // Get competitor data - prioritize database records, then sync from onboarding
+    let competitors = await Competitor.find({ userId }).limit(10);
     let competitorPosts = [];
     
     // Get competitor names from onboarding (businessProfile.competitors)
@@ -256,29 +212,19 @@ router.get('/overview', protect, async (req, res) => {
       }
     }
 
-    // influencerCount already fetched in parallel above
+    // Get REAL influencer count
+    const influencerCount = await Influencer.countDocuments({ userId });
     
-    // Generate AI-powered insights using Gemini (with real context) - with timeout
+    // Generate AI-powered insights using Gemini (with real context)
     const metrics = {
       totalCampaigns: allCampaigns.length,
       activeCampaigns: activeCampaigns.length,
       totalSpent,
       engagementRate: totalImpressions > 0 ? ((totalEngagement / totalImpressions) * 100).toFixed(2) : 0
     };
-    
-    // Use Promise.race to timeout AI generation if it takes too long
-    let aiData = { suggestedActions: [], trendingTopics: [], personalizedTips: [], brandScoreFactors: {} };
-    if (user.businessProfile?.name) {
-      try {
-        const aiPromise = generateDashboardInsights(user.businessProfile, metrics);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('AI timeout')), 5000)
-        );
-        aiData = await Promise.race([aiPromise, timeoutPromise]);
-      } catch (aiError) {
-        console.warn('AI insights generation timed out or failed, using defaults');
-      }
-    }
+    const aiData = user.businessProfile?.name 
+      ? await generateDashboardInsights(user.businessProfile, metrics)
+      : { suggestedActions: [], trendingTopics: [], personalizedTips: [], brandScoreFactors: {} };
     
     // Calculate brand score based on REAL data
     const brandScore = calculateRealBrandScore({
@@ -393,9 +339,6 @@ router.get('/overview', protect, async (req, res) => {
       }
     };
 
-    // Cache the response
-    setDashboardCache(userId, dashboardData);
-    
     res.json(dashboardData);
   } catch (error) {
     console.error('Dashboard overview error:', error);
