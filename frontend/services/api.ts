@@ -1,6 +1,7 @@
 import { AuthResponse, BusinessProfile, Campaign, DashboardData, SocialConnection, User } from '../types';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Use relative URL in production (when served from same origin), localhost in development
+const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:5000/api';
 
 // Helper to get auth token
 const getToken = (): string | null => localStorage.getItem('authToken');

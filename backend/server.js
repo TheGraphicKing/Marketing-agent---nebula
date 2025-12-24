@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
 
 // ============================================
 // Environment Validation (Fail Fast)
@@ -48,9 +49,26 @@ const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 
-// Middleware
+// CORS configuration for production and development
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'https://marketing-agent-nebula.onrender.com'
+];
+
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173'],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, same-origin)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      // Allow all origins in production for flexibility
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -129,11 +147,24 @@ app.get('/api/demo/dashboard', (req, res) => {
   });
 });
 
-// 404 handler
+// Serve static files from React frontend build
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Catch-all handler for React Router - serve index.html for any non-API routes
+app.get('*', (req, res, next) => {
+  // If it's an API route, pass to 404 handler
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  // Otherwise serve React app
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// API 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Endpoint not found'
+    message: 'API endpoint not found'
   });
 });
 
