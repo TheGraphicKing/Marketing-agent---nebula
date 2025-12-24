@@ -1247,4 +1247,119 @@ export const apiService = {
     );
     return response;
   },
+
+  // ============================================
+  // A/B TESTING
+  // ============================================
+
+  getABTests: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/abtest',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  createABTest: async (data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/abtest/create',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  analyzeABTest: async (testId: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/abtest/${testId}/analyze`,
+      { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  selectABTestWinner: async (testId: string, variationId: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/abtest/${testId}/select-winner`,
+      { method: 'POST', body: JSON.stringify({ variationId }) },
+      true
+    );
+    return response;
+  },
+
+  // ============================================
+  // GOAL TRACKING
+  // ============================================
+
+  getGoals: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/goals',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  createGoal: async (data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/goals/create',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  updateGoalProgress: async (goalId: string, newValue: number): Promise<any> => {
+    const response = await apiCall<any>(
+      `/goals/${goalId}/progress`,
+      { method: 'PUT', body: JSON.stringify({ currentValue: newValue }) },
+      true
+    );
+    return response;
+  },
+
+  // ============================================
+  // ONBOARDING TOUR
+  // ============================================
+
+  getTourProgress: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/onboarding-tour/tour-config',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  updateTourProgress: async (data: { currentStep: number; completedSteps: string[] }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/onboarding-tour/tour-progress',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  completeTour: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/onboarding-tour/tour-progress',
+      { method: 'POST', body: JSON.stringify({ isCompleted: true }) },
+      true
+    );
+    return response;
+  },
+
+  // ============================================
+  // IMAGE REGENERATION
+  // ============================================
+
+  regenerateImage: async (data: { prompt?: string; style?: string; campaignId?: string; industry?: string; platform?: string }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/content/regenerate-image',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
 };
