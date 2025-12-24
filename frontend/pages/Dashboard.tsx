@@ -370,8 +370,8 @@ const Dashboard: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Sample budget data points for the graph - use real data if available
-  const budgetData = data?.overview?.dailySpend?.map((d: any) => d.spend) || [0, 0, 0, 0, 0, 0, 0];
-  const days = data?.overview?.dailySpend?.map((d: any) => d.day) || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const budgetData = (data?.overview as any)?.dailySpend?.map((d: any) => d.spend) || [0, 0, 0, 0, 0, 0, 0];
+  const days = (data?.overview as any)?.dailySpend?.map((d: any) => d.day) || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const hasRealData = data?.dataSource === 'real';
   const hasCampaigns = (data?.overview?.totalCampaigns || 0) > 0;
   const hasSpend = (data?.overview?.totalSpent || 0) > 0;
@@ -525,7 +525,7 @@ const Dashboard: React.FC = () => {
     try {
       const result = await apiService.regenerateImage({
         prompt: customImagePrompt,
-        industry: data?.brand?.industry || 'general',
+        industry: data?.businessContext?.industry || 'general',
         platform: rivalPost.platform
       });
       if (result.imageUrl) {
@@ -1993,10 +1993,10 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         platform: campaign.platforms?.[0] || 'instagram',
         budget: campaign.budget?.amount?.toString() || '',
         targetAudience: campaign.targeting?.demographics || '',
-        contentType: campaign.creative?.type || 'image',
+        contentType: (campaign.creative?.type === 'text' ? 'image' : campaign.creative?.type) || 'image',
         hashtags: campaign.creative?.hashtags?.join(', ') || '',
         callToAction: campaign.creative?.callToAction || '',
-        objective: campaign.objective || 'awareness',
+        objective: (campaign.objective === 'sales' ? 'conversions' : campaign.objective === 'conversion' ? 'conversions' : campaign.objective) || 'awareness',
         priority: campaign.priority || 'medium',
         notes: campaign.notes || ''
       });
