@@ -1366,4 +1366,211 @@ export const apiService = {
     );
     return response;
   },
+
+  // ============================================
+  // REACHOUTS CRM
+  // ============================================
+
+  // Onboarding Context
+  getReachoutContext: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/context',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  updateReachoutContext: async (data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/context',
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  checkReachoutReadiness: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/readiness',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  // Leads
+  getLeads: async (params?: { status?: string; source?: string; search?: string; page?: number; limit?: number }): Promise<any> => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const response = await apiCall<any>(
+      `/reachouts/leads${queryString}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  getLeadStats: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/leads/stats',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  getLead: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/leads/${id}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  createLead: async (data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/leads',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  updateLead: async (id: string, data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/leads/${id}`,
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  deleteLead: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/leads/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  addLeadActivity: async (id: string, activity: any): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/leads/${id}/activity`,
+      { method: 'POST', body: JSON.stringify(activity) },
+      true
+    );
+    return response;
+  },
+
+  importLeads: async (leads: any[]): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/leads/import',
+      { method: 'POST', body: JSON.stringify({ leads }) },
+      true
+    );
+    return response;
+  },
+
+  // AI Generation
+  generateEmail: async (data: { leadId: string; type?: string; options?: any }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/generate/email',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  generateCallScript: async (data: { leadId: string; options?: any }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/generate/call-script',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  generateLinkedIn: async (data: { leadId: string; type?: string; options?: any }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/generate/linkedin',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  generateObjectionHandling: async (data?: { leadId?: string; options?: any }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/generate/objections',
+      { method: 'POST', body: JSON.stringify(data || {}) },
+      true
+    );
+    return response;
+  },
+
+  generateContentVariations: async (data: { leadId: string; contentType?: string; variations?: number; options?: any }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/generate/variations',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  regenerateWithFeedback: async (data: { leadId: string; contentType: string; previousContent: any; feedback: string }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/generate/regenerate',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  // Sequences
+  getSequences: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/sequences',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  createSequence: async (data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/sequences',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  updateSequence: async (id: string, data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/sequences/${id}`,
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  deleteSequence: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/sequences/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  enrollInSequence: async (sequenceId: string, leadIds: string[]): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/sequences/${sequenceId}/enroll`,
+      { method: 'POST', body: JSON.stringify({ leadIds }) },
+      true
+    );
+    return response;
+  },
 };

@@ -47,6 +47,9 @@ const contentRoutes = require('./routes/content');
 const campaignBuilderRoutes = require('./routes/campaignBuilder');
 const analyticsRoutes = require('./routes/analytics');
 
+// Reachouts CRM routes
+const reachoutsRoutes = require('./routes/reachouts');
+
 const app = express();
 
 // CORS configuration for production and development
@@ -98,6 +101,9 @@ app.use('/api/trends', trendRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/campaign-builder', campaignBuilderRoutes);
 app.use('/api/analytics', analyticsRoutes);
+
+// Routes - Reachouts CRM
+app.use('/api/reachouts', reachoutsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

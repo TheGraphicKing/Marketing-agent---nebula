@@ -11,6 +11,7 @@ import Competitors from './pages/Competitors';
 import Influencers from './pages/Influencers';
 import ConnectSocials from './pages/ConnectSocials';
 import Settings from './pages/Settings';
+import Reachouts from './pages/Reachouts';
 import { ThemeProvider } from './context/ThemeContext';
 import { apiService } from './services/api';
 import { User } from './types';
@@ -102,6 +103,7 @@ const App: React.FC = () => {
                     <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/competitors" element={<Competitors />} />
                     <Route path="/influencers" element={<Influencers />} />
+                    <Route path="/reachouts" element={<Reachouts />} />
                     <Route path="/connect-socials" element={<ConnectSocials />} />
                     <Route path="/settings" element={<Settings user={user} onUserUpdate={setUser} />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
