@@ -48,6 +48,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         industry: '',
         niche: '',
         businessType: '',
+        businessLocation: '',
         targetAudience: '',
         brandVoice: 'Professional',
         marketingGoals: [],
@@ -209,13 +210,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         if (currentStep === 1) {
             if (!formData.name || !formData.industry) return "Company Name and Industry are required.";
             if (!formData.businessType) return "Please select your business type (B2B, B2C, or Both).";
+            if (!formData.businessLocation) return "Please enter your business location.";
         }
         if (currentStep === 2) {
             if (!formData.targetAudience) return "Please describe your target audience.";
         }
         if (currentStep === 3) {
             if (formData.marketingGoals.length === 0) return "Please select at least one marketing goal.";
-            if (!formData.competitors || formData.competitors.length === 0) return "Please add at least one competitor to track.";
+            // Competitors are optional - AI will auto-discover them
         }
         // Step 4 (socials) is optional - no validation needed
         return null;
@@ -546,6 +548,23 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     </div>
                                 </div>
                                 <div>
+                                    <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Business Location <span className="text-red-500">*</span></label>
+                                    <input 
+                                        type="text" 
+                                        className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] ${
+                                            theme === 'dark' 
+                                                ? 'bg-[#070A12] border-[#ffcc29]/30 text-[#ededed] placeholder-[#ededed]/40' 
+                                                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                                        }`}
+                                        placeholder="e.g. Chennai, Tamil Nadu or New York, USA"
+                                        value={formData.businessLocation}
+                                        onChange={e => handleChange('businessLocation', e.target.value)}
+                                    />
+                                    <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-500'}`}>
+                                        Enter the city/region where your business primarily operates
+                                    </p>
+                                </div>
+                                <div>
                                     <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Short Description</label>
                                     <textarea 
                                         className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] h-24 resize-none ${
@@ -639,11 +658,17 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                 {/* Competitors Section */}
                                 <div className="mt-6 pt-6 border-t border-[#ededed]/10">
                                     <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>
-                                        Your Competitors <span className="text-red-500">*</span>
+                                        Your Competitors <span className={`text-xs font-normal ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-400'}`}>(optional)</span>
                                     </label>
                                     <p className={`text-xs mb-3 ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-500'}`}>
-                                        Enter at least one competitor name/brand you'd like to track. Press Enter or click Add to add each one.
+                                        Add specific competitors you'd like to track, or skip this — our AI will automatically discover competitors based on your business and location.
                                     </p>
+                                    <div className={`mb-3 p-3 rounded-lg flex items-start gap-2 ${theme === 'dark' ? 'bg-[#ffcc29]/10 border border-[#ffcc29]/20' : 'bg-yellow-50 border border-yellow-200'}`}>
+                                        <span className="text-[#ffcc29] text-lg">✨</span>
+                                        <p className={`text-xs ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
+                                            <strong>AI-Powered Discovery:</strong> We'll automatically find and track your top competitors in {formData.businessLocation || 'your location'} based on your industry and target audience.
+                                        </p>
+                                    </div>
                                     <div className="flex gap-2">
                                         <input 
                                             type="text" 

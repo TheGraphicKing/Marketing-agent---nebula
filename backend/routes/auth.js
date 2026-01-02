@@ -172,6 +172,39 @@ router.post('/login', [
   }
 });
 
+// @route   GET /api/auth/business-context
+// @desc    Get user's business context including location
+// @access  Private
+router.get('/business-context', protect, async (req, res) => {
+  try {
+    const OnboardingContext = require('../models/OnboardingContext');
+    const context = await OnboardingContext.findOne({ userId: req.user._id });
+    
+    if (!context) {
+      return res.status(404).json({
+        success: false,
+        message: 'Business context not found. Please complete onboarding.'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      context: {
+        company: context.company,
+        geography: context.geography,
+        targetCustomer: context.targetCustomer,
+        primaryGoal: context.primaryGoal
+      }
+    });
+  } catch (error) {
+    console.error('Get business context error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Unable to fetch business context'
+    });
+  }
+});
+
 // @route   GET /api/auth/me
 // @desc    Get current logged in user
 // @access  Private
@@ -276,6 +309,63 @@ router.put('/complete-onboarding', protect, async (req, res) => {
       updateData,
       { new: true }
     );
+
+    // Also save to OnboardingContext for AI outreach
+    try {
+      const OnboardingContext = require('../models/OnboardingContext');
+      
+      // Parse location from businessLocation field
+      const locationParts = (businessProfile?.businessLocation || '').split(',').map(p => p.trim());
+      const regions = locationParts.length > 0 ? [locationParts[0]] : [];
+      const countries = locationParts.length > 1 ? [locationParts[locationParts.length - 1]] : [];
+      
+      const contextData = {
+        userId: req.user._id,
+        company: {
+          name: businessProfile?.name || businessProfile?.companyName || '',
+          website: businessProfile?.website || '',
+          industry: businessProfile?.industry || '',
+          description: businessProfile?.niche || businessProfile?.description || businessProfile?.tagline || ''
+        },
+        targetCustomer: {
+          description: businessProfile?.targetAudience || businessProfile?.goals || 'General audience',
+          roles: [],
+          companySize: 'any',
+          industries: [businessProfile?.industry || ''].filter(Boolean)
+        },
+        geography: {
+          isGlobal: !businessProfile?.businessLocation,
+          regions: regions,
+          countries: countries,
+          businessLocation: businessProfile?.businessLocation || ''
+        },
+        primaryGoal: businessProfile?.goals?.toLowerCase()?.includes('lead') ? 'leads' 
+          : businessProfile?.goals?.toLowerCase()?.includes('sale') ? 'sales'
+          : businessProfile?.goals?.toLowerCase()?.includes('awareness') ? 'awareness'
+          : 'leads',
+        brandTone: businessProfile?.tone || 'professional',
+        valueProposition: {
+          main: businessProfile?.tagline || businessProfile?.niche || '',
+          keyBenefits: [],
+          differentiators: []
+        },
+        completionStatus: {
+          isComplete: true,
+          completedAt: new Date()
+        }
+      };
+      
+      await OnboardingContext.findOneAndUpdate(
+        { userId: req.user._id },
+        contextData,
+        { upsert: true, new: true }
+      );
+      
+      console.log('✅ OnboardingContext saved for AI outreach');
+    } catch (contextError) {
+      console.error('Failed to save OnboardingContext:', contextError);
+      // Don't fail the whole request, just log
+    }
 
     console.log('Onboarding completed for user:', user.email);
     console.log('Business Profile saved:', JSON.stringify(user.businessProfile, null, 2));

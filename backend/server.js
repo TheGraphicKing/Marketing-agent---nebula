@@ -8,7 +8,7 @@ const path = require('path');
 // Environment Validation (Fail Fast)
 // ============================================
 const requiredEnvVars = ['GEMINI_API_KEY'];
-const optionalEnvVars = ['GROK_API_KEY', 'MONGODB_URI', 'JWT_SECRET'];
+const optionalEnvVars = ['GROK_API_KEY', 'MONGODB_URI', 'JWT_SECRET', 'SES_AWS_ACCESS_KEY_ID', 'SES_AWS_SECRET_ACCESS_KEY', 'SES_SENDER_EMAIL'];
 
 console.log('\n🔍 Validating environment...');
 for (const envVar of requiredEnvVars) {
@@ -49,6 +49,12 @@ const analyticsRoutes = require('./routes/analytics');
 
 // Reachouts CRM routes
 const reachoutsRoutes = require('./routes/reachouts');
+
+// Notification routes
+const notificationRoutes = require('./routes/notifications');
+
+// Notification scheduler service
+const notificationScheduler = require('./services/notificationScheduler');
 
 const app = express();
 
@@ -104,6 +110,9 @@ app.use('/api/analytics', analyticsRoutes);
 
 // Routes - Reachouts CRM
 app.use('/api/reachouts', reachoutsRoutes);
+
+// Routes - Notifications
+app.use('/api/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -196,6 +205,23 @@ const startServer = async () => {
     });
     console.log('✅ MongoDB connected successfully');
     mongoConnected = true;
+    
+    // Warm up the Lead model to ensure indexes are synced
+    try {
+      const Lead = require('./models/Lead');
+      await Lead.ensureIndexes();
+      const count = await Lead.countDocuments({});
+      console.log(`✅ Lead model ready (${count} leads in database)`);
+    } catch (warmupError) {
+      console.warn('⚠️  Lead model warmup failed:', warmupError.message);
+    }
+
+    // Start notification scheduler for campaign reminders
+    try {
+      notificationScheduler.start();
+    } catch (schedulerError) {
+      console.warn('⚠️  Notification scheduler failed to start:', schedulerError.message);
+    }
   } catch (error) {
     console.warn('⚠️  MongoDB not available:', error.message);
     console.warn('   Server will start in demo mode (no database persistence)');
@@ -222,6 +248,7 @@ mongoose.connection.on('error', (err) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
+  notificationScheduler.stop();
   await mongoose.connection.close();
   process.exit(0);
 });

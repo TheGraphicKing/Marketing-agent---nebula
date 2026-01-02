@@ -1543,55 +1543,91 @@ async function discoverInfluencers(brandProfile, options = {}) {
 
 /**
  * Build search keywords based on brand profile
+ * Optimized for finding LARGE, RELEVANT influencers
  */
 function buildInfluencerSearchKeywords(brandProfile) {
   const keywords = [];
   const { industry, niche, targetAudience, products, services, marketingGoals, name } = brandProfile;
 
-  // Add industry-based keywords
+  // Add industry-based keywords - FOCUSED on finding BIG influencers
   if (industry) {
-    keywords.push(industry.toLowerCase());
+    const industryLower = industry.toLowerCase();
     
-    // Industry-specific influencer keywords
+    // Industry-specific influencer keywords - prioritize high-follower niches
     const industryKeywords = {
-      'ecommerce': ['shopping', 'fashion', 'lifestyle', 'haul', 'unboxing'],
-      'saas': ['tech', 'software', 'productivity', 'startup', 'business'],
-      'fashion': ['style', 'outfit', 'ootd', 'fashionblogger', 'streetwear'],
-      'beauty': ['makeup', 'skincare', 'beauty', 'cosmetics', 'beautytips'],
-      'fitness': ['fitness', 'workout', 'gym', 'health', 'nutrition'],
-      'food': ['foodie', 'cooking', 'recipe', 'chef', 'restaurant'],
-      'travel': ['travel', 'wanderlust', 'explore', 'adventure', 'travelblogger'],
-      'tech': ['technology', 'gadgets', 'reviews', 'tech', 'innovation'],
-      'gaming': ['gaming', 'gamer', 'esports', 'streamer', 'gameplay'],
-      'education': ['education', 'learning', 'study', 'teacher', 'edtech'],
-      'finance': ['finance', 'investing', 'money', 'stocks', 'crypto'],
-      'healthcare': ['health', 'wellness', 'medical', 'healthcare', 'doctor'],
-      'sports': ['sports', 'athlete', 'fitness', 'training', 'soccer', 'basketball']
+      'ecommerce': ['top fashion influencer', 'lifestyle blogger 100k', 'product reviewer verified', 'shopping haul creator'],
+      'saas': ['tech startup founder', 'software CEO', 'SaaS influencer', 'tech entrepreneur'],
+      'fashion': ['fashion model verified', 'celebrity stylist', 'fashion week influencer', 'style icon'],
+      'beauty': ['celebrity makeup artist', 'beauty guru verified', 'skincare expert', 'beauty brand founder'],
+      'fitness': ['celebrity trainer', 'fitness model verified', 'gym owner influencer', 'bodybuilding champion'],
+      'food': ['celebrity chef', 'michelin star chef', 'food network star', 'restaurant owner influencer'],
+      'travel': ['luxury travel blogger', 'travel photographer verified', 'adventure influencer', 'world traveler'],
+      'tech': ['tech CEO', 'silicon valley influencer', 'gadget reviewer verified', 'tech founder'],
+      'gaming': ['pro gamer', 'esports champion', 'gaming youtuber verified', 'twitch partner'],
+      'education': ['education entrepreneur', 'online course creator', 'edtech founder', 'professor influencer'],
+      'finance': ['wealth advisor', 'investment banker influencer', 'finance CEO', 'crypto whale'],
+      'healthcare': ['celebrity doctor', 'medical influencer verified', 'wellness founder', 'health entrepreneur'],
+      'sports': ['professional athlete', 'olympic athlete', 'sports commentator', 'fitness celebrity'],
+      'construction': ['celebrity architect', 'interior design celebrity', 'luxury home builder', 'real estate mogul', 'property developer', 'home renovation expert', 'architectural designer'],
+      'real estate': ['luxury realtor celebrity', 'real estate investor millionaire', 'property mogul', 'mansion tour creator', 'real estate entrepreneur'],
+      'service': ['business mogul', 'entrepreneur verified', 'CEO influencer', 'industry leader'],
+      'luxury': ['billionaire lifestyle', 'luxury brand ambassador', 'affluent influencer', 'high society influencer', 'luxury car collector']
     };
 
-    const normalizedIndustry = industry.toLowerCase();
+    // Find matching keywords - collect from multiple matching categories
     for (const [key, values] of Object.entries(industryKeywords)) {
-      if (normalizedIndustry.includes(key)) {
-        keywords.push(...values.slice(0, 3));
-        break;
+      if (industryLower.includes(key)) {
+        keywords.push(...values);
       }
+    }
+    
+    // If no specific match, use high-profile generic keywords
+    if (keywords.length === 0) {
+      keywords.push('business mogul', 'entrepreneur verified', 'industry leader', 'CEO influencer');
     }
   }
 
-  // Add niche keywords
-  if (niche) {
-    keywords.push(niche.toLowerCase().replace(/\s+/g, ''));
+  // For construction specifically, add India-focused keywords if relevant
+  if (industry && industry.toLowerCase().includes('construction')) {
+    keywords.push('indian architect', 'india interior designer', 'luxury villa india', 'south indian architect');
   }
 
-  // Add target audience keywords
-  if (targetAudience) {
-    const audienceStr = typeof targetAudience === 'string' ? targetAudience : JSON.stringify(targetAudience);
-    const audienceKeywords = audienceStr.match(/\b[a-zA-Z]{4,}\b/g) || [];
-    keywords.push(...audienceKeywords.slice(0, 2).map(k => k.toLowerCase()));
+  // Extract meaningful words from niche for targeted search
+  if (niche && typeof niche === 'string') {
+    const nicheWords = niche
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3 && !['focus', 'with', 'that', 'this', 'from', 'have', 'been', 'their', 'building'].includes(word.toLowerCase()))
+      .slice(0, 2);
+    
+    nicheWords.forEach(word => {
+      keywords.push(`${word.toLowerCase()} expert verified`);
+    });
   }
 
-  // Remove duplicates and limit
-  return [...new Set(keywords)].slice(0, 5);
+  // Add luxury/HNI focused keywords if targeting affluent audience
+  if (targetAudience && typeof targetAudience === 'string') {
+    const taLower = targetAudience.toLowerCase();
+    if (taLower.includes('hni') || taLower.includes('high-net-worth') || taLower.includes('luxury') || taLower.includes('affluent')) {
+      keywords.push('luxury lifestyle influencer', 'millionaire lifestyle', 'high net worth influencer', 'affluent living');
+    }
+    if (taLower.includes('home') || taLower.includes('villa') || taLower.includes('property')) {
+      keywords.push('luxury home tour', 'mansion tour', 'dream home builder', 'celebrity home designer');
+    }
+    if (taLower.includes('nri') || taLower.includes('overseas')) {
+      keywords.push('NRI influencer', 'indian diaspora lifestyle', 'overseas indian entrepreneur');
+    }
+  }
+
+  // Remove duplicates and prioritize specific searches
+  const uniqueKeywords = [...new Set(keywords)];
+  
+  // Sort by specificity (longer keywords first - they're usually more specific)
+  uniqueKeywords.sort((a, b) => b.length - a.length);
+  
+  console.log('🎯 Generated search keywords:', uniqueKeywords.slice(0, 8));
+  
+  return uniqueKeywords.slice(0, 8);
 }
 
 /**

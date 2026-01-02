@@ -126,8 +126,8 @@ const leadSchema = new mongoose.Schema({
   company: {
     name: {
       type: String,
-      required: [true, 'Company name is required'],
-      trim: true
+      trim: true,
+      default: ''
     },
     website: {
       type: String,
@@ -154,8 +154,8 @@ const leadSchema = new mongoose.Schema({
   // Lead Source & Scoring
   source: {
     type: String,
-    enum: ['manual', 'linkedin', 'website', 'referral', 'event', 'cold_list', 'import', 'other'],
-    default: 'manual'
+    enum: ['manual', 'linkedin', 'website', 'referral', 'event', 'cold_list', 'import', 'email', 'call', 'whatsapp', 'sms', 'meta_ads', 'google_ads', 'hubspot', 'zoho_crm', 'salesforce', 'other'],
+    default: 'import'
   },
   sourceDetails: {
     type: String,

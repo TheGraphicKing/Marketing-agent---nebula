@@ -11,6 +11,7 @@ const Campaign = require('../models/Campaign');
 const Competitor = require('../models/Competitor');
 const Influencer = require('../models/Influencer');
 const CachedCampaign = require('../models/CachedCampaign');
+const OnboardingContext = require('../models/OnboardingContext');
 const { 
   generateDashboardInsights,
   generateCampaignSuggestions,
@@ -19,6 +20,7 @@ const {
   generateSingleCampaign,
   generateRivalPost
 } = require('../services/geminiAI');
+const { generateWithLLM } = require('../services/llmRouter');
 
 // Import socialMediaAPI for real competitor scraping
 let socialMediaAPI = null;
@@ -26,6 +28,132 @@ try {
   socialMediaAPI = require('../services/socialMediaAPI');
 } catch (e) {
   console.warn('socialMediaAPI not available:', e.message);
+}
+
+// Helper to parse LLM JSON response
+function parseGeminiJSON(text) {
+  try {
+    if (!text || typeof text !== 'string') {
+      console.error('parseGeminiJSON: Invalid input - not a string:', typeof text);
+      return null;
+    }
+    
+    // Try direct JSON parse first
+    try {
+      return JSON.parse(text.trim());
+    } catch (e) {
+      // Continue to try other methods
+    }
+    
+    // Try to extract from markdown code blocks
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch && jsonMatch[1]) {
+      return JSON.parse(jsonMatch[1].trim());
+    }
+    
+    // Try to find JSON object in text
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      return JSON.parse(objectMatch[0]);
+    }
+    
+    console.error('parseGeminiJSON: No valid JSON found in text');
+    return null;
+  } catch (e) {
+    console.error('JSON parse error:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Auto-discover competitors using Gemini AI based on user's business context
+ */
+async function autoDiscoverCompetitorsForUser(userId, businessContext) {
+  console.log('🔍 Auto-discovering competitors for new user...');
+  
+  const prompt = `You are a market research expert. Find REAL competitors for this business.
+
+BUSINESS CONTEXT:
+- Company: ${businessContext.companyName}
+- Industry: ${businessContext.industry}
+- Description: ${businessContext.description}
+- Target Customer: ${businessContext.targetCustomer}
+- Location: ${businessContext.location}
+
+REQUIREMENTS:
+1. Find 5-6 REAL competitors that operate in or near ${businessContext.location}
+2. These must be ACTUAL businesses with social media presence
+3. Focus on direct competitors in the same industry
+4. Include their REAL Instagram handles (verified to exist)
+5. Mix of large and smaller competitors
+
+Return ONLY valid JSON:
+{
+  "competitors": [
+    {
+      "name": "Company Name",
+      "instagram": "@instagram_handle",
+      "twitter": "@twitter_handle",
+      "website": "https://website.com",
+      "description": "Brief description of what they do",
+      "estimatedFollowers": 50000
+    }
+  ]
+}
+
+IMPORTANT: Only include businesses you are confident are REAL.`;
+
+  try {
+    const result = await generateWithLLM({ provider: 'gemini', prompt, taskType: 'analysis' });
+    // generateWithLLM returns raw text when no jsonSchema is provided
+    const responseText = typeof result === 'string' ? result : (result?.text || result?.content || JSON.stringify(result));
+    console.log('Gemini response type:', typeof result, 'First 200 chars:', String(responseText).substring(0, 200));
+    
+    const parsed = parseGeminiJSON(responseText);
+
+    if (parsed && parsed.competitors && Array.isArray(parsed.competitors)) {
+      console.log(`✅ Auto-discovered ${parsed.competitors.length} competitors`);
+      
+      // Save competitors to database
+      const savedCompetitors = [];
+      for (const comp of parsed.competitors) {
+        try {
+          const competitor = new Competitor({
+            userId,
+            name: comp.name,
+            website: comp.website || '',
+            description: comp.description || '',
+            industry: businessContext.industry,
+            socialHandles: {
+              instagram: comp.instagram || '',
+              twitter: comp.twitter || '',
+              facebook: comp.facebook || '',
+              linkedin: comp.linkedin || ''
+            },
+            location: businessContext.location,
+            isActive: true,
+            isAutoDiscovered: true,
+            posts: [],
+            metrics: {
+              followers: comp.estimatedFollowers || 0,
+              lastFetched: new Date()
+            }
+          });
+          await competitor.save();
+          savedCompetitors.push(competitor);
+        } catch (saveError) {
+          console.error('Error saving competitor:', comp.name, saveError.message);
+        }
+      }
+      
+      return savedCompetitors;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Auto-discover error:', error.message);
+    return [];
+  }
 }
 
 // Helper to generate post URL based on platform
@@ -96,7 +224,7 @@ router.get('/overview', protect, async (req, res) => {
     const totalEngagement = allCampaigns.reduce((sum, c) => sum + (c.performance?.engagement || 0), 0);
     const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
     
-    // Get competitor data - prioritize database records, then sync from onboarding
+    // Get competitor data - prioritize database records, then auto-discover using AI
     let competitors = await Competitor.find({ userId }).limit(10);
     let competitorPosts = [];
     
@@ -124,6 +252,41 @@ router.get('/overview', protect, async (req, res) => {
       
       // Re-fetch competitors after creation
       competitors = await Competitor.find({ userId }).limit(10);
+    }
+    
+    // If still no competitors, AUTO-DISCOVER using Gemini AI
+    if (competitors.length === 0) {
+      console.log('🔍 No competitors found - attempting auto-discovery...');
+      
+      // Get business context from OnboardingContext or businessProfile
+      const onboardingContext = await OnboardingContext.findOne({ userId });
+      const bp = user?.businessProfile || {};
+      
+      console.log('📋 Business profile:', JSON.stringify(bp, null, 2));
+      console.log('📋 Onboarding context:', onboardingContext ? 'Found' : 'Not found');
+      
+      const businessContext = {
+        companyName: onboardingContext?.company?.name || bp.name || bp.companyName || 'Your Business',
+        industry: onboardingContext?.company?.industry || bp.industry || bp.niche || bp.category || 'Automotive Service',
+        description: onboardingContext?.company?.description || bp.description || bp.niche || 'Premium automotive service and maintenance',
+        targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || 'Car owners and automotive enthusiasts',
+        location: onboardingContext?.geography?.businessLocation || 
+                  onboardingContext?.geography?.regions?.[0] || 
+                  onboardingContext?.geography?.countries?.[0] || 
+                  bp.location ||
+                  'India'
+      };
+      
+      console.log('🎯 Business context for discovery:', JSON.stringify(businessContext, null, 2));
+      
+      // Auto-discover for all users - even if we have minimal context
+      const discoveredCompetitors = await autoDiscoverCompetitorsForUser(userId, businessContext);
+      if (discoveredCompetitors.length > 0) {
+        competitors = discoveredCompetitors;
+        console.log(`✅ Auto-discovered ${competitors.length} competitors`);
+      } else {
+        console.log('⚠️ Auto-discovery returned no competitors');
+      }
     }
     
     // Get competitor names for activity generation
@@ -1020,6 +1183,139 @@ router.get('/search', protect, async (req, res) => {
     res.json(results);
   } catch (error) {
     console.error('Search error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Import strategic advisor functions
+const { 
+  generateStrategicContentSuggestions,
+  generatePostFromSuggestion,
+  refineImageWithPrompt
+} = require('../services/geminiAI');
+
+/**
+ * GET /api/dashboard/strategic-advisor
+ * Get AI-powered strategic content suggestions based on trends, events, competitors
+ */
+router.get('/strategic-advisor', protect, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    // Get user's business context
+    const context = await OnboardingContext.findOne({ userId }).lean();
+    const user = await User.findById(userId).lean();
+    
+    const businessProfile = {
+      name: context?.onboardingData?.companyName || user?.companyName || 'Your Company',
+      industry: context?.onboardingData?.industry || user?.industry || 'General',
+      niche: context?.onboardingData?.niche || '',
+      targetAudience: context?.onboardingData?.targetCustomer || user?.targetAudience || 'General consumers',
+      brandVoice: context?.onboardingData?.brandVoice || 'Professional',
+      location: context?.onboardingData?.location || 'India',
+      businessType: context?.onboardingData?.businessType || 'B2C'
+    };
+    
+    // Get recent competitor posts
+    const competitors = await Competitor.find({ userId, isActive: true })
+      .sort({ 'posts.timestamp': -1 })
+      .limit(5)
+      .lean();
+    
+    const competitorPosts = [];
+    competitors.forEach(comp => {
+      if (comp.posts && comp.posts.length > 0) {
+        comp.posts.slice(0, 3).forEach(post => {
+          competitorPosts.push({
+            competitorName: comp.name,
+            content: post.content || post.caption || '',
+            platform: post.platform || 'instagram',
+            engagement: post.likes > 1000 ? 'high' : post.likes > 100 ? 'medium' : 'low',
+            likes: post.likes,
+            comments: post.comments
+          });
+        });
+      }
+    });
+    
+    // Generate strategic suggestions
+    const suggestions = await generateStrategicContentSuggestions(
+      businessProfile, 
+      competitorPosts,
+      new Date()
+    );
+    
+    res.json({
+      success: true,
+      businessContext: businessProfile,
+      ...suggestions
+    });
+  } catch (error) {
+    console.error('Strategic advisor error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      suggestions: []
+    });
+  }
+});
+
+/**
+ * POST /api/dashboard/strategic-advisor/generate-post
+ * Generate a complete post from a content suggestion
+ */
+router.post('/strategic-advisor/generate-post', protect, async (req, res) => {
+  try {
+    const { suggestion } = req.body;
+    const userId = req.user._id;
+    
+    if (!suggestion) {
+      return res.status(400).json({ success: false, message: 'Suggestion is required' });
+    }
+    
+    // Get user's business context
+    const context = await OnboardingContext.findOne({ userId }).lean();
+    const user = await User.findById(userId).lean();
+    
+    const businessProfile = {
+      name: context?.onboardingData?.companyName || user?.companyName || 'Your Company',
+      industry: context?.onboardingData?.industry || user?.industry || 'General',
+      brandVoice: context?.onboardingData?.brandVoice || 'Professional'
+    };
+    
+    // Generate complete post
+    const post = await generatePostFromSuggestion(suggestion, businessProfile);
+    
+    res.json({
+      success: true,
+      post
+    });
+  } catch (error) {
+    console.error('Generate post error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/strategic-advisor/refine-image
+ * Refine/edit an image with a new prompt
+ */
+router.post('/strategic-advisor/refine-image', protect, async (req, res) => {
+  try {
+    const { originalPrompt, refinementPrompt, style } = req.body;
+    
+    if (!originalPrompt || !refinementPrompt) {
+      return res.status(400).json({ success: false, message: 'Prompts are required' });
+    }
+    
+    const result = await refineImageWithPrompt(originalPrompt, refinementPrompt, style);
+    
+    res.json({
+      success: result.success,
+      ...result
+    });
+  } catch (error) {
+    console.error('Refine image error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

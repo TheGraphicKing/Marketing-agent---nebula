@@ -59,27 +59,27 @@ const Influencers: React.FC = () => {
 
   const discoverNewInfluencers = async (forceRefresh = false) => {
     setDiscovering(true);
-    setDiscoveryMessage('Searching social media for relevant influencers...');
+    setDiscoveryMessage('🔍 Finding Instagram influencers for your business...');
     try {
       const res = await apiService.discoverInfluencers({
-        platforms: ['instagram', 'twitter', 'youtube', 'linkedin', 'facebook'],
+        platforms: ['instagram'],
         limit: 15,
         forceRefresh
       });
       
       if (res.success && res.influencers) {
         setInfluencers(res.influencers);
-        setDiscoveryMessage(res.message || `Found ${res.discovered || res.influencers.length} influencers!`);
+        setDiscoveryMessage(res.message || `✅ Found ${res.discovered || res.influencers.length} Instagram influencers!`);
         
         // Clear message after 3 seconds
         setTimeout(() => setDiscoveryMessage(''), 3000);
       } else {
-        setDiscoveryMessage(res.message || 'No influencers found. Please complete your brand profile.');
+        setDiscoveryMessage(res.message || '⚠️ No influencers found. Please complete your onboarding first.');
         setTimeout(() => setDiscoveryMessage(''), 5000);
       }
     } catch (e: any) {
       console.error(e);
-      setDiscoveryMessage('Discovery failed. Please try again.');
+      setDiscoveryMessage('❌ Discovery failed. Please try again.');
       setTimeout(() => setDiscoveryMessage(''), 3000);
     } finally {
       setDiscovering(false);

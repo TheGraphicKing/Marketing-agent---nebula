@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiService } from '../services/api';
 import { CompetitorPost } from '../types';
-import { Loader2, Search, RotateCw, ExternalLink, Heart, MessageCircle, Plus, Instagram, Twitter, Linkedin, Facebook, Youtube, Swords, Sparkles, X, Eye, Download, Copy, Save, MessageSquare, FileText } from 'lucide-react';
+import { Loader2, Search, RotateCw, ExternalLink, Heart, MessageCircle, Plus, Instagram, Twitter, Linkedin, Facebook, Youtube, Swords, Sparkles, X, Eye, Download, Copy, Save, MessageSquare, FileText, EyeOff, Users, MapPin } from 'lucide-react';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 
 const platformIcons: Record<string, React.ReactNode> = {
@@ -12,13 +12,32 @@ const platformIcons: Record<string, React.ReactNode> = {
   youtube: <Youtube className="w-3 h-3" />,
 };
 
+interface Competitor {
+  _id: string;
+  name: string;
+  industry: string;
+  location?: string;
+  socialHandles?: { instagram?: string; twitter?: string };
+  isIgnored?: boolean;
+  isAutoDiscovered?: boolean;
+}
+
 const Competitors: React.FC = () => {
   const { isDarkMode } = useTheme();
   const theme = getThemeClasses(isDarkMode);
   const [posts, setPosts] = useState<CompetitorPost[]>([]);
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [ignoredCompetitors, setIgnoredCompetitors] = useState<Competitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('Last 7 days');
+  const [showIgnoredModal, setShowIgnoredModal] = useState(false);
+  
+  // Auto-discover state
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveryMessage, setDiscoveryMessage] = useState('');
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [location, setLocation] = useState('');
   
   // Rival Post State
   const [showRivalPostModal, setShowRivalPostModal] = useState(false);
@@ -34,6 +53,87 @@ const Competitors: React.FC = () => {
   const [editedCaption, setEditedCaption] = useState('');
   const [editedHashtags, setEditedHashtags] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
+
+  // Ignore a competitor
+  const handleIgnoreCompetitor = async (competitorId: string, competitorName: string) => {
+    try {
+      const res = await apiService.ignoreCompetitor(competitorId);
+      if (res.success) {
+        // Remove posts from this competitor from the view
+        setPosts(prev => prev.filter(p => p.competitorId !== competitorId));
+        // Update competitors list
+        setCompetitors(prev => prev.filter(c => c._id !== competitorId));
+        setDiscoveryMessage(`🚫 ${competitorName} has been ignored`);
+        setTimeout(() => setDiscoveryMessage(''), 3000);
+      }
+    } catch (error) {
+      console.error('Failed to ignore competitor:', error);
+    }
+  };
+
+  // Unignore a competitor
+  const handleUnignoreCompetitor = async (competitorId: string) => {
+    try {
+      const res = await apiService.unignoreCompetitor(competitorId);
+      if (res.success) {
+        setIgnoredCompetitors(prev => prev.filter(c => c._id !== competitorId));
+        // Reload posts to include this competitor again
+        loadPosts();
+        setDiscoveryMessage(`✅ Competitor is now visible again`);
+        setTimeout(() => setDiscoveryMessage(''), 3000);
+      }
+    } catch (error) {
+      console.error('Failed to unignore competitor:', error);
+    }
+  };
+
+  // Load ignored competitors
+  const loadIgnoredCompetitors = async () => {
+    try {
+      const res = await apiService.getIgnoredCompetitors();
+      if (res.success) {
+        setIgnoredCompetitors(res.competitors || []);
+      }
+    } catch (error) {
+      console.error('Failed to load ignored competitors:', error);
+    }
+  };
+
+  // Auto-discover competitors
+  const handleAutoDiscover = async () => {
+    if (!location.trim()) {
+      alert('Please enter a location');
+      return;
+    }
+    
+    setShowLocationModal(false);
+    setDiscovering(true);
+    setDiscoveryMessage(`🔍 Finding competitors in ${location}...`);
+    
+    try {
+      const res = await apiService.autoDiscoverCompetitors({ location, forceRefresh: true });
+      
+      if (res.success && res.posts && res.posts.length > 0) {
+        setPosts(res.posts);
+        if (res.competitors) setCompetitors(res.competitors);
+        setDiscoveryMessage(`✅ Found ${res.discovered || res.competitors?.length || 0} competitors with ${res.posts.length} posts!`);
+      } else if (res.success && res.competitors && res.competitors.length > 0) {
+        // Reload posts after discovery
+        await loadPosts();
+        setDiscoveryMessage(`✅ Discovered ${res.competitors.length} competitors! Fetching their posts...`);
+      } else {
+        setDiscoveryMessage(res.message || '⚠️ No competitors found in this location. Try a different area.');
+      }
+      
+      setTimeout(() => setDiscoveryMessage(''), 5000);
+    } catch (e: any) {
+      console.error(e);
+      setDiscoveryMessage('❌ Discovery failed. Please try again.');
+      setTimeout(() => setDiscoveryMessage(''), 3000);
+    } finally {
+      setDiscovering(false);
+    }
+  };
 
   // Handle creating a rival post
   const handleCreateRivalPost = async (post: CompetitorPost) => {
@@ -136,13 +236,48 @@ const Competitors: React.FC = () => {
     setLoading(true);
     try {
       const res = await apiService.getCompetitors();
+      
+      // Load competitors list
+      if (res.competitors && res.competitors.length > 0) {
+        setCompetitors(res.competitors);
+      }
+      
       if (res.posts && res.posts.length > 0) {
         setPosts(res.posts);
       } else {
-        // Auto-seed sample data if no posts exist
-        await apiService.seedCompetitorSamples();
-        const newRes = await apiService.getCompetitors();
-        setPosts(newRes.posts || []);
+        // Try to auto-discover competitors using saved business location
+        try {
+          const contextRes = await apiService.getBusinessContext();
+          if (contextRes.success && contextRes.businessLocation) {
+            setLocation(contextRes.businessLocation);
+            setDiscovering(true);
+            setDiscoveryMessage(`🔍 AI is discovering competitors in ${contextRes.businessLocation}...`);
+            
+            const discoverRes = await apiService.autoDiscoverCompetitors({ 
+              location: contextRes.businessLocation, 
+              forceRefresh: false // Don't force refresh if we have recent data
+            });
+            
+            if (discoverRes.success && discoverRes.posts && discoverRes.posts.length > 0) {
+              setPosts(discoverRes.posts);
+              if (discoverRes.competitors) setCompetitors(discoverRes.competitors);
+              setDiscoveryMessage(`✅ Found ${discoverRes.discovered || discoverRes.competitors?.length || 0} competitors with ${discoverRes.posts.length} posts!`);
+            } else if (discoverRes.success && discoverRes.competitors && discoverRes.competitors.length > 0) {
+              setCompetitors(discoverRes.competitors);
+              setDiscoveryMessage(`✅ Found ${discoverRes.competitors.length} competitors. Fetching their posts...`);
+            } else {
+              setDiscoveryMessage('No competitors found yet. Click "Discover Competitors" to search.');
+            }
+            
+            setDiscovering(false);
+            setTimeout(() => setDiscoveryMessage(''), 5000);
+          } else {
+            setDiscoveryMessage('Complete onboarding with your business location to auto-discover competitors.');
+          }
+        } catch (discoverError) {
+          console.error('Auto-discover failed:', discoverError);
+          setDiscoveryMessage('Could not auto-discover. Click "Discover Competitors" to try manually.');
+        }
       }
     } catch (e) {
       console.error(e);
@@ -150,6 +285,22 @@ const Competitors: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Load business location on mount
+  useEffect(() => {
+    const loadBusinessLocation = async () => {
+      try {
+        const contextRes = await apiService.getBusinessContext();
+        if (contextRes.success && contextRes.businessLocation) {
+          setLocation(contextRes.businessLocation);
+        }
+      } catch (error) {
+        console.log('Could not load business location');
+      }
+    };
+    loadBusinessLocation();
+    loadIgnoredCompetitors();
+  }, []);
 
   useEffect(() => {
     loadPosts();
@@ -166,25 +317,91 @@ const Competitors: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto">
+      {/* Location Modal */}
+      {showLocationModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className={`${theme.bgCard} rounded-2xl p-6 max-w-md w-full shadow-2xl border ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'}`}>
+            <h3 className={`text-xl font-bold mb-4 ${theme.text}`}>🔍 Find Competitors</h3>
+            <p className={`${theme.textSecondary} mb-4 text-sm`}>
+              Enter your business location to discover competitors in your area.
+            </p>
+            <input
+              type="text"
+              placeholder="e.g., Chennai, India or South India"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className={`w-full px-4 py-3 border rounded-lg text-sm outline-none focus:border-[#ffcc29] mb-4 ${
+                isDarkMode ? 'bg-[#070A12] border-[#ffcc29]/20 text-[#ededed] placeholder-[#ededed]/50' : 'border-slate-300 text-[#070A12]'
+              }`}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLocationModal(false)}
+                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium border ${
+                  isDarkMode ? 'border-[#ffcc29]/20 text-[#ededed] hover:bg-[#ffcc29]/10' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAutoDiscover}
+                disabled={!location.trim()}
+                className="flex-1 px-4 py-2 bg-[#ffcc29] text-black rounded-lg text-sm font-medium hover:bg-[#ffcc29]/90 disabled:opacity-50"
+              >
+                Find Competitors
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className={`text-2xl font-bold ${theme.text}`}>Competitor Analysis</h1>
           <p className={theme.textSecondary}>Track market rivals with real-time AI search.</p>
         </div>
         <div className="flex gap-2">
-            {['Last 7 days', 'Last 1 month', 'Last 3 months'].map(f => (
-                <button 
-                  key={f} 
-                  onClick={() => setSelectedFilter(f)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded border ${f === selectedFilter 
-                    ? 'bg-[#ffcc29]/10 border-[#ffcc29]/30 text-[#ffcc29]' 
-                    : `${theme.bgCard} ${isDarkMode ? 'border-[#ffcc29]/20 text-[#ededed]/70 hover:bg-[#ffcc29]/10' : 'border-slate-200 text-slate-600 hover:bg-[#f5f5f5]'}`}`}
-                >
-                    {f}
-                </button>
-            ))}
+          {/* Auto-Discover Button */}
+          <button
+            onClick={() => setShowLocationModal(true)}
+            disabled={discovering}
+            className="flex items-center gap-2 px-4 py-1.5 bg-[#ffcc29] text-black rounded text-sm font-medium hover:bg-[#ffcc29]/90 disabled:opacity-50"
+          >
+            {discovering ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {discovering ? 'Discovering...' : 'Auto-Discover'}
+          </button>
+          
+          {['Last 7 days', 'Last 1 month', 'Last 3 months'].map(f => (
+            <button 
+              key={f} 
+              onClick={() => setSelectedFilter(f)}
+              className={`px-3 py-1.5 text-xs font-medium rounded border ${f === selectedFilter 
+                ? 'bg-[#ffcc29]/10 border-[#ffcc29]/30 text-[#ffcc29]' 
+                : `${theme.bgCard} ${isDarkMode ? 'border-[#ffcc29]/20 text-[#ededed]/70 hover:bg-[#ffcc29]/10' : 'border-slate-200 text-slate-600 hover:bg-[#f5f5f5]'}`}`}
+            >
+              {f}
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* Discovery Message */}
+      {discoveryMessage && (
+        <div className={`mb-6 p-4 rounded-lg border ${
+          isDarkMode 
+            ? 'bg-[#ffcc29]/10 border-[#ffcc29]/30 text-[#ffcc29]' 
+            : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+        }`}>
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5" />
+            <span className="font-medium">{discoveryMessage}</span>
+          </div>
+        </div>
+      )}
 
       <div className={`${theme.bgCard} p-6 rounded-xl border ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'} mb-8`}>
           <div className="flex justify-between items-center mb-6">
@@ -273,26 +490,128 @@ const Competitors: React.FC = () => {
                                     <MessageCircle className={`w-3 h-3 ${theme.textMuted}`} /> {post.comments || 0}
                                 </span>
                             </div>
-                            {post.postUrl ? (
-                              <a 
-                                href={post.postUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs font-medium text-[#ffcc29] hover:underline"
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleIgnoreCompetitor(post.competitorId, post.competitorName)}
+                                className={`flex items-center gap-1 text-xs font-medium ${isDarkMode ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}`}
+                                title={`Ignore ${post.competitorName}`}
                               >
-                                  View <ExternalLink className="w-3 h-3" />
-                              </a>
-                            ) : (
-                              <span className={`flex items-center gap-1 text-xs font-medium ${theme.textMuted}`}>
-                                  {post.platform}
-                              </span>
-                            )}
+                                <EyeOff className="w-3 h-3" />
+                              </button>
+                              {post.postUrl ? (
+                                <a 
+                                  href={post.postUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-xs font-medium text-[#ffcc29] hover:underline"
+                                >
+                                    View <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <span className={`flex items-center gap-1 text-xs font-medium ${theme.textMuted}`}>
+                                    {post.platform}
+                                </span>
+                              )}
+                            </div>
                         </div>
                     </div>
                 ))}
             </div>
           )}
       </div>
+
+      {/* Discovered Competitors Section */}
+      {competitors.length > 0 && (
+        <div className={`${theme.bgCard} p-6 rounded-xl border ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-200'} mb-8`}>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className={`text-lg font-bold ${theme.text} flex items-center gap-2`}>
+              <Users className="w-5 h-5 text-[#ffcc29]" />
+              Discovered Competitors ({competitors.length})
+            </h2>
+            {ignoredCompetitors.length > 0 && (
+              <button
+                onClick={() => setShowIgnoredModal(true)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-lg ${isDarkMode ? 'bg-[#ededed]/10 text-[#ededed]/70 hover:bg-[#ededed]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                View Ignored ({ignoredCompetitors.length})
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {competitors.map(comp => (
+              <div 
+                key={comp._id} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${isDarkMode ? 'bg-[#070A12] border-[#ffcc29]/20' : 'bg-slate-50 border-slate-200'}`}
+              >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${isDarkMode ? 'bg-[#ffcc29]/20 text-[#ffcc29]' : 'bg-[#ffcc29]/20 text-amber-700'}`}>
+                  {comp.name.charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className={`text-sm font-bold truncate ${theme.text}`}>{comp.name}</h3>
+                  <p className={`text-xs flex items-center gap-1 ${theme.textMuted}`}>
+                    {comp.socialHandles?.instagram && <><Instagram className="w-3 h-3" /> {comp.socialHandles.instagram}</>}
+                    {comp.location && <><MapPin className="w-3 h-3 ml-2" /> {comp.location}</>}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleIgnoreCompetitor(comp._id, comp.name)}
+                  className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-500'}`}
+                  title="Ignore this competitor"
+                >
+                  <EyeOff className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ignored Competitors Modal */}
+      {showIgnoredModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowIgnoredModal(false)}>
+          <div 
+            className={`${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-white border-slate-200'} border rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-[#ffcc29]/20' : 'border-slate-100'}`}>
+              <div className="flex items-center justify-between">
+                <h3 className={`text-lg font-bold ${theme.text}`}>Ignored Competitors</h3>
+                <button onClick={() => setShowIgnoredModal(false)} className={`p-1 rounded hover:bg-[#ededed]/10`}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className={`text-xs mt-1 ${theme.textMuted}`}>These competitors are hidden from your feed. Click restore to see them again.</p>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {ignoredCompetitors.length === 0 ? (
+                <p className={`text-center py-8 ${theme.textMuted}`}>No ignored competitors</p>
+              ) : (
+                <div className="space-y-2">
+                  {ignoredCompetitors.map(comp => (
+                    <div key={comp._id} className={`flex items-center justify-between p-3 rounded-lg ${isDarkMode ? 'bg-[#070A12]' : 'bg-slate-50'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isDarkMode ? 'bg-[#ededed]/10 text-[#ededed]' : 'bg-slate-200 text-slate-600'}`}>
+                          {comp.name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className={`text-sm font-medium ${theme.text}`}>{comp.name}</h4>
+                          <p className={`text-xs ${theme.textMuted}`}>{comp.industry}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleUnignoreCompetitor(comp._id)}
+                        className="px-3 py-1.5 text-xs font-medium bg-[#ffcc29] text-black rounded-lg hover:bg-[#e6b825]"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rival Post Modal */}
       {showRivalPostModal && (

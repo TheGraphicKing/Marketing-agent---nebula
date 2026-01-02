@@ -46,6 +46,7 @@ const competitorSchema = new mongoose.Schema({
   },
   logo: String,
   description: String,
+  location: String,
   posts: [competitorPostSchema],
   analysis: {
     strengths: [String],
@@ -58,11 +59,23 @@ const competitorSchema = new mongoose.Schema({
     avgEngagement: { type: Number, default: 0 },
     postFrequency: String,
     topPerformingContent: String,
-    audienceSize: { type: Number, default: 0 }
+    audienceSize: { type: Number, default: 0 },
+    followers: { type: Number, default: 0 },
+    following: { type: Number, default: 0 },
+    lastFetched: Date,
+    realTimeData: mongoose.Schema.Types.Mixed
   },
   isActive: {
     type: Boolean,
     default: true
+  },
+  isAutoDiscovered: {
+    type: Boolean,
+    default: false
+  },
+  isIgnored: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

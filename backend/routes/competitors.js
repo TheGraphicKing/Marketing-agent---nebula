@@ -9,6 +9,7 @@ const { protect } = require('../middleware/auth');
 const Competitor = require('../models/Competitor');
 const User = require('../models/User');
 const ScrapeJob = require('../models/ScrapeJob');
+const OnboardingContext = require('../models/OnboardingContext');
 const { generateWithLLM } = require('../services/llmRouter');
 const { scrapeWebsite, extractTextContent, getPageTitle } = require('../services/scraper');
 
@@ -50,6 +51,337 @@ try {
   generateCompetitorPosts = async () => [];
   fetchIndustryTrendingPosts = async () => [];
 }
+
+/**
+ * POST /api/competitors/auto-discover
+ * Automatically discover competitors based on business location and industry using Gemini AI
+ */
+router.post('/auto-discover', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const user = await User.findById(userId);
+    const { location, forceRefresh = false } = req.body;
+
+    console.log('🔍 Auto-discovering competitors for user:', userId);
+
+    // Get business context from OnboardingContext
+    const onboardingContext = await OnboardingContext.findOne({ userId });
+    const bp = user?.businessProfile || {};
+
+    // Build business context
+    const businessContext = {
+      companyName: onboardingContext?.company?.name || bp.name || 'Your Business',
+      industry: onboardingContext?.company?.industry || bp.industry || 'General',
+      description: onboardingContext?.company?.description || bp.niche || '',
+      targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || '',
+      location: location || onboardingContext?.geography?.businessLocation || onboardingContext?.geography?.regions?.[0] || onboardingContext?.geography?.countries?.[0] || 'India'
+    };
+
+    console.log('📋 Business context for competitor discovery:', businessContext);
+
+    if (!businessContext.industry || businessContext.industry === 'General') {
+      return res.status(400).json({
+        success: false,
+        message: 'Please complete your onboarding first to discover competitors'
+      });
+    }
+
+    // Check for existing auto-discovered competitors (unless force refresh)
+    if (!forceRefresh) {
+      const existingCompetitors = await Competitor.find({
+        userId,
+        isAutoDiscovered: true,
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+      });
+
+      if (existingCompetitors.length >= 3) {
+        console.log('📦 Returning cached auto-discovered competitors');
+        const posts = await getCompetitorPosts(existingCompetitors);
+        return res.json({
+          success: true,
+          competitors: existingCompetitors,
+          posts,
+          cached: true,
+          message: `Found ${existingCompetitors.length} competitors in your area`
+        });
+      }
+    }
+
+    // Use Gemini AI to find real competitors
+    console.log('🤖 Asking Gemini AI to find competitors...');
+    const competitors = await discoverCompetitorsWithGemini(businessContext);
+
+    if (!competitors || competitors.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Could not find competitors in your area. Please try with a different location.'
+      });
+    }
+
+    console.log(`✅ Gemini found ${competitors.length} competitors`);
+
+    // Delete old auto-discovered competitors
+    await Competitor.deleteMany({ userId, isAutoDiscovered: true });
+
+    // Save new competitors
+    const savedCompetitors = [];
+    for (const comp of competitors) {
+      try {
+        const competitor = new Competitor({
+          userId,
+          name: comp.name,
+          website: comp.website || '',
+          description: comp.description || '',
+          industry: businessContext.industry,
+          socialHandles: {
+            instagram: comp.instagram || '',
+            twitter: comp.twitter || '',
+            facebook: comp.facebook || '',
+            linkedin: comp.linkedin || ''
+          },
+          location: businessContext.location,
+          isActive: true,
+          isAutoDiscovered: true,
+          posts: [],
+          metrics: {
+            followers: comp.estimatedFollowers || 0,
+            lastFetched: new Date()
+          }
+        });
+        await competitor.save();
+        savedCompetitors.push(competitor);
+      } catch (saveError) {
+        console.error('Error saving competitor:', comp.name, saveError.message);
+      }
+    }
+
+    // Fetch posts for the new competitors
+    console.log('📥 Fetching posts for discovered competitors...');
+    const posts = await fetchPostsForCompetitors(savedCompetitors);
+
+    res.json({
+      success: true,
+      competitors: savedCompetitors,
+      posts,
+      discovered: savedCompetitors.length,
+      message: `Discovered ${savedCompetitors.length} competitors in ${businessContext.location}`
+    });
+
+  } catch (error) {
+    console.error('Competitor auto-discovery error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to discover competitors',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Use Gemini AI to discover real competitors based on business context
+ */
+async function discoverCompetitorsWithGemini(businessContext) {
+  const prompt = `You are a market research expert. Find REAL competitors for this business.
+
+BUSINESS CONTEXT:
+- Company: ${businessContext.companyName}
+- Industry: ${businessContext.industry}
+- Description: ${businessContext.description}
+- Target Customer: ${businessContext.targetCustomer}
+- Location: ${businessContext.location}
+
+REQUIREMENTS:
+1. Find 5-8 REAL competitors that operate in ${businessContext.location}
+2. These must be ACTUAL businesses with Instagram presence
+3. Focus on direct competitors in the same industry
+4. Include their REAL Instagram handles (verified to exist)
+5. Mix of large, medium, and smaller competitors
+
+For a CONSTRUCTION / REAL ESTATE business in India, look for:
+- Luxury home builders (Sobha, Prestige, Brigade, etc.)
+- Premium villa developers
+- High-end interior design firms
+- Real estate developers targeting HNIs
+
+Return ONLY valid JSON:
+{
+  "competitors": [
+    {
+      "name": "Company Name",
+      "instagram": "@instagram_handle",
+      "twitter": "@twitter_handle",
+      "website": "https://website.com",
+      "description": "Brief description of what they do",
+      "estimatedFollowers": 50000,
+      "whyCompetitor": "Why they are a competitor"
+    }
+  ]
+}
+
+IMPORTANT: Only include businesses you are confident are REAL and have active Instagram accounts.`;
+
+  try {
+    const response = await callGemini(prompt, { maxTokens: 1500, skipCache: true });
+    const result = parseGeminiJSON(response);
+
+    if (result && result.competitors && Array.isArray(result.competitors)) {
+      console.log(`🎯 Gemini found ${result.competitors.length} competitors`);
+      return result.competitors;
+    }
+
+    console.error('Invalid Gemini response format for competitors');
+    return [];
+  } catch (error) {
+    console.error('Gemini competitor discovery error:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch posts for a list of competitors
+ */
+async function fetchPostsForCompetitors(competitors) {
+  const allPosts = [];
+
+  for (const competitor of competitors.slice(0, 5)) { // Limit to 5
+    const instagramHandle = competitor.socialHandles?.instagram?.replace('@', '');
+    
+    if (instagramHandle) {
+      try {
+        console.log(`📸 Fetching Instagram posts for ${competitor.name} (@${instagramHandle})...`);
+        const result = await scrapeInstagramProfile(instagramHandle);
+        
+        if (result && result.recentPosts && result.recentPosts.length > 0) {
+          const posts = result.recentPosts.slice(0, 5).map(post => ({
+            competitorId: competitor._id,
+            competitorName: competitor.name,
+            platform: 'instagram',
+            content: post.caption || post.text || '',
+            likes: post.likes || post.likesCount || 0,
+            comments: post.comments || post.commentsCount || 0,
+            imageUrl: post.imageUrl || post.thumbnailUrl || null,
+            postUrl: post.url || post.postUrl || `https://instagram.com/p/${post.shortCode || ''}`,
+            postedAt: post.timestamp || post.date || new Date(),
+            sentiment: analyzeSentiment(post.caption || ''),
+            isRealData: true
+          }));
+          
+          // Save posts to competitor
+          competitor.posts = posts;
+          await competitor.save();
+          
+          allPosts.push(...posts);
+          console.log(`✅ Got ${posts.length} posts for ${competitor.name}`);
+        }
+      } catch (fetchError) {
+        console.error(`Failed to fetch posts for ${competitor.name}:`, fetchError.message);
+      }
+    }
+  }
+
+  return allPosts;
+}
+
+/**
+ * Get posts from existing competitors
+ */
+async function getCompetitorPosts(competitors) {
+  const allPosts = [];
+  for (const comp of competitors) {
+    if (comp.posts && comp.posts.length > 0) {
+      allPosts.push(...comp.posts.map(post => ({
+        ...post.toObject ? post.toObject() : post,
+        competitorName: comp.name
+      })));
+    }
+  }
+  return allPosts;
+}
+
+/**
+ * Simple sentiment analysis
+ */
+function analyzeSentiment(text) {
+  if (!text) return 'neutral';
+  const positiveWords = ['amazing', 'beautiful', 'luxury', 'premium', 'excellent', 'love', 'best', 'happy', 'great', 'wonderful'];
+  const negativeWords = ['bad', 'worst', 'terrible', 'poor', 'disappointed', 'hate', 'awful'];
+  
+  const lowerText = text.toLowerCase();
+  const positiveCount = positiveWords.filter(w => lowerText.includes(w)).length;
+  const negativeCount = negativeWords.filter(w => lowerText.includes(w)).length;
+  
+  if (positiveCount > negativeCount) return 'positive';
+  if (negativeCount > positiveCount) return 'negative';
+  return 'neutral';
+}
+
+/**
+ * PUT /api/competitors/:id/ignore
+ * Ignore a competitor (hide from view)
+ */
+router.put('/:id/ignore', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const competitor = await Competitor.findOneAndUpdate(
+      { _id: req.params.id, userId },
+      { isIgnored: true },
+      { new: true }
+    );
+    
+    if (!competitor) {
+      return res.status(404).json({ success: false, message: 'Competitor not found' });
+    }
+    
+    console.log(`🚫 Ignored competitor: ${competitor.name}`);
+    res.json({ success: true, message: `${competitor.name} has been ignored`, competitor });
+  } catch (error) {
+    console.error('Error ignoring competitor:', error);
+    res.status(500).json({ success: false, message: 'Failed to ignore competitor' });
+  }
+});
+
+/**
+ * PUT /api/competitors/:id/unignore
+ * Unignore a competitor (show again)
+ */
+router.put('/:id/unignore', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const competitor = await Competitor.findOneAndUpdate(
+      { _id: req.params.id, userId },
+      { isIgnored: false },
+      { new: true }
+    );
+    
+    if (!competitor) {
+      return res.status(404).json({ success: false, message: 'Competitor not found' });
+    }
+    
+    console.log(`✅ Unignored competitor: ${competitor.name}`);
+    res.json({ success: true, message: `${competitor.name} is now visible`, competitor });
+  } catch (error) {
+    console.error('Error unignoring competitor:', error);
+    res.status(500).json({ success: false, message: 'Failed to unignore competitor' });
+  }
+});
+
+/**
+ * GET /api/competitors/ignored
+ * Get all ignored competitors
+ */
+router.get('/ignored', protect, async (req, res) => {
+  try {
+    const userId = req.user.userId || req.user.id;
+    const competitors = await Competitor.find({ userId, isIgnored: true })
+      .select('name industry location socialHandles')
+      .sort({ updatedAt: -1 });
+    
+    res.json({ success: true, competitors });
+  } catch (error) {
+    console.error('Error fetching ignored competitors:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ignored competitors' });
+  }
+});
 
 /**
  * GET /api/competitors/real/:id
@@ -223,16 +555,20 @@ router.post('/scrape-all', protect, async (req, res) => {
 
 /**
  * GET /api/competitors
- * Get all competitors for the user
+ * Get all competitors for the user (excluding ignored ones by default)
  */
 router.get('/', protect, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const { active } = req.query;
+    const { active, includeIgnored } = req.query;
     
     const query = { userId };
     if (active !== undefined) {
       query.isActive = active === 'true';
+    }
+    // Exclude ignored competitors by default
+    if (includeIgnored !== 'true') {
+      query.isIgnored = { $ne: true };
     }
     
     const competitors = await Competitor.find(query).sort({ createdAt: -1 });
@@ -249,14 +585,15 @@ router.get('/', protect, async (req, res) => {
 
 /**
  * GET /api/competitors/posts
- * Get all competitor posts (for the feed)
+ * Get all competitor posts (for the feed), excluding ignored competitors
  */
 router.get('/posts', protect, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
     const { platform, sentiment, days = 7 } = req.query;
     
-    const competitors = await Competitor.find({ userId, isActive: true });
+    // Exclude ignored competitors from posts feed
+    const competitors = await Competitor.find({ userId, isActive: true, isIgnored: { $ne: true } });
     
     // Flatten all posts from all competitors
     let allPosts = [];

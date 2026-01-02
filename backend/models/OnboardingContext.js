@@ -74,6 +74,11 @@ const onboardingContextSchema = new mongoose.Schema({
       type: String,
       trim: true
     }],
+    businessLocation: {
+      type: String,
+      trim: true,
+      default: ''
+    },
     isGlobal: {
       type: Boolean,
       default: false

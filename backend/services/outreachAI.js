@@ -427,6 +427,166 @@ Return as JSON with the standard fields for this content type.`;
       primaryGoal: contextResult.context.goals.primary
     };
   }
+
+  /**
+   * Generate a complete email sequence with initial + follow-ups
+   * @param {string} userId - User ID
+   * @param {Array} leads - Array of lead objects
+   * @param {Object} options - Generation options
+   * @returns {Object} Complete sequence with all messages
+   */
+  async generateEmailSequence(userId, leads, options = {}) {
+    console.log(`📧 Generating email sequence for ${leads.length} leads`);
+    
+    // Get company context
+    const companyResult = await contextBuilder.getCompanyContext(userId);
+    
+    if (!companyResult.success) {
+      return {
+        success: false,
+        error: companyResult.error,
+        message: companyResult.message,
+        missingFields: companyResult.missingFields
+      };
+    }
+    
+    const companyContext = companyResult.context;
+    const { numFollowUps = 3, campaignType = 'cold_outreach' } = options;
+    
+    // Build the sequence generation prompt
+    const systemPrompt = this._buildSequenceSystemPrompt(companyContext, campaignType);
+    const userPrompt = this._buildSequenceUserPrompt(companyContext, leads, numFollowUps, options);
+    
+    try {
+      const response = await geminiService.callGemini(
+        `${systemPrompt}\n\n${userPrompt}`,
+        { skipCache: true, timeout: 60000 }
+      );
+      
+      const sequence = this.parseAIResponse(response);
+      
+      return {
+        success: true,
+        sequence,
+        campaignType,
+        generatedAt: new Date().toISOString(),
+        companyContext: {
+          name: companyContext.company.name,
+          brandTone: companyContext.brandTone,
+          primaryGoal: companyContext.goals.primary
+        }
+      };
+      
+    } catch (error) {
+      console.error('OutreachAI.generateEmailSequence error:', error);
+      return {
+        success: false,
+        error: 'GENERATION_FAILED',
+        message: 'Failed to generate email sequence.',
+        details: error.message
+      };
+    }
+  }
+
+  /**
+   * Build system prompt for sequence generation
+   */
+  _buildSequenceSystemPrompt(companyContext, campaignType) {
+    const toneGuide = {
+      formal: 'professional, structured, and business-appropriate',
+      friendly: 'warm, approachable, and conversational',
+      bold: 'confident, direct, and impactful',
+      professional: 'polished, credible, and trustworthy',
+      casual: 'relaxed, natural, and easygoing',
+      authoritative: 'expert, commanding, and knowledgeable',
+      empathetic: 'understanding, supportive, and caring',
+      witty: 'clever, engaging, and memorable'
+    };
+
+    return `You are an expert B2B sales copywriter creating a ${campaignType.replace('_', ' ')} email sequence.
+
+COMPANY CONTEXT:
+- Company: ${companyContext.company.name}
+- Industry: ${companyContext.company.industry}
+- Product/Service: ${companyContext.company.description}
+- Target Customer: ${companyContext.targetCustomer.description}
+- Primary Goal: ${companyContext.goals.primary}
+- Value Proposition: ${companyContext.valueProposition.main || 'Not specified'}
+- Key Benefits: ${companyContext.valueProposition.keyBenefits?.join(', ') || 'Not specified'}
+
+BRAND VOICE: ${companyContext.brandTone} - ${toneGuide[companyContext.brandTone] || 'professional'}
+
+CALENDAR LINK: ${companyContext.outreachPreferences?.calendarLink || '[CALENDAR_LINK]'}
+EMAIL SIGNATURE: ${companyContext.outreachPreferences?.emailSignature || '[YOUR_NAME]'}
+
+CRITICAL RULES:
+1. Each email must be under 150 words
+2. Subject lines must be under 60 characters
+3. Always include a clear CTA (Call to Action)
+4. Never sound desperate or salesy
+5. Each follow-up should add new value, not just "checking in"
+6. Reference previous email in follow-ups naturally
+7. Final follow-up should create urgency without being pushy
+8. Use personalization placeholders: {{firstName}}, {{companyName}}, {{role}}
+
+Return response as valid JSON.`;
+  }
+
+  /**
+   * Build user prompt for sequence generation
+   */
+  _buildSequenceUserPrompt(companyContext, leads, numFollowUps, options) {
+    const sampleLead = leads[0] || {};
+    
+    return `Generate a complete email sequence with 1 initial email and ${numFollowUps} follow-up emails.
+
+SAMPLE RECIPIENT CONTEXT:
+- Name: ${sampleLead.firstName || '{{firstName}}'} ${sampleLead.lastName || ''}
+- Role: ${sampleLead.role || '{{role}}'}
+- Company: ${sampleLead.company?.name || '{{companyName}}'}
+- Industry: ${sampleLead.company?.industry || 'Unknown'}
+
+SEQUENCE REQUIREMENTS:
+1. Initial Email: Introduce value proposition, reference their industry/role
+2. Follow-up 1 (3 days later): Add value with insight/resource, soft CTA
+3. Follow-up 2 (5 days later): Social proof/case study, stronger CTA
+4. Follow-up 3 (7 days later): Final breakup email, create urgency
+${numFollowUps > 3 ? `5. Follow-up 4 (14 days later): Re-engagement with new angle` : ''}
+
+${options.customInstructions ? `ADDITIONAL INSTRUCTIONS: ${options.customInstructions}` : ''}
+
+REQUIRED JSON FORMAT:
+{
+  "sequence": [
+    {
+      "stage": "initial",
+      "subject": "string",
+      "body": "string with {{firstName}}, {{companyName}} placeholders",
+      "delayDays": 0
+    },
+    {
+      "stage": "follow_up_1",
+      "subject": "string",
+      "body": "string",
+      "delayDays": 3
+    },
+    {
+      "stage": "follow_up_2", 
+      "subject": "string",
+      "body": "string",
+      "delayDays": 5
+    },
+    {
+      "stage": "follow_up_3",
+      "subject": "string",
+      "body": "string",
+      "delayDays": 7
+    }
+  ]
+}
+
+Generate the complete sequence now:`;
+  }
 }
 
 module.exports = new OutreachAIService();

@@ -9,6 +9,7 @@ const { protect } = require('../middleware/auth');
 const Campaign = require('../models/Campaign');
 const User = require('../models/User');
 const { callGemini, parseGeminiJSON } = require('../services/geminiAI');
+const notificationScheduler = require('../services/notificationScheduler');
 
 // Import Ayrshare for social media posting
 const { postToSocialMedia, getAyrshareAnalytics } = require('../services/socialMediaAPI');
@@ -111,6 +112,11 @@ router.post('/', protect, async (req, res) => {
     const campaign = new Campaign(campaignData);
     await campaign.save();
     
+    // Notifications are automatically scheduled by the background scheduler
+    if (campaign.status === 'scheduled' && campaign.scheduling?.startDate) {
+      console.log(`📅 Campaign scheduled: ${campaign.name} - notifications will be sent automatically`);
+    }
+    
     res.status(201).json({ success: true, campaign });
   } catch (error) {
     console.error('Create campaign error:', error);
@@ -134,6 +140,11 @@ router.put('/:id', protect, async (req, res) => {
     
     if (!campaign) {
       return res.status(404).json({ success: false, message: 'Campaign not found' });
+    }
+    
+    // Notifications are automatically scheduled by the background scheduler
+    if (campaign.status === 'scheduled' && campaign.scheduling?.startDate) {
+      console.log(`📅 Campaign updated: ${campaign.name} - notifications will be sent automatically`);
     }
     
     res.json({ success: true, campaign });

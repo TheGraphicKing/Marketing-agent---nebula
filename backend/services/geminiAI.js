@@ -1979,6 +1979,265 @@ Return ONLY valid JSON:
   }
 }
 
+/**
+ * Strategic Advisor - Generate viral content suggestions based on:
+ * - Current trends and events
+ * - Competitor activity  
+ * - Indian holidays and festivals
+ * - Moment marketing opportunities
+ * - Industry-specific topics
+ */
+async function generateStrategicContentSuggestions(businessProfile, competitorPosts = [], currentDate = new Date()) {
+  const companyName = businessProfile.name || 'Your Company';
+  const industry = businessProfile.industry || 'General';
+  const niche = businessProfile.niche || industry;
+  const targetAudience = businessProfile.targetAudience || 'General consumers';
+  const brandVoice = businessProfile.brandVoice || 'Professional';
+  const location = businessProfile.location || 'India';
+  
+  // Format current date
+  const dateStr = currentDate.toLocaleDateString('en-IN', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  
+  // Get month for seasonal context
+  const month = currentDate.getMonth();
+  const seasonalContext = getSeasonalContext(month);
+  
+  // Format competitor posts for context
+  const competitorContext = competitorPosts.slice(0, 5).map(p => 
+    `- ${p.competitorName || 'Competitor'}: "${(p.content || p.caption || '').substring(0, 100)}..." (${p.engagement || 'high'} engagement)`
+  ).join('\n') || 'No recent competitor posts available';
+
+  const prompt = `You are a Strategic Content Advisor for ${companyName}, a ${industry} business in ${location}.
+Your job is to suggest VIRAL content ideas that will outperform competitors and maximize engagement.
+
+=== CURRENT CONTEXT ===
+Today's Date: ${dateStr}
+Season/Context: ${seasonalContext}
+Business: ${companyName} (${industry} / ${niche})
+Target Audience: ${targetAudience}
+Brand Voice: ${brandVoice}
+Location: ${location}
+
+=== RECENT COMPETITOR ACTIVITY ===
+${competitorContext}
+
+=== YOUR TASK ===
+Generate 8-10 STRATEGIC content suggestions that:
+1. Capitalize on CURRENT trends, events, and moment marketing opportunities
+2. Counter or outperform competitor content
+3. Align with upcoming Indian holidays, festivals, or global events
+4. Are highly shareable and have viral potential
+5. Are specific to ${industry} and ${companyName}'s audience
+
+=== SUGGESTION CATEGORIES TO INCLUDE ===
+- 🔥 Trending Topic (current social media trends)
+- 📅 Upcoming Event/Holiday (within next 30 days)
+- ⚔️ Competitor Counter (respond to competitor activity)
+- 💡 Industry Insight (educational/thought leadership)
+- 🎯 Audience-Specific (tailored to ${targetAudience})
+- 🎭 Moment Marketing (capitalize on current news/events)
+- 🌟 Brand Story (authentic company content)
+- 📈 Promotional (product/service focused)
+
+Return ONLY valid JSON (no markdown):
+{
+  "suggestions": [
+    {
+      "id": "sug_1",
+      "category": "trending|event|competitor|insight|audience|moment|story|promo",
+      "title": "Catchy content title/hook",
+      "description": "Why this content will work and what angle to take",
+      "viralPotential": "high|medium|low",
+      "urgency": "immediate|this_week|this_month",
+      "platforms": ["instagram", "facebook", "twitter", "linkedin"],
+      "contentType": "image|video|carousel|reel|story|text",
+      "hook": "The attention-grabbing first line or visual concept",
+      "trendingTopics": ["#hashtag1", "#hashtag2"],
+      "suggestedCaption": "Full ready-to-post caption with emojis and CTA",
+      "competitorReference": "Which competitor this counters (if applicable)",
+      "eventDate": "2026-01-14 (if related to specific event)",
+      "estimatedEngagement": "Expected likes, shares, comments range"
+    }
+  ],
+  "trendingNow": ["Current trending topic 1", "Topic 2", "Topic 3"],
+  "upcomingEvents": [
+    {"name": "Event name", "date": "2026-01-14", "relevance": "How it relates to ${companyName}"}
+  ],
+  "competitorInsight": "Brief analysis of what competitors are doing well/poorly"
+}
+
+Make suggestions SPECIFIC, ACTIONABLE, and TIMELY. Include actual trending hashtags and real events.`;
+
+  try {
+    const response = await callGemini(prompt, { 
+      skipCache: true, 
+      temperature: 0.85, 
+      maxTokens: 4096,
+      timeout: EXTENDED_TIMEOUT 
+    });
+    const parsed = parseGeminiJSON(response);
+    
+    if (parsed && parsed.suggestions) {
+      // Add unique IDs if missing
+      parsed.suggestions = parsed.suggestions.map((sug, idx) => ({
+        ...sug,
+        id: sug.id || `sug_${Date.now()}_${idx}`
+      }));
+    }
+    
+    return parsed || { suggestions: [], trendingNow: [], upcomingEvents: [] };
+  } catch (error) {
+    console.error('Strategic content generation error:', error);
+    return { suggestions: [], trendingNow: [], upcomingEvents: [], error: error.message };
+  }
+}
+
+/**
+ * Generate a complete post from a content suggestion
+ * Includes: caption, hashtags, image, trending audio suggestion
+ */
+async function generatePostFromSuggestion(suggestion, businessProfile) {
+  const companyName = businessProfile.name || 'Your Company';
+  const industry = businessProfile.industry || 'General';
+  const brandVoice = businessProfile.brandVoice || 'Professional';
+  
+  const prompt = `You are a social media content creator for ${companyName} (${industry}).
+Create a COMPLETE, ready-to-post piece of content based on this suggestion:
+
+=== CONTENT SUGGESTION ===
+Title: ${suggestion.title}
+Description: ${suggestion.description}
+Category: ${suggestion.category}
+Platforms: ${(suggestion.platforms || ['instagram']).join(', ')}
+Content Type: ${suggestion.contentType || 'image'}
+Hook: ${suggestion.hook || ''}
+
+=== BRAND GUIDELINES ===
+Company: ${companyName}
+Voice: ${brandVoice}
+Industry: ${industry}
+
+=== GENERATE ===
+Create the following:
+1. A viral-worthy caption (with emojis, line breaks for readability)
+2. 15-20 relevant hashtags (mix of popular and niche)
+3. A detailed image prompt that could be used with AI image generators
+4. Trending audio/music suggestions for reels (actual song names)
+5. Best posting times for each platform
+6. Engagement hooks (questions, CTAs)
+
+Return ONLY valid JSON:
+{
+  "caption": "Full caption with emojis and formatting...",
+  "hashtags": ["#hashtag1", "#hashtag2", "..."],
+  "imagePrompt": "Detailed prompt for AI image generation describing the exact visual needed",
+  "imageStyle": "professional|playful|minimalist|bold|artistic",
+  "trendingAudio": [
+    {"name": "Song/Sound name", "artist": "Artist name", "platform": "instagram|tiktok", "mood": "upbeat|chill|energetic"}
+  ],
+  "bestPostTimes": {
+    "instagram": "9:00 AM IST",
+    "facebook": "1:00 PM IST",
+    "twitter": "12:00 PM IST",
+    "linkedin": "8:00 AM IST"
+  },
+  "engagementHooks": ["Question to ask audience", "CTA to include"],
+  "altCaptions": ["Alternative caption 1", "Alternative caption 2"],
+  "storyIdeas": ["Story slide 1 idea", "Story slide 2 idea"],
+  "contentNotes": "Any additional tips for creating this content"
+}`;
+
+  try {
+    const response = await callGemini(prompt, { 
+      skipCache: true, 
+      temperature: 0.8, 
+      maxTokens: 2048,
+      timeout: EXTENDED_TIMEOUT 
+    });
+    const parsed = parseGeminiJSON(response);
+    
+    // Generate AI image based on the image prompt
+    if (parsed && parsed.imagePrompt) {
+      try {
+        const imageUrl = await generateImageFromCustomPrompt(parsed.imagePrompt);
+        parsed.generatedImageUrl = imageUrl;
+      } catch (imgError) {
+        console.error('Image generation error:', imgError);
+        // Fallback to relevant stock image
+        parsed.generatedImageUrl = await getRelevantImage(
+          suggestion.title,
+          industry,
+          suggestion.category,
+          suggestion.title,
+          (suggestion.platforms || ['instagram'])[0]
+        );
+      }
+    }
+    
+    return {
+      ...parsed,
+      suggestion: suggestion,
+      generatedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Post generation error:', error);
+    return {
+      caption: suggestion.suggestedCaption || `${suggestion.title}\n\n${suggestion.description}`,
+      hashtags: suggestion.trendingTopics || [],
+      imagePrompt: `Professional ${industry} marketing image for: ${suggestion.title}`,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Refine/edit an image with a new prompt
+ */
+async function refineImageWithPrompt(originalPrompt, refinementPrompt, style = 'professional') {
+  const combinedPrompt = `${originalPrompt}. Additionally: ${refinementPrompt}. Style: ${style}, high quality, social media optimized.`;
+  
+  try {
+    const newImageUrl = await generateImageFromCustomPrompt(combinedPrompt);
+    return {
+      success: true,
+      imageUrl: newImageUrl,
+      prompt: combinedPrompt
+    };
+  } catch (error) {
+    console.error('Image refinement error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Get seasonal context based on month (India-focused)
+ */
+function getSeasonalContext(month) {
+  const contexts = {
+    0: 'New Year season, Makar Sankranti/Pongal approaching, Republic Day (Jan 26)',
+    1: 'Valentine\'s Day, Budget season, Maha Shivaratri',
+    2: 'Holi festival, International Women\'s Day, Financial year end',
+    3: 'New financial year, Ugadi/Gudi Padwa, Good Friday, Earth Day',
+    4: 'Summer season, Mother\'s Day, Buddha Purnima',
+    5: 'Summer vacations, Father\'s Day, International Yoga Day (June 21)',
+    6: 'Monsoon begins, Eid, Guru Purnima',
+    7: 'Independence Day (Aug 15), Raksha Bandhan, Janmashtami, Friendship Day',
+    8: 'Ganesh Chaturthi, Onam, Teacher\'s Day, Navratri approaching',
+    9: 'Navratri, Dussehra, Gandhi Jayanti, Karwa Chauth',
+    10: 'Diwali season (BIGGEST shopping period), Bhai Dooj, Black Friday, Children\'s Day',
+    11: 'Christmas, Year-end sales, New Year preparation, Winter season'
+  };
+  return contexts[month] || 'Regular season';
+}
+
 module.exports = {
   callGemini,
   parseGeminiJSON,
@@ -1999,5 +2258,9 @@ module.exports = {
   selectABTestWinner,
   // New goal tracking functions
   analyzeGoalProgress,
-  generateGoalRecommendations
+  generateGoalRecommendations,
+  // Strategic Advisor functions
+  generateStrategicContentSuggestions,
+  generatePostFromSuggestion,
+  refineImageWithPrompt
 };

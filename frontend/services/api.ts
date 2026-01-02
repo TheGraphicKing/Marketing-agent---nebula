@@ -29,18 +29,21 @@ async function apiCall<T>(
   // Add auth token if required
   if (requiresAuth) {
     const token = getToken();
+    console.log('[API] Auth required for', endpoint, 'Token:', token ? token.substring(0, 20) + '...' : 'NO TOKEN');
     if (token) {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
   }
 
   try {
+    console.log('[API] Calling:', `${API_BASE_URL}${endpoint}`);
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
     });
 
     const data = await response.json();
+    console.log('[API] Response from', endpoint, ':', response.status, data?.success);
 
     if (!response.ok) {
       throw new Error(data.message || 'Something went wrong');
@@ -48,6 +51,7 @@ async function apiCall<T>(
 
     return data as T;
   } catch (error: any) {
+    console.error('[API] Error for', endpoint, ':', error.message);
     // Handle network errors
     if (error.message === 'Failed to fetch') {
       throw new Error('Unable to connect to server. Please check your connection.');
@@ -193,6 +197,26 @@ export const apiService = {
     } catch (error) {
       removeToken();
       return { user: null };
+    }
+  },
+
+  getBusinessContext: async (): Promise<{ success: boolean; businessLocation?: string; company?: any; geography?: any }> => {
+    try {
+      const response = await apiCall<{ success: boolean; context: any }>(
+        '/auth/business-context',
+        { method: 'GET' },
+        true
+      );
+      
+      return {
+        success: true,
+        businessLocation: response.context?.geography?.businessLocation || '',
+        company: response.context?.company,
+        geography: response.context?.geography
+      };
+    } catch (error) {
+      console.log('Error fetching business context:', error);
+      return { success: false };
     }
   },
 
@@ -658,6 +682,33 @@ export const apiService = {
     return response;
   },
 
+  ignoreCompetitor: async (competitorId: string): Promise<any> => {
+    const response = await apiCall<{ success: boolean; message: string; competitor: any }>(
+      `/competitors/${competitorId}/ignore`,
+      { method: 'PUT' },
+      true
+    );
+    return response;
+  },
+
+  unignoreCompetitor: async (competitorId: string): Promise<any> => {
+    const response = await apiCall<{ success: boolean; message: string; competitor: any }>(
+      `/competitors/${competitorId}/unignore`,
+      { method: 'PUT' },
+      true
+    );
+    return response;
+  },
+
+  getIgnoredCompetitors: async (): Promise<any> => {
+    const response = await apiCall<{ success: boolean; competitors: any[] }>(
+      '/competitors/ignored',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
   addCompetitorPost: async (competitorId: string, post: any): Promise<any> => {
     const response = await apiCall<{ success: boolean; competitor: any }>(
       `/competitors/${competitorId}/posts`,
@@ -671,6 +722,15 @@ export const apiService = {
     const response = await apiCall<{ success: boolean; message: string }>(
       '/competitors/seed-sample',
       { method: 'POST' },
+      true
+    );
+    return response;
+  },
+
+  autoDiscoverCompetitors: async (data: { location?: string; forceRefresh?: boolean }): Promise<any> => {
+    const response = await apiCall<{ success: boolean; competitors: any[]; posts: any[]; message: string }>(
+      '/competitors/auto-discover',
+      { method: 'POST', body: JSON.stringify(data) },
       true
     );
     return response;
@@ -963,6 +1023,200 @@ export const apiService = {
     const response = await apiCall<{ success: boolean }>(
       `/reminders/${id}`,
       { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  // ============================================
+  // STRATEGIC ADVISOR API
+  // ============================================
+  
+  getStrategicSuggestions: async (): Promise<{
+    success: boolean;
+    suggestions: any[];
+    trendingNow: string[];
+    upcomingEvents: any[];
+    competitorInsight: string;
+    businessContext: any;
+  }> => {
+    try {
+      const response = await apiCall<any>(
+        '/dashboard/strategic-advisor',
+        { method: 'GET' },
+        true
+      );
+      return {
+        success: true,
+        suggestions: response.suggestions || [],
+        trendingNow: response.trendingNow || [],
+        upcomingEvents: response.upcomingEvents || [],
+        competitorInsight: response.competitorInsight || '',
+        businessContext: response.businessContext || {}
+      };
+    } catch (error) {
+      console.error('Strategic suggestions error:', error);
+      return {
+        success: false,
+        suggestions: [],
+        trendingNow: [],
+        upcomingEvents: [],
+        competitorInsight: '',
+        businessContext: {}
+      };
+    }
+  },
+
+  generatePostFromSuggestion: async (suggestion: any): Promise<{
+    success: boolean;
+    post: {
+      caption: string;
+      hashtags: string[];
+      imagePrompt: string;
+      imageStyle: string;
+      generatedImageUrl?: string;
+      trendingAudio: any[];
+      bestPostTimes: Record<string, string>;
+      engagementHooks: string[];
+      altCaptions: string[];
+      storyIdeas: string[];
+      contentNotes: string;
+      suggestion: any;
+    };
+  }> => {
+    try {
+      const response = await apiCall<any>(
+        '/dashboard/strategic-advisor/generate-post',
+        { 
+          method: 'POST', 
+          body: JSON.stringify({ suggestion }) 
+        },
+        true
+      );
+      return {
+        success: true,
+        post: response.post
+      };
+    } catch (error) {
+      console.error('Generate post error:', error);
+      return {
+        success: false,
+        post: {
+          caption: '',
+          hashtags: [],
+          imagePrompt: '',
+          imageStyle: 'professional',
+          trendingAudio: [],
+          bestPostTimes: {},
+          engagementHooks: [],
+          altCaptions: [],
+          storyIdeas: [],
+          contentNotes: '',
+          suggestion
+        }
+      };
+    }
+  },
+
+  refineImage: async (originalPrompt: string, refinementPrompt: string, style?: string): Promise<{
+    success: boolean;
+    imageUrl?: string;
+    error?: string;
+  }> => {
+    try {
+      const response = await apiCall<any>(
+        '/dashboard/strategic-advisor/refine-image',
+        { 
+          method: 'POST', 
+          body: JSON.stringify({ originalPrompt, refinementPrompt, style }) 
+        },
+        true
+      );
+      return response;
+    } catch (error: any) {
+      console.error('Refine image error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to refine image'
+      };
+    }
+  },
+
+  // ============================================
+  // NOTIFICATIONS - CAMPAIGN REMINDERS
+  // ============================================
+
+  getNotifications: async (options?: { unreadOnly?: boolean; limit?: number }): Promise<{ notifications: any[]; unreadCount: number }> => {
+    try {
+      const params = new URLSearchParams();
+      if (options?.unreadOnly) params.append('unreadOnly', 'true');
+      if (options?.limit) params.append('limit', options.limit.toString());
+      
+      const response = await apiCall<{ success: boolean; notifications: any[]; unreadCount: number }>(
+        `/notifications${params.toString() ? '?' + params.toString() : ''}`,
+        { method: 'GET' },
+        true
+      );
+      return { notifications: response.notifications || [], unreadCount: response.unreadCount || 0 };
+    } catch (error) {
+      console.log('Notifications error:', error);
+      return { notifications: [], unreadCount: 0 };
+    }
+  },
+
+  getUnreadNotificationCount: async (): Promise<number> => {
+    try {
+      const response = await apiCall<{ success: boolean; count: number }>(
+        '/notifications/unread-count',
+        { method: 'GET' },
+        true
+      );
+      return response.count || 0;
+    } catch (error) {
+      return 0;
+    }
+  },
+
+  markNotificationRead: async (id: string): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      `/notifications/${id}/read`,
+      { method: 'PUT' },
+      true
+    );
+    return response;
+  },
+
+  markAllNotificationsRead: async (): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      '/notifications/read-all',
+      { method: 'PUT' },
+      true
+    );
+    return response;
+  },
+
+  deleteNotification: async (id: string): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      `/notifications/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  clearAllNotifications: async (): Promise<{ success: boolean }> => {
+    const response = await apiCall<{ success: boolean }>(
+      '/notifications',
+      { method: 'DELETE' },
+      true
+    );
+    return response;
+  },
+
+  checkNotificationsNow: async (): Promise<{ success: boolean; campaigns: any[]; notifications: any[]; message: string }> => {
+    const response = await apiCall<{ success: boolean; campaigns: any[]; notifications: any[]; message: string }>(
+      '/notifications/check-now',
+      { method: 'POST' },
       true
     );
     return response;
@@ -1401,7 +1655,19 @@ export const apiService = {
 
   // Leads
   getLeads: async (params?: { status?: string; source?: string; search?: string; page?: number; limit?: number }): Promise<any> => {
-    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    // Filter out undefined values to avoid sending "undefined" strings
+    const cleanParams: Record<string, string> = {};
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanParams[key] = String(value);
+        }
+      });
+    }
+    const queryString = Object.keys(cleanParams).length > 0 
+      ? '?' + new URLSearchParams(cleanParams).toString() 
+      : '';
+    console.log('[getLeads] Query string:', queryString);
     const response = await apiCall<any>(
       `/reachouts/leads${queryString}`,
       { method: 'GET' },
@@ -1528,6 +1794,56 @@ export const apiService = {
     return response;
   },
 
+  // File Upload
+  uploadLeadsFile: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/reachouts/leads/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to upload file');
+    }
+    return data;
+  },
+
+  previewLeadsFile: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('authToken');
+    const response = await fetch(`${API_BASE_URL}/reachouts/leads/upload/preview`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to preview file');
+    }
+    return data;
+  },
+
+  getIntegrations: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/integrations',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
   // Sequences
   getSequences: async (): Promise<any> => {
     const response = await apiCall<any>(
@@ -1569,6 +1885,108 @@ export const apiService = {
     const response = await apiCall<any>(
       `/reachouts/sequences/${sequenceId}/enroll`,
       { method: 'POST', body: JSON.stringify({ leadIds }) },
+      true
+    );
+    return response;
+  },
+
+  // Email Campaigns
+  generateEmailSequence: async (data: { 
+    leadIds: string[]; 
+    campaignType?: string; 
+    numFollowUps?: number;
+    customInstructions?: string;
+  }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/campaigns/generate-sequence',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  createEmailCampaign: async (data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/campaigns',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  getEmailCampaigns: async (): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/campaigns',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  getEmailCampaign: async (id: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/campaigns/${id}`,
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  updateEmailCampaign: async (id: string, data: any): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/campaigns/${id}`,
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+    return response;
+  },
+
+  sendEmailCampaign: async (id: string, stage?: string): Promise<any> => {
+    const response = await apiCall<any>(
+      `/reachouts/campaigns/${id}/send`,
+      { method: 'POST', body: JSON.stringify({ stage: stage || 'initial' }) },
+      true
+    );
+    return response;
+  },
+
+  // Email Configuration
+  configureEmail: async (config: {
+    provider: 'sendgrid' | 'gmail' | 'outlook' | 'smtp';
+    email?: string;
+    apiKey?: string;
+    appPassword?: string;
+    password?: string;
+    host?: string;
+    port?: number;
+  }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/email/configure',
+      { method: 'POST', body: JSON.stringify(config) },
+      true
+    );
+    return response;
+  },
+
+  sendTestEmail: async (to: string): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/email/test',
+      { method: 'POST', body: JSON.stringify({ to }) },
+      true
+    );
+    return response;
+  },
+
+  sendDirectEmails: async (data: {
+    recipients: Array<{ email: string; firstName?: string; lastName?: string; company?: { name?: string }; role?: string }>;
+    subject: string;
+    body: string;
+    senderEmail: string;
+    senderName?: string;
+  }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/reachouts/email/send-direct',
+      { method: 'POST', body: JSON.stringify(data) },
       true
     );
     return response;

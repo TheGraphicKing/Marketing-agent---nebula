@@ -15,6 +15,7 @@ import {
   Send
 } from 'lucide-react';
 import { User } from '../types';
+import NotificationBell from './NotificationBell';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -183,9 +184,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             <Menu className="w-6 h-6" />
           </button>
           <span className={`font-bold ${isDarkMode ? 'text-[#ffcc29]' : 'text-[#070A12]'}`}>GRAVITY</span>
-          <button onClick={toggleTheme} className={isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}>
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <button onClick={toggleTheme} className={isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}>
+              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          </div>
+        </header>
+
+        {/* Desktop Header with Notifications */}
+        <header className={`hidden md:flex ${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-white border-gray-200'} border-b px-8 py-3 items-center justify-end gap-4`}>
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8">

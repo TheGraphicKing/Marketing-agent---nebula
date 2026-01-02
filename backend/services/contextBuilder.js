@@ -8,6 +8,7 @@
  * and aligned with the company's brand, goals, and target audience.
  */
 
+const mongoose = require('mongoose');
 const OnboardingContext = require('../models/OnboardingContext');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
@@ -21,10 +22,59 @@ class ContextBuilder {
    */
   async getCompanyContext(userId) {
     try {
+      // Ensure userId is an ObjectId
+      const userObjectId = typeof userId === 'string' 
+        ? new mongoose.Types.ObjectId(userId) 
+        : userId;
+      
       // Fetch onboarding context
-      const context = await OnboardingContext.findOne({ userId });
+      const context = await OnboardingContext.findOne({ userId: userObjectId });
       
       if (!context) {
+        // Try to create from user's businessProfile
+        const user = await User.findById(userObjectId);
+        
+        if (user && user.onboardingCompleted && user.businessProfile) {
+          const bp = user.businessProfile;
+          
+          const newContext = new OnboardingContext({
+            userId: userObjectId,
+            company: {
+              name: bp.name || bp.companyName || user.companyName || 'Company',
+              website: bp.website || '',
+              industry: bp.industry || 'General',
+              description: bp.niche || bp.description || bp.tagline || 'A company providing quality services'
+            },
+            targetCustomer: {
+              description: bp.targetAudience || bp.goals || 'Business clients seeking our solutions',
+              roles: [],
+              companySize: 'any',
+              industries: [bp.industry].filter(Boolean)
+            },
+            geography: {
+              isGlobal: true,
+              regions: [],
+              countries: []
+            },
+            primaryGoal: 'leads',
+            brandTone: bp.brandVoice?.toLowerCase() || 'professional',
+            valueProposition: {
+              main: bp.tagline || bp.niche || '',
+              keyBenefits: [],
+              differentiators: []
+            },
+            completionStatus: {
+              isComplete: true,
+              completedAt: new Date()
+            }
+          });
+          
+          await newContext.save();
+          console.log('✅ Auto-created OnboardingContext from businessProfile');
+          
+          return this.getCompanyContext(userId); // Recurse to get the newly created context
+        }
+        
         return {
           success: false,
           error: 'ONBOARDING_NOT_FOUND',
@@ -46,7 +96,7 @@ class ContextBuilder {
       }
       
       // Also fetch user data for additional context
-      const user = await User.findById(userId);
+      const user = await User.findById(userObjectId);
       
       return {
         success: true,

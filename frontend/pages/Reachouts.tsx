@@ -10,16 +10,20 @@
  * - Automation status
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 import { apiService } from '../services/api';
+import OutreachModal from '../components/OutreachModal';
 import {
   Users, Search, Plus, Filter, Mail, Phone, Linkedin,
   MoreVertical, ChevronRight, Clock, CheckCircle2, XCircle,
   AlertCircle, Sparkles, Send, RefreshCw, MessageSquare,
   Building2, MapPin, Calendar, Activity, Eye, MousePointer,
   TrendingUp, FileText, Loader2, X, ChevronDown, Upload,
-  Zap, Target, ArrowRight, Copy, Check, Edit3, Trash2
+  Zap, Target, ArrowRight, Copy, Check, Edit3, Trash2,
+  FileSpreadsheet, Link2, Database, CloudDownload, Facebook,
+  Chrome, Table, ExternalLink
 } from 'lucide-react';
 
 // Lead status configuration
@@ -95,9 +99,36 @@ interface LeadStats {
   };
 }
 
+interface Integration {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  connected: boolean;
+  available: boolean;
+}
+
+// Lead source options for filtering
+const LEAD_SOURCES = {
+  manual: { label: 'Manual', icon: 'edit' },
+  import: { label: 'Excel/CSV', icon: 'file-spreadsheet' },
+  meta_ads: { label: 'Meta Ads', icon: 'facebook' },
+  google_ads: { label: 'Google Ads', icon: 'chrome' },
+  hubspot: { label: 'HubSpot', icon: 'database' },
+  zoho_crm: { label: 'Zoho CRM', icon: 'database' },
+  salesforce: { label: 'Salesforce', icon: 'database' },
+  linkedin: { label: 'LinkedIn', icon: 'linkedin' },
+  website: { label: 'Website', icon: 'globe' },
+  referral: { label: 'Referral', icon: 'users' },
+  other: { label: 'Other', icon: 'folder' }
+};
+
 const Reachouts: React.FC = () => {
   const { isDarkMode } = useTheme();
   const theme = getThemeClasses(isDarkMode);
+  const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // State
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -107,11 +138,21 @@ const Reachouts: React.FC = () => {
   const [showLeadModal, setShowLeadModal] = useState(false);
   const [showAddLeadModal, setShowAddLeadModal] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // File upload state
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<any>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  
+  // Integrations
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   
   // Generation state
   const [generatingContent, setGeneratingContent] = useState(false);
@@ -121,6 +162,10 @@ const Reachouts: React.FC = () => {
   // Readiness state
   const [isReady, setIsReady] = useState(true);
   const [missingFields, setMissingFields] = useState<string[]>([]);
+  
+  // Bulk selection state
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [showOutreachModal, setShowOutreachModal] = useState(false);
   
   // Add lead form
   const [newLead, setNewLead] = useState({
@@ -139,27 +184,57 @@ const Reachouts: React.FC = () => {
   useEffect(() => {
     fetchData();
     checkReadiness();
-  }, [statusFilter, searchQuery]);
+    fetchIntegrations();
+  }, [statusFilter, sourceFilter, searchQuery]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [leadsRes, statsRes] = await Promise.all([
-        apiService.getLeads({ 
-          status: statusFilter || undefined, 
-          search: searchQuery || undefined 
-        }),
-        apiService.getLeadStats()
-      ]);
       
-      if (leadsRes.success) {
-        setLeads(leadsRes.data.leads);
+      // Fetch separately to identify which call fails
+      console.log('=== FETCHING DATA ===');
+      
+      let leadsRes: any = null;
+      let statsRes: any = null;
+      
+      try {
+        console.log('Calling getLeads...');
+        leadsRes = await apiService.getLeads({ 
+          status: statusFilter || undefined,
+          source: sourceFilter || undefined,
+          search: searchQuery || undefined 
+        });
+        console.log('getLeads returned:', leadsRes);
+      } catch (leadsErr: any) {
+        console.error('getLeads THREW ERROR:', leadsErr.message);
       }
-      if (statsRes.success) {
+      
+      try {
+        console.log('Calling getLeadStats...');
+        statsRes = await apiService.getLeadStats();
+        console.log('getLeadStats returned:', statsRes);
+      } catch (statsErr: any) {
+        console.error('getLeadStats THREW ERROR:', statsErr.message);
+      }
+      
+      console.log('=== PROCESSING RESULTS ===');
+      console.log('leadsRes:', leadsRes);
+      console.log('statsRes:', statsRes);
+      
+      if (leadsRes?.success && leadsRes?.data?.leads) {
+        console.log('✅ Setting leads:', leadsRes.data.leads.length, 'leads');
+        setLeads(leadsRes.data.leads);
+      } else {
+        console.error('❌ leadsRes failed or no leads:', leadsRes);
+        setLeads([]);
+      }
+      
+      if (statsRes?.success && statsRes?.data) {
+        console.log('✅ Setting stats:', statsRes.data);
         setStats(statsRes.data);
       }
     } catch (error) {
-      console.error('Failed to fetch reachouts data:', error);
+      console.error('fetchData outer catch:', error);
     } finally {
       setLoading(false);
     }
@@ -174,6 +249,67 @@ const Reachouts: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to check readiness:', error);
+    }
+  };
+
+  const fetchIntegrations = async () => {
+    try {
+      const res = await apiService.getIntegrations();
+      if (res.success) {
+        setIntegrations(res.data.integrations);
+      }
+    } catch (error) {
+      console.error('Failed to fetch integrations:', error);
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    const validTypes = ['.xlsx', '.xls', '.csv'];
+    const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+    if (!validTypes.includes(ext)) {
+      setUploadError('Please upload an Excel (.xlsx, .xls) or CSV file');
+      return;
+    }
+    
+    setUploading(true);
+    setUploadError(null);
+    setUploadProgress(null);
+    
+    try {
+      const result = await apiService.uploadLeadsFile(file);
+      
+      if (result.success) {
+        setUploadProgress({
+          imported: result.data.imported,
+          failed: result.data.failed,
+          duplicates: result.data.duplicates,
+          skippedByAI: result.data.skippedByAI,
+          totalProcessed: result.data.totalProcessed
+        });
+        
+        // Refresh leads list
+        fetchData();
+        
+        // Close modal after 3 seconds if successful
+        if (result.data.imported > 0) {
+          setTimeout(() => {
+            setShowImportModal(false);
+            setUploadProgress(null);
+          }, 3000);
+        }
+      }
+    } catch (error: any) {
+      setUploadError(error.message || 'Failed to upload file');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -345,7 +481,10 @@ const Reachouts: React.FC = () => {
                 <li key={field}>• {field.replace('.', ' → ')}</li>
               ))}
             </ul>
-            <button className="mt-3 px-4 py-2 bg-yellow-500 text-black rounded-lg text-sm font-semibold">
+            <button 
+              onClick={() => navigate('/onboarding')}
+              className="mt-3 px-4 py-2 bg-yellow-500 text-black rounded-lg text-sm font-semibold hover:bg-yellow-600 transition-colors"
+            >
               Complete Profile
             </button>
           </div>
@@ -358,9 +497,9 @@ const Reachouts: React.FC = () => {
   const renderLeadsTable = () => (
     <div className={`rounded-xl overflow-hidden ${theme.bgCard}`}>
       {/* Header */}
-      <div className="p-4 border-b border-slate-700/50 flex items-center justify-between">
+      <div className="p-4 border-b border-slate-700/50 flex items-center justify-between flex-wrap gap-3">
         <h2 className={`text-lg font-semibold ${theme.text}`}>Leads Inbox</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Search */}
           <div className="relative">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${theme.textSecondary}`} />
@@ -373,39 +512,87 @@ const Reachouts: React.FC = () => {
             />
           </div>
           
-          {/* Filter */}
+          {/* Status Filter */}
           <div className="relative">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`p-2 rounded-lg ${theme.bgSecondary} ${theme.textSecondary} hover:text-white`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg ${theme.bgSecondary} ${statusFilter || sourceFilter ? 'text-[#ffcc29]' : theme.textSecondary} hover:text-white text-sm`}
             >
               <Filter className="w-4 h-4" />
+              {statusFilter || sourceFilter ? 'Filtered' : 'Filter'}
+              {(statusFilter || sourceFilter) && (
+                <span className="bg-[#ffcc29] text-black text-xs px-1.5 rounded-full">
+                  {(statusFilter ? 1 : 0) + (sourceFilter ? 1 : 0)}
+                </span>
+              )}
             </button>
             
             {showFilters && (
-              <div className={`absolute right-0 mt-2 w-48 rounded-lg shadow-xl ${theme.bgCard} border border-slate-700/50 z-10`}>
-                <div className="p-2">
-                  <p className={`text-xs font-semibold ${theme.textSecondary} px-2 py-1`}>Filter by Status</p>
-                  <button
-                    onClick={() => { setStatusFilter(''); setShowFilters(false); }}
-                    className={`w-full text-left px-2 py-1.5 rounded text-sm ${!statusFilter ? 'bg-[#ffcc29]/20 text-[#ffcc29]' : theme.text}`}
-                  >
-                    All
-                  </button>
-                  {Object.entries(LEAD_STATUSES).map(([key, value]) => (
-                    <button
-                      key={key}
-                      onClick={() => { setStatusFilter(key); setShowFilters(false); }}
-                      className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center gap-2 ${statusFilter === key ? 'bg-[#ffcc29]/20 text-[#ffcc29]' : theme.text}`}
+              <div className={`absolute right-0 mt-2 w-64 rounded-lg shadow-xl ${theme.bgCard} border border-slate-700/50 z-20`}>
+                <div className="p-3 space-y-4">
+                  {/* Status Filter */}
+                  <div>
+                    <p className={`text-xs font-semibold ${theme.textSecondary} mb-2`}>STATUS</p>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-lg text-sm ${theme.bgSecondary} ${theme.text} border-none outline-none`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${value.color}`} />
-                      {value.label}
+                      <option value="">All Statuses</option>
+                      {Object.entries(LEAD_STATUSES).map(([key, value]) => (
+                        <option key={key} value={key}>{value.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Source Filter */}
+                  <div>
+                    <p className={`text-xs font-semibold ${theme.textSecondary} mb-2`}>SOURCE</p>
+                    <select
+                      value={sourceFilter}
+                      onChange={(e) => setSourceFilter(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-lg text-sm ${theme.bgSecondary} ${theme.text} border-none outline-none`}
+                    >
+                      <option value="">All Sources</option>
+                      {Object.entries(LEAD_SOURCES).map(([key, value]) => (
+                        <option key={key} value={key}>{value.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Clear Filters */}
+                  {(statusFilter || sourceFilter) && (
+                    <button
+                      onClick={() => { setStatusFilter(''); setSourceFilter(''); setShowFilters(false); }}
+                      className="w-full px-3 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30"
+                    >
+                      Clear Filters
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
           </div>
+          
+          {/* Import Button */}
+          <button
+            onClick={() => setShowImportModal(true)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${theme.bgSecondary} ${theme.text} hover:bg-[#ffcc29]/20 hover:text-[#ffcc29] transition-colors`}
+          >
+            <Upload className="w-4 h-4" />
+            Import
+          </button>
+          
+          {/* Bulk Outreach Button - shows when leads selected */}
+          {selectedLeadIds.size > 0 && (
+            <button
+              onClick={() => setShowOutreachModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors"
+            >
+              <Send className="w-4 h-4" />
+              Send Outreach ({selectedLeadIds.size})
+            </button>
+          )}
           
           {/* Add Lead */}
           <button
@@ -418,11 +605,49 @@ const Reachouts: React.FC = () => {
         </div>
       </div>
       
+      {/* Bulk Selection Bar */}
+      {selectedLeadIds.size > 0 && (
+        <div className={`mb-4 p-3 rounded-lg ${theme.bgSecondary} border ${theme.border} flex items-center justify-between`}>
+          <div className="flex items-center gap-3">
+            <span className={`font-medium ${theme.text}`}>{selectedLeadIds.size} leads selected</span>
+            <button
+              onClick={() => setSelectedLeadIds(new Set())}
+              className={`text-sm ${theme.textSecondary} hover:text-red-400`}
+            >
+              Clear selection
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowOutreachModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#ffcc29] text-black rounded-lg text-sm font-medium hover:bg-[#ffcc29]/80"
+            >
+              <Sparkles className="w-4 h-4" />
+              AI Outreach Campaign
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className={`border-b border-slate-700/50 ${theme.bgSecondary}`}>
+              <th className="w-10 p-3">
+                <input
+                  type="checkbox"
+                  checked={leads.length > 0 && selectedLeadIds.size === leads.length}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedLeadIds(new Set(leads.map(l => l._id)));
+                    } else {
+                      setSelectedLeadIds(new Set());
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-gray-400 text-[#ffcc29] focus:ring-[#ffcc29]"
+                />
+              </th>
               <th className={`text-left p-3 text-xs font-semibold ${theme.textSecondary}`}>LEAD</th>
               <th className={`text-left p-3 text-xs font-semibold ${theme.textSecondary}`}>COMPANY</th>
               <th className={`text-left p-3 text-xs font-semibold ${theme.textSecondary}`}>STATUS</th>
@@ -435,49 +660,64 @@ const Reachouts: React.FC = () => {
             {leads.map((lead) => (
               <tr 
                 key={lead._id} 
-                className={`border-b border-slate-700/30 hover:${theme.bgSecondary} cursor-pointer transition-colors`}
-                onClick={() => { setSelectedLead(lead); setShowLeadModal(true); }}
+                className={`border-b border-slate-700/30 hover:${theme.bgSecondary} cursor-pointer transition-colors ${selectedLeadIds.has(lead._id) ? 'bg-[#ffcc29]/10' : ''}`}
               >
-                <td className="p-3">
+                <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedLeadIds.has(lead._id)}
+                    onChange={(e) => {
+                      const newSelected = new Set(selectedLeadIds);
+                      if (e.target.checked) {
+                        newSelected.add(lead._id);
+                      } else {
+                        newSelected.delete(lead._id);
+                      }
+                      setSelectedLeadIds(newSelected);
+                    }}
+                    className="w-4 h-4 rounded border-gray-400 text-[#ffcc29] focus:ring-[#ffcc29]"
+                  />
+                </td>
+                <td className="p-3" onClick={() => { setSelectedLead(lead); setShowLeadModal(true); }}>
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ffcc29] to-[#ffcc29]/60 flex items-center justify-center text-black font-bold">
-                      {lead.firstName[0]}{lead.lastName?.[0] || ''}
+                      {lead.firstName?.[0] || '?'}{lead.lastName?.[0] || ''}
                     </div>
                     <div>
-                      <p className={`font-medium ${theme.text}`}>{lead.firstName} {lead.lastName}</p>
+                      <p className={`font-medium ${theme.text}`}>{lead.firstName || 'Unknown'} {lead.lastName || ''}</p>
                       <p className={`text-sm ${theme.textSecondary}`}>{lead.role || 'No role'}</p>
                     </div>
                   </div>
                 </td>
                 <td className="p-3">
                   <div>
-                    <p className={`font-medium ${theme.text}`}>{lead.company.name}</p>
-                    <p className={`text-sm ${theme.textSecondary}`}>{lead.company.industry || 'Unknown industry'}</p>
+                    <p className={`font-medium ${theme.text}`}>{lead.company?.name || 'Unknown Company'}</p>
+                    <p className={`text-sm ${theme.textSecondary}`}>{lead.company?.industry || 'Unknown industry'}</p>
                   </div>
                 </td>
                 <td className="p-3">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${LEAD_STATUSES[lead.status as keyof typeof LEAD_STATUSES]?.color || 'bg-gray-500'} text-white`}>
-                    {LEAD_STATUSES[lead.status as keyof typeof LEAD_STATUSES]?.label || lead.status}
+                    {LEAD_STATUSES[lead.status as keyof typeof LEAD_STATUSES]?.label || lead.status || 'New'}
                   </span>
                 </td>
                 <td className="p-3">
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1" title="Emails sent">
                       <Mail className={`w-4 h-4 ${theme.textSecondary}`} />
-                      <span className={`text-sm ${theme.text}`}>{lead.outreachStatus.emailsSent}</span>
+                      <span className={`text-sm ${theme.text}`}>{lead.outreachStatus?.emailsSent || 0}</span>
                     </div>
                     <div className="flex items-center gap-1" title="Opens">
                       <Eye className={`w-4 h-4 ${theme.textSecondary}`} />
-                      <span className={`text-sm ${theme.text}`}>{lead.outreachStatus.emailsOpened}</span>
+                      <span className={`text-sm ${theme.text}`}>{lead.outreachStatus?.emailsOpened || 0}</span>
                     </div>
                     <div className="flex items-center gap-1" title="Replies">
                       <MessageSquare className={`w-4 h-4 ${theme.textSecondary}`} />
-                      <span className={`text-sm ${theme.text}`}>{lead.outreachStatus.emailsReplied}</span>
+                      <span className={`text-sm ${theme.text}`}>{lead.outreachStatus?.emailsReplied || 0}</span>
                     </div>
                   </div>
                 </td>
                 <td className="p-3">
-                  {lead.automation.isActive ? (
+                  {lead.automation?.isActive ? (
                     <span className="flex items-center gap-1 text-green-500 text-sm">
                       <Zap className="w-4 h-4" />
                       Active
@@ -817,6 +1057,285 @@ const Reachouts: React.FC = () => {
     );
   };
 
+  // Render import modal with integrations
+  const renderImportModal = () => {
+    if (!showImportModal) return null;
+    
+    const getIntegrationIcon = (iconName: string) => {
+      switch (iconName) {
+        case 'facebook': return <Facebook className="w-6 h-6" />;
+        case 'google': return <Chrome className="w-6 h-6" />;
+        case 'database': return <Database className="w-6 h-6" />;
+        case 'file-spreadsheet': return <FileSpreadsheet className="w-6 h-6" />;
+        default: return <Link2 className="w-6 h-6" />;
+      }
+    };
+    
+    return (
+      <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className={`w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl ${theme.bgCard}`}>
+          <div className="p-6 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+              <h2 className={`text-xl font-bold ${theme.text}`}>Import Leads</h2>
+              <p className={`text-sm ${theme.textSecondary} mt-1`}>
+                Connect your ad accounts, CRMs, or upload spreadsheets
+              </p>
+            </div>
+            <button 
+              onClick={() => { setShowImportModal(false); setUploadProgress(null); setUploadError(null); }} 
+              className={`p-2 rounded-lg hover:${theme.bgSecondary}`}
+            >
+              <X className={`w-5 h-5 ${theme.textSecondary}`} />
+            </button>
+          </div>
+          
+          <div className="p-6 space-y-6">
+            {/* Ad Platforms Section */}
+            <div>
+              <h3 className={`text-sm font-semibold ${theme.textSecondary} mb-3 flex items-center gap-2`}>
+                <TrendingUp className="w-4 h-4" />
+                AD PLATFORMS
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Meta Ads */}
+                <div className={`p-4 rounded-xl border-2 border-dashed ${theme.bgSecondary} border-slate-600 opacity-60`}>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/20">
+                      <Facebook className="w-6 h-6 text-blue-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${theme.text}`}>Meta Ads</h4>
+                      <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                        Import leads from Facebook & Instagram ads
+                      </p>
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-400">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Google Ads */}
+                <div className={`p-4 rounded-xl border-2 border-dashed ${theme.bgSecondary} border-slate-600 opacity-60`}>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-red-500/20">
+                      <Chrome className="w-6 h-6 text-red-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${theme.text}`}>Google Ads</h4>
+                      <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                        Import leads from Google Ads campaigns
+                      </p>
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-400">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* CRM Integrations Section */}
+            <div>
+              <h3 className={`text-sm font-semibold ${theme.textSecondary} mb-3 flex items-center gap-2`}>
+                <Database className="w-4 h-4" />
+                CRM INTEGRATIONS
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {/* HubSpot */}
+                <div className={`p-4 rounded-xl border-2 border-dashed ${theme.bgSecondary} border-slate-600 opacity-60`}>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-orange-500/20">
+                      <Database className="w-6 h-6 text-orange-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${theme.text}`}>HubSpot</h4>
+                      <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                        Sync leads with HubSpot CRM
+                      </p>
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-400">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Zoho CRM */}
+                <div className={`p-4 rounded-xl border-2 border-dashed ${theme.bgSecondary} border-slate-600 opacity-60`}>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-yellow-500/20">
+                      <Database className="w-6 h-6 text-yellow-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${theme.text}`}>Zoho CRM</h4>
+                      <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                        Sync leads with Zoho CRM
+                      </p>
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-400">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Salesforce */}
+                <div className={`p-4 rounded-xl border-2 border-dashed ${theme.bgSecondary} border-slate-600 opacity-60`}>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-blue-400/20">
+                      <Database className="w-6 h-6 text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${theme.text}`}>Salesforce</h4>
+                      <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                        Sync leads with Salesforce CRM
+                      </p>
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-400">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Pipedrive */}
+                <div className={`p-4 rounded-xl border-2 border-dashed ${theme.bgSecondary} border-slate-600 opacity-60`}>
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-green-500/20">
+                      <Database className="w-6 h-6 text-green-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className={`font-semibold ${theme.text}`}>Pipedrive</h4>
+                      <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                        Sync leads with Pipedrive CRM
+                      </p>
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-400">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Excel/CSV Upload Section */}
+            <div>
+              <h3 className={`text-sm font-semibold ${theme.textSecondary} mb-3 flex items-center gap-2`}>
+                <FileSpreadsheet className="w-4 h-4" />
+                SPREADSHEET UPLOAD
+              </h3>
+              
+              <div 
+                className={`p-6 rounded-xl border-2 border-dashed transition-colors ${
+                  uploading 
+                    ? 'border-[#ffcc29] bg-[#ffcc29]/10' 
+                    : uploadError 
+                      ? 'border-red-500 bg-red-500/10'
+                      : uploadProgress 
+                        ? 'border-green-500 bg-green-500/10'
+                        : `border-slate-600 hover:border-[#ffcc29] ${theme.bgSecondary}`
+                }`}
+              >
+                {!uploading && !uploadProgress && !uploadError && (
+                  <div className="text-center">
+                    <FileSpreadsheet className={`w-12 h-12 mx-auto mb-3 ${theme.textSecondary}`} />
+                    <h4 className={`font-semibold ${theme.text} mb-1`}>Upload Excel or CSV</h4>
+                    <p className={`text-sm ${theme.textSecondary} mb-4`}>
+                      AI will automatically detect and filter relevant lead data
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="lead-file-upload"
+                    />
+                    <label
+                      htmlFor="lead-file-upload"
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-[#ffcc29] text-black rounded-lg font-semibold cursor-pointer hover:bg-[#ffcc29]/80 transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      Choose File
+                    </label>
+                    <p className={`text-xs ${theme.textSecondary} mt-3`}>
+                      Supported formats: .xlsx, .xls, .csv (max 10MB)
+                    </p>
+                  </div>
+                )}
+                
+                {uploading && (
+                  <div className="text-center py-4">
+                    <Loader2 className="w-10 h-10 mx-auto mb-3 text-[#ffcc29] animate-spin" />
+                    <h4 className={`font-semibold ${theme.text} mb-1`}>Processing File...</h4>
+                    <p className={`text-sm ${theme.textSecondary}`}>
+                      AI is analyzing and filtering your data
+                    </p>
+                  </div>
+                )}
+                
+                {uploadError && (
+                  <div className="text-center py-4">
+                    <XCircle className="w-10 h-10 mx-auto mb-3 text-red-500" />
+                    <h4 className="font-semibold text-red-500 mb-1">Upload Failed</h4>
+                    <p className={`text-sm ${theme.textSecondary} mb-4`}>{uploadError}</p>
+                    <button
+                      onClick={() => { setUploadError(null); fileInputRef.current?.click(); }}
+                      className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                )}
+                
+                {uploadProgress && !uploading && (
+                  <div className="text-center py-4">
+                    <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-green-500" />
+                    <h4 className="font-semibold text-green-500 mb-2">Import Complete!</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                      <div className={`p-3 rounded-lg ${theme.bgCard}`}>
+                        <p className={`text-2xl font-bold text-green-500`}>{uploadProgress.imported}</p>
+                        <p className={`text-xs ${theme.textSecondary}`}>Imported</p>
+                      </div>
+                      <div className={`p-3 rounded-lg ${theme.bgCard}`}>
+                        <p className={`text-2xl font-bold text-yellow-500`}>{uploadProgress.duplicates}</p>
+                        <p className={`text-xs ${theme.textSecondary}`}>Duplicates</p>
+                      </div>
+                      <div className={`p-3 rounded-lg ${theme.bgCard}`}>
+                        <p className={`text-2xl font-bold text-purple-500`}>{uploadProgress.skippedByAI}</p>
+                        <p className={`text-xs ${theme.textSecondary}`}>Filtered by AI</p>
+                      </div>
+                      <div className={`p-3 rounded-lg ${theme.bgCard}`}>
+                        <p className={`text-2xl font-bold text-red-500`}>{uploadProgress.failed}</p>
+                        <p className={`text-xs ${theme.textSecondary}`}>Failed</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setUploadProgress(null); }}
+                      className="mt-4 px-4 py-2 bg-green-500/20 text-green-400 rounded-lg text-sm"
+                    >
+                      Upload Another File
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              {/* AI Features Callout */}
+              <div className={`mt-4 p-4 rounded-xl ${theme.bgSecondary} flex items-start gap-3`}>
+                <Sparkles className="w-5 h-5 text-[#ffcc29] flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className={`font-semibold ${theme.text} text-sm`}>AI-Powered Data Cleaning</h4>
+                  <p className={`text-xs ${theme.textSecondary} mt-1`}>
+                    Our AI automatically detects column headers, filters out unnecessary data like IDs and timestamps, 
+                    validates emails, cleans phone numbers, and identifies duplicates.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Render generate content modal
   const renderGenerateModal = () => {
     if (!showGenerateModal || !selectedLead) return null;
@@ -980,11 +1499,20 @@ const Reachouts: React.FC = () => {
     <div className={`min-h-screen ${theme.bg} p-6`}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className={`text-3xl font-bold ${theme.text}`}>Reachouts</h1>
-          <p className={`${theme.textSecondary} mt-1`}>
-            AI-powered lead management and outreach
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className={`text-3xl font-bold ${theme.text}`}>Reachouts</h1>
+            <p className={`${theme.textSecondary} mt-1`}>
+              AI-powered lead management and outreach
+            </p>
+          </div>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#ffcc29] text-black rounded-lg font-semibold hover:bg-[#ffcc29]/80"
+          >
+            <CloudDownload className="w-5 h-5" />
+            Import Leads
+          </button>
         </div>
         
         {/* Readiness Warning */}
@@ -993,13 +1521,96 @@ const Reachouts: React.FC = () => {
         {/* Stats */}
         {renderStats()}
         
+        {/* Quick Import Sources */}
+        <div className={`mb-6 p-4 rounded-xl ${theme.bgCard}`}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className={`font-semibold ${theme.text} flex items-center gap-2`}>
+              <Link2 className="w-4 h-4 text-[#ffcc29]" />
+              Import Sources
+            </h3>
+            <button 
+              onClick={() => setShowImportModal(true)}
+              className={`text-sm ${theme.textSecondary} hover:text-[#ffcc29] flex items-center gap-1`}
+            >
+              View All <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {/* Meta Ads */}
+            <div className={`p-3 rounded-lg ${theme.bgSecondary} flex items-center gap-3 opacity-50 cursor-not-allowed`}>
+              <Facebook className="w-5 h-5 text-blue-500" />
+              <div>
+                <p className={`text-sm font-medium ${theme.text}`}>Meta Ads</p>
+                <p className="text-xs text-slate-500">Coming Soon</p>
+              </div>
+            </div>
+            
+            {/* Google Ads */}
+            <div className={`p-3 rounded-lg ${theme.bgSecondary} flex items-center gap-3 opacity-50 cursor-not-allowed`}>
+              <Chrome className="w-5 h-5 text-red-500" />
+              <div>
+                <p className={`text-sm font-medium ${theme.text}`}>Google Ads</p>
+                <p className="text-xs text-slate-500">Coming Soon</p>
+              </div>
+            </div>
+            
+            {/* CRM */}
+            <div className={`p-3 rounded-lg ${theme.bgSecondary} flex items-center gap-3 opacity-50 cursor-not-allowed`}>
+              <Database className="w-5 h-5 text-orange-500" />
+              <div>
+                <p className={`text-sm font-medium ${theme.text}`}>CRM Sync</p>
+                <p className="text-xs text-slate-500">Coming Soon</p>
+              </div>
+            </div>
+            
+            {/* Excel Upload */}
+            <button 
+              onClick={() => setShowImportModal(true)}
+              className={`p-3 rounded-lg ${theme.bgSecondary} flex items-center gap-3 hover:bg-[#ffcc29]/20 transition-colors cursor-pointer text-left`}
+            >
+              <FileSpreadsheet className="w-5 h-5 text-green-500" />
+              <div>
+                <p className={`text-sm font-medium ${theme.text}`}>Excel/CSV</p>
+                <p className="text-xs text-green-500">Available</p>
+              </div>
+            </button>
+            
+            {/* Manual */}
+            <button 
+              onClick={() => setShowAddLeadModal(true)}
+              className={`p-3 rounded-lg ${theme.bgSecondary} flex items-center gap-3 hover:bg-[#ffcc29]/20 transition-colors cursor-pointer text-left`}
+            >
+              <Plus className="w-5 h-5 text-[#ffcc29]" />
+              <div>
+                <p className={`text-sm font-medium ${theme.text}`}>Add Manual</p>
+                <p className="text-xs text-[#ffcc29]">Available</p>
+              </div>
+            </button>
+          </div>
+        </div>
+        
         {/* Leads Table */}
         {renderLeadsTable()}
         
         {/* Modals */}
         {renderLeadModal()}
         {renderAddLeadModal()}
+        {renderImportModal()}
         {renderGenerateModal()}
+        
+        {/* Outreach Campaign Modal */}
+        <OutreachModal
+          isOpen={showOutreachModal}
+          onClose={() => {
+            setShowOutreachModal(false);
+            setSelectedLeadIds(new Set());
+          }}
+          selectedLeads={leads.filter(l => selectedLeadIds.has(l._id))}
+          onSuccess={() => {
+            fetchData();
+            setSelectedLeadIds(new Set());
+          }}
+        />
       </div>
     </div>
   );

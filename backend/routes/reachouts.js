@@ -7,12 +7,42 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
+const multer = require('multer');
 const { protect } = require('../middleware/auth');
 const Lead = require('../models/Lead');
+const User = require('../models/User');
 const OnboardingContext = require('../models/OnboardingContext');
 const OutreachSequence = require('../models/OutreachSequence');
 const outreachAI = require('../services/outreachAI');
 const contextBuilder = require('../services/contextBuilder');
+const leadImporter = require('../services/leadImporter');
+
+// Configure multer for file uploads (memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept Excel and CSV files
+    const allowedMimes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'text/csv', // .csv
+      'application/csv'
+    ];
+    const allowedExts = ['.xlsx', '.xls', '.csv'];
+    
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    
+    if (allowedMimes.includes(file.mimetype) || allowedExts.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only Excel (.xlsx, .xls) and CSV files are allowed'));
+    }
+  }
+});
 
 // ============================================
 // ONBOARDING CONTEXT ROUTES
@@ -27,9 +57,54 @@ router.get('/context', protect, async (req, res) => {
     let context = await OnboardingContext.findOne({ userId: req.user._id });
     
     if (!context) {
-      // Create new context if doesn't exist
-      context = new OnboardingContext({ userId: req.user._id });
-      await context.save();
+      // Try to create from user's businessProfile if they completed onboarding
+      const user = await User.findById(req.user._id);
+      
+      if (user && user.onboardingCompleted && user.businessProfile) {
+        const bp = user.businessProfile;
+        
+        context = new OnboardingContext({
+          userId: req.user._id,
+          company: {
+            name: bp.name || bp.companyName || user.companyName || '',
+            website: bp.website || '',
+            industry: bp.industry || '',
+            description: bp.niche || bp.description || bp.tagline || 'A company providing quality products and services'
+          },
+          targetCustomer: {
+            description: bp.targetAudience || bp.goals || 'Businesses and individuals seeking our solutions',
+            roles: [],
+            companySize: 'any',
+            industries: [bp.industry || ''].filter(Boolean)
+          },
+          geography: {
+            isGlobal: true,
+            regions: [],
+            countries: []
+          },
+          primaryGoal: bp.goals?.toLowerCase()?.includes('lead') ? 'leads' 
+            : bp.goals?.toLowerCase()?.includes('sale') ? 'sales'
+            : bp.goals?.toLowerCase()?.includes('awareness') ? 'awareness'
+            : 'leads',
+          brandTone: bp.tone || 'professional',
+          valueProposition: {
+            main: bp.tagline || bp.niche || '',
+            keyBenefits: [],
+            differentiators: []
+          },
+          completionStatus: {
+            isComplete: true,
+            completedAt: new Date()
+          }
+        });
+        
+        await context.save();
+        console.log('✅ Created OnboardingContext from existing businessProfile');
+      } else {
+        // Create empty context
+        context = new OnboardingContext({ userId: req.user._id });
+        await context.save();
+      }
     }
     
     const readiness = context.isReadyForOutreach();
@@ -129,16 +204,39 @@ router.get('/leads', protect, async (req, res) => {
   try {
     const { status, source, search, page = 1, limit = 50, sort = '-createdAt' } = req.query;
     
-    const query = { userId: req.user._id };
+    // Get userId from authenticated user
+    console.log('=== GET /leads REQUEST ===');
+    console.log('req.user:', req.user ? { _id: req.user._id, email: req.user.email } : 'NO USER');
     
-    if (status) {
-      query.status = status;
+    if (!req.user || !req.user._id) {
+      console.log('ERROR: No user in request!');
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
     
-    if (source) {
-      query.source = source;
-    }
+    const userIdStr = req.user._id.toString();
+    console.log('userId string:', userIdStr);
     
+    // Use raw MongoDB collection to bypass Mongoose issues
+    const db = mongoose.connection.db;
+    const leadsCollection = db.collection('leads');
+    
+    // First check total in collection for this user
+    const debugTotal = await leadsCollection.countDocuments({});
+    console.log('Total leads in collection:', debugTotal);
+    
+    // Build query with ObjectId
+    const userObjectId = new mongoose.Types.ObjectId(userIdStr);
+    const query = { userId: userObjectId };
+    
+    console.log('Query userId ObjectId:', userObjectId.toString());
+    
+    // Test simple count first
+    const simpleCount = await leadsCollection.countDocuments({ userId: userObjectId });
+    console.log('Simple count for userId:', simpleCount);
+    
+    // Apply optional filters
+    if (status) query.status = status;
+    if (source) query.source = source;
     if (search) {
       query.$or = [
         { firstName: { $regex: search, $options: 'i' } },
@@ -150,14 +248,21 @@ router.get('/leads', protect, async (req, res) => {
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
+    // Parse sort field
+    const sortField = sort.startsWith('-') ? sort.substring(1) : sort;
+    const sortOrder = sort.startsWith('-') ? -1 : 1;
+    
+    // Execute raw MongoDB query
     const [leads, total] = await Promise.all([
-      Lead.find(query)
-        .sort(sort)
+      leadsCollection.find(query)
+        .sort({ [sortField]: sortOrder })
         .skip(skip)
         .limit(parseInt(limit))
-        .lean(),
-      Lead.countDocuments(query)
+        .toArray(),
+      leadsCollection.countDocuments(query)
     ]);
+    
+    console.log('Final result: found', leads.length, 'leads, total:', total);
     
     res.json({
       success: true,
@@ -181,24 +286,78 @@ router.get('/leads', protect, async (req, res) => {
 });
 
 /**
+ * GET /api/reachouts/debug-db
+ * Debug endpoint to check database connection
+ */
+router.get('/debug-db', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const dbName = db.databaseName;
+    const leadsCollection = db.collection('leads');
+    
+    const totalLeads = await leadsCollection.countDocuments({});
+    const groups = await leadsCollection.aggregate([
+      { $group: { _id: '$userId', count: { $sum: 1 } } }
+    ]).toArray();
+    
+    res.json({
+      success: true,
+      database: dbName,
+      totalLeads,
+      leadsByUser: groups.map(g => ({ userId: g._id?.toString(), count: g.count }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/reachouts/debug-leads
+ * Debug endpoint - NO AUTH - to test leads retrieval
+ */
+router.get('/debug-leads/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    
+    // Use raw MongoDB
+    const db = mongoose.connection.db;
+    const leadsCollection = db.collection('leads');
+    
+    const total = await leadsCollection.countDocuments({ userId: userObjectId });
+    const leads = await leadsCollection.find({ userId: userObjectId }).limit(5).toArray();
+    
+    res.json({
+      success: true,
+      userId,
+      total,
+      sampleLeads: leads.map(l => ({ name: l.firstName + ' ' + l.lastName, email: l.email }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/reachouts/leads/stats
  * Get lead statistics
  */
 router.get('/leads/stats', protect, async (req, res) => {
   try {
     const userId = req.user._id;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
     
     const [statusCounts, sourceCounts, totalStats] = await Promise.all([
       Lead.aggregate([
-        { $match: { userId } },
+        { $match: { userId: userObjectId } },
         { $group: { _id: '$status', count: { $sum: 1 } } }
       ]),
       Lead.aggregate([
-        { $match: { userId } },
+        { $match: { userId: userObjectId } },
         { $group: { _id: '$source', count: { $sum: 1 } } }
       ]),
       Lead.aggregate([
-        { $match: { userId } },
+        { $match: { userId: userObjectId } },
         {
           $group: {
             _id: null,
@@ -500,6 +659,253 @@ router.post('/leads/import', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to import leads'
+    });
+  }
+});
+
+// ============================================
+// EXCEL/CSV FILE UPLOAD ROUTES
+// ============================================
+
+/**
+ * POST /api/reachouts/leads/upload/preview
+ * Preview Excel/CSV file before importing - AI filters unnecessary data
+ */
+router.post('/leads/upload/preview', protect, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please upload a file'
+      });
+    }
+    
+    const result = await leadImporter.previewImport(req.file.buffer, req.file.originalname);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('POST /leads/upload/preview error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to preview file'
+    });
+  }
+});
+
+/**
+ * POST /api/reachouts/leads/upload
+ * Upload and import Excel/CSV file with AI-powered filtering
+ */
+router.post('/leads/upload', protect, upload.single('file'), async (req, res) => {
+  try {
+    console.log('=== LEAD IMPORT START ===');
+    console.log('User:', req.user._id.toString());
+    console.log('File:', req.file?.originalname);
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please upload a file'
+      });
+    }
+    
+    // Process the file with AI filtering
+    console.log('Processing file...');
+    const processResult = await leadImporter.processLeadImport(
+      req.file.buffer, 
+      req.file.originalname,
+      { useAI: true }
+    );
+    
+    console.log('Process result:', {
+      success: processResult.success,
+      leadsCount: processResult.data?.leads?.length,
+      stats: processResult.data?.stats
+    });
+    
+    if (!processResult.success) {
+      return res.status(400).json(processResult);
+    }
+    
+    // Save leads to database
+    const importResults = {
+      success: 0,
+      failed: 0,
+      errors: [],
+      duplicates: 0
+    };
+    
+    // Check for existing emails to avoid duplicates
+    const existingEmails = await Lead.find({
+      userId: req.user._id,
+      email: { $in: processResult.data.leads.map(l => l.email).filter(Boolean) }
+    }).select('email').lean();
+    
+    const existingEmailSet = new Set(existingEmails.map(l => l.email));
+    console.log('Existing emails in DB:', existingEmailSet.size);
+    
+    for (const leadData of processResult.data.leads) {
+      try {
+        // Skip if email already exists
+        if (leadData.email && existingEmailSet.has(leadData.email)) {
+          importResults.duplicates++;
+          continue;
+        }
+        
+        const lead = new Lead({
+          userId: req.user._id,
+          source: 'import',
+          sourceDetails: `Imported from ${req.file.originalname}`,
+          ...leadData
+        });
+        
+        lead.activities.push({
+          type: 'lead_created',
+          description: `Imported from file: ${req.file.originalname}`,
+          performedBy: req.user._id
+        });
+        
+        await lead.save();
+        importResults.success++;
+        console.log('✅ Saved lead:', leadData.email || leadData.firstName);
+        
+        // Add to existing set to avoid duplicates within same file
+        if (leadData.email) {
+          existingEmailSet.add(leadData.email);
+        }
+      } catch (error) {
+        importResults.failed++;
+        console.log('❌ Failed to save lead:', leadData.email, error.message);
+        importResults.errors.push({
+          email: leadData.email || 'Unknown',
+          error: error.message
+        });
+      }
+    }
+    
+    console.log('=== IMPORT COMPLETE ===');
+    console.log('Success:', importResults.success);
+    console.log('Failed:', importResults.failed);
+    console.log('Duplicates:', importResults.duplicates);
+    
+    res.json({
+      success: true,
+      data: {
+        imported: importResults.success,
+        failed: importResults.failed,
+        duplicates: importResults.duplicates,
+        totalProcessed: processResult.data.stats.totalRows,
+        skippedByAI: processResult.data.stats.skipped,
+        columnMappings: processResult.data.columnMappings,
+        errors: importResults.errors.slice(0, 10)
+      }
+    });
+  } catch (error) {
+    console.error('POST /leads/upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to upload and import file'
+    });
+  }
+});
+
+/**
+ * GET /api/reachouts/integrations
+ * Get available integrations and their connection status
+ */
+router.get('/integrations', protect, async (req, res) => {
+  try {
+    // For now, return static integration options
+    // In the future, this will check actual OAuth connections
+    const integrations = [
+      {
+        id: 'meta_ads',
+        name: 'Meta Ads',
+        description: 'Import leads from Facebook & Instagram ads',
+        icon: 'facebook',
+        category: 'ads',
+        connected: false,
+        available: false, // Will be true when API is configured
+        requiredConfig: ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET']
+      },
+      {
+        id: 'google_ads',
+        name: 'Google Ads',
+        description: 'Import leads from Google Ads campaigns',
+        icon: 'google',
+        category: 'ads',
+        connected: false,
+        available: false,
+        requiredConfig: ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET']
+      },
+      {
+        id: 'hubspot',
+        name: 'HubSpot CRM',
+        description: 'Sync leads with HubSpot CRM',
+        icon: 'hubspot',
+        category: 'crm',
+        connected: false,
+        available: false,
+        requiredConfig: ['HUBSPOT_API_KEY']
+      },
+      {
+        id: 'zoho_crm',
+        name: 'Zoho CRM',
+        description: 'Sync leads with Zoho CRM',
+        icon: 'zoho',
+        category: 'crm',
+        connected: false,
+        available: false,
+        requiredConfig: ['ZOHO_CLIENT_ID', 'ZOHO_CLIENT_SECRET']
+      },
+      {
+        id: 'salesforce',
+        name: 'Salesforce',
+        description: 'Sync leads with Salesforce CRM',
+        icon: 'salesforce',
+        category: 'crm',
+        connected: false,
+        available: false,
+        requiredConfig: ['SALESFORCE_CLIENT_ID', 'SALESFORCE_CLIENT_SECRET']
+      },
+      {
+        id: 'pipedrive',
+        name: 'Pipedrive',
+        description: 'Sync leads with Pipedrive CRM',
+        icon: 'pipedrive',
+        category: 'crm',
+        connected: false,
+        available: false,
+        requiredConfig: ['PIPEDRIVE_API_KEY']
+      },
+      {
+        id: 'excel_upload',
+        name: 'Excel/CSV Upload',
+        description: 'Import leads from spreadsheets',
+        icon: 'file-spreadsheet',
+        category: 'manual',
+        connected: true,
+        available: true,
+        requiredConfig: []
+      }
+    ];
+    
+    res.json({
+      success: true,
+      data: {
+        integrations,
+        categories: [
+          { id: 'ads', name: 'Ad Platforms', description: 'Import leads from advertising platforms' },
+          { id: 'crm', name: 'CRM Systems', description: 'Sync with customer relationship management tools' },
+          { id: 'manual', name: 'Manual Import', description: 'Upload leads manually' }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('GET /integrations error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch integrations'
     });
   }
 });
@@ -913,6 +1319,473 @@ router.post('/sequences/:id/enroll', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to enroll leads'
+    });
+  }
+});
+
+// ============================================
+// EMAIL CAMPAIGN ROUTES
+// ============================================
+
+const EmailCampaign = require('../models/EmailCampaign');
+const emailService = require('../services/emailService');
+
+/**
+ * POST /api/reachouts/campaigns/generate-sequence
+ * Generate AI email sequence for selected leads
+ */
+router.post('/campaigns/generate-sequence', protect, async (req, res) => {
+  try {
+    const { leadIds, campaignType = 'cold_outreach', numFollowUps = 3, customInstructions } = req.body;
+    
+    if (!leadIds || !leadIds.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please select at least one lead'
+      });
+    }
+    
+    // Fetch leads
+    const leads = await Lead.find({
+      _id: { $in: leadIds },
+      userId: req.user._id
+    });
+    
+    if (!leads.length) {
+      return res.status(404).json({
+        success: false,
+        error: 'No leads found'
+      });
+    }
+    
+    // Generate sequence using AI
+    const result = await outreachAI.generateEmailSequence(
+      req.user._id,
+      leads,
+      { campaignType, numFollowUps, customInstructions }
+    );
+    
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        sequence: result.sequence,
+        campaignType,
+        leadCount: leads.length,
+        leads: leads.map(l => ({
+          _id: l._id,
+          firstName: l.firstName,
+          lastName: l.lastName,
+          email: l.email,
+          company: l.company?.name
+        })),
+        generatedAt: result.generatedAt
+      }
+    });
+    
+  } catch (error) {
+    console.error('POST /campaigns/generate-sequence error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate email sequence'
+    });
+  }
+});
+
+/**
+ * POST /api/reachouts/campaigns
+ * Create a new email campaign
+ */
+router.post('/campaigns', protect, async (req, res) => {
+  try {
+    const { name, campaignType, messages, leadIds, sender } = req.body;
+    
+    if (!messages || !messages.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'Campaign must have at least one message'
+      });
+    }
+    
+    // Fetch leads
+    const leads = await Lead.find({
+      _id: { $in: leadIds },
+      userId: req.user._id
+    });
+    
+    // Create recipients from leads
+    const recipients = leads.map(lead => ({
+      leadId: lead._id,
+      email: lead.email,
+      firstName: lead.firstName,
+      lastName: lead.lastName,
+      companyName: lead.company?.name,
+      currentStage: 'pending',
+      status: 'active'
+    }));
+    
+    // Create campaign
+    const campaign = new EmailCampaign({
+      userId: req.user._id,
+      name: name || `Campaign ${new Date().toLocaleDateString()}`,
+      campaignType,
+      messages,
+      recipients,
+      sender: {
+        email: sender.email,
+        name: sender.name || req.user.name,
+        replyTo: sender.replyTo || sender.email
+      },
+      filterCriteria: {
+        leadIds
+      },
+      stats: {
+        totalRecipients: recipients.length
+      }
+    });
+    
+    await campaign.save();
+    
+    res.json({
+      success: true,
+      data: campaign
+    });
+    
+  } catch (error) {
+    console.error('POST /campaigns error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create campaign'
+    });
+  }
+});
+
+/**
+ * GET /api/reachouts/campaigns
+ * Get all campaigns for user
+ */
+router.get('/campaigns', protect, async (req, res) => {
+  try {
+    const campaigns = await EmailCampaign.find({ userId: req.user._id })
+      .sort({ createdAt: -1 })
+      .select('-recipients');
+    
+    res.json({
+      success: true,
+      data: campaigns
+    });
+    
+  } catch (error) {
+    console.error('GET /campaigns error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch campaigns'
+    });
+  }
+});
+
+/**
+ * GET /api/reachouts/campaigns/:id
+ * Get campaign details
+ */
+router.get('/campaigns/:id', protect, async (req, res) => {
+  try {
+    const campaign = await EmailCampaign.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: campaign
+    });
+    
+  } catch (error) {
+    console.error('GET /campaigns/:id error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch campaign'
+    });
+  }
+});
+
+/**
+ * PUT /api/reachouts/campaigns/:id
+ * Update campaign (messages, etc.)
+ */
+router.put('/campaigns/:id', protect, async (req, res) => {
+  try {
+    const { messages, name, sender } = req.body;
+    
+    const campaign = await EmailCampaign.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+    
+    if (messages) campaign.messages = messages;
+    if (name) campaign.name = name;
+    if (sender) campaign.sender = { ...campaign.sender, ...sender };
+    
+    await campaign.save();
+    
+    res.json({
+      success: true,
+      data: campaign
+    });
+    
+  } catch (error) {
+    console.error('PUT /campaigns/:id error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update campaign'
+    });
+  }
+});
+
+/**
+ * POST /api/reachouts/email/configure
+ * Configure email sending credentials
+ */
+router.post('/email/configure', protect, async (req, res) => {
+  try {
+    const { provider, email, apiKey, appPassword, password, host, port } = req.body;
+    
+    const config = { provider };
+    
+    if (provider === 'sendgrid') {
+      config.apiKey = apiKey;
+    } else if (provider === 'gmail') {
+      config.email = email;
+      config.appPassword = appPassword;
+    } else if (provider === 'outlook') {
+      config.email = email;
+      config.password = password;
+    } else if (provider === 'smtp') {
+      config.host = host;
+      config.port = port;
+      config.user = email;
+      config.password = password;
+    }
+    
+    const result = await emailService.initialize(config);
+    
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        hint: result.hint
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `Email configured successfully with ${provider}`,
+      provider
+    });
+    
+  } catch (error) {
+    console.error('POST /email/configure error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to configure email'
+    });
+  }
+});
+
+/**
+ * POST /api/reachouts/email/test
+ * Send a test email
+ */
+router.post('/email/test', protect, async (req, res) => {
+  try {
+    const { to } = req.body;
+    
+    if (!to) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide an email address'
+      });
+    }
+    
+    const result = await emailService.sendTestEmail(to);
+    
+    res.json({
+      success: result.success,
+      message: result.success ? 'Test email sent successfully' : result.error,
+      messageId: result.messageId
+    });
+    
+  } catch (error) {
+    console.error('POST /email/test error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send test email'
+    });
+  }
+});
+
+/**
+ * POST /api/reachouts/campaigns/:id/send
+ * Send campaign emails
+ */
+router.post('/campaigns/:id/send', protect, async (req, res) => {
+  try {
+    const { stage = 'initial' } = req.body;
+    
+    const campaign = await EmailCampaign.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
+    
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found'
+      });
+    }
+    
+    // Prepare emails
+    const prepResult = emailService.prepareBulkFromCampaign(campaign, stage);
+    
+    if (!prepResult.success) {
+      return res.status(400).json(prepResult);
+    }
+    
+    // Send emails
+    const sendResult = await emailService.sendBulkEmails(prepResult.emails);
+    
+    // Update campaign stats and recipient statuses
+    for (const detail of sendResult.details) {
+      const recipient = campaign.recipients.find(r => r.email === detail.to);
+      if (recipient) {
+        if (detail.success) {
+          recipient.currentStage = stage;
+          recipient.sentAt.push({
+            stage,
+            timestamp: new Date(),
+            messageId: detail.messageId
+          });
+        } else {
+          recipient.status = 'failed';
+        }
+      }
+    }
+    
+    campaign.stats.sent += sendResult.sent;
+    campaign.status = 'active';
+    if (!campaign.startedAt) campaign.startedAt = new Date();
+    
+    await campaign.save();
+    
+    // Update lead outreach stats
+    const sentLeadIds = sendResult.details
+      .filter(d => d.success)
+      .map(d => prepResult.emails.find(e => e.to === d.to)?.leadId)
+      .filter(Boolean);
+    
+    if (sentLeadIds.length > 0) {
+      await Lead.updateMany(
+        { _id: { $in: sentLeadIds } },
+        { $inc: { 'outreachStatus.emailsSent': 1 } }
+      );
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        sent: sendResult.sent,
+        failed: sendResult.failed,
+        total: sendResult.total,
+        details: sendResult.details
+      }
+    });
+    
+  } catch (error) {
+    console.error('POST /campaigns/:id/send error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send campaign'
+    });
+  }
+});
+
+/**
+ * POST /api/reachouts/email/send-direct
+ * Send emails directly without creating a campaign
+ */
+router.post('/email/send-direct', protect, async (req, res) => {
+  try {
+    const { recipients, subject, body, senderEmail, senderName } = req.body;
+    
+    if (!recipients || !recipients.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'No recipients specified'
+      });
+    }
+    
+    // Prepare personalized emails
+    const emails = recipients.map(recipient => {
+      const personalized = emailService.personalizeEmail(
+        { subject, body },
+        recipient
+      );
+      
+      return {
+        to: recipient.email,
+        from: senderName ? `${senderName} <${senderEmail}>` : senderEmail,
+        subject: personalized.subject,
+        body: personalized.body,
+        replyTo: senderEmail
+      };
+    });
+    
+    // Send emails
+    const result = await emailService.sendBulkEmails(emails, {
+      delayBetween: 200 // 200ms between emails
+    });
+    
+    // Update lead stats for successful sends
+    const successfulEmails = result.details.filter(d => d.success).map(d => d.to);
+    if (successfulEmails.length > 0) {
+      await Lead.updateMany(
+        { email: { $in: successfulEmails }, userId: req.user._id },
+        { $inc: { 'outreachStatus.emailsSent': 1 } }
+      );
+    }
+    
+    res.json({
+      success: result.success,
+      data: {
+        sent: result.sent,
+        failed: result.failed,
+        total: result.total,
+        details: result.details
+      }
+    });
+    
+  } catch (error) {
+    console.error('POST /email/send-direct error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send emails'
     });
   }
 });

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import ChatBot from './components/ChatBot';
+import CampaignReminderPopup from './components/CampaignReminderPopup';
 import LandingPage from './pages/LandingPage';
 import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
@@ -121,6 +122,9 @@ const App: React.FC = () => {
       
       {/* Floating ChatBot - appears on all pages */}
       <ChatBot />
+      
+      {/* Campaign Reminder Pop-ups - only for logged in users */}
+      {user && user.onboardingCompleted && <CampaignReminderPopup />}
     </Router>
     </ThemeProvider>
   );
