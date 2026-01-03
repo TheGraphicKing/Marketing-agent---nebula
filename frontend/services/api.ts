@@ -1142,6 +1142,57 @@ export const apiService = {
     }
   },
 
+  generateEventPost: async (event: any): Promise<{
+    success: boolean;
+    post: {
+      caption: string;
+      hashtags: string[];
+      imagePrompt: string;
+      imageStyle: string;
+      generatedImageUrl?: string;
+      trendingAudio: any[];
+      bestPostTimes: Record<string, string>;
+      engagementHooks: string[];
+      altCaptions: string[];
+      storyIdeas: string[];
+      contentNotes: string;
+      event: any;
+    };
+  }> => {
+    try {
+      const response = await apiCall<any>(
+        '/dashboard/generate-event-post',
+        { 
+          method: 'POST', 
+          body: JSON.stringify({ event }) 
+        },
+        true
+      );
+      return {
+        success: true,
+        post: response.post
+      };
+    } catch (error) {
+      console.error('Generate event post error:', error);
+      return {
+        success: false,
+        post: {
+          caption: '',
+          hashtags: [],
+          imagePrompt: '',
+          imageStyle: 'festive',
+          trendingAudio: [],
+          bestPostTimes: {},
+          engagementHooks: [],
+          altCaptions: [],
+          storyIdeas: [],
+          contentNotes: '',
+          event
+        }
+      };
+    }
+  },
+
   // ============================================
   // NOTIFICATIONS - CAMPAIGN REMINDERS
   // ============================================

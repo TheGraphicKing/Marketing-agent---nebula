@@ -2218,6 +2218,126 @@ async function refineImageWithPrompt(originalPrompt, refinementPrompt, style = '
 }
 
 /**
+ * Generate a complete post for a holiday/festival/event
+ * Combines business context with event details
+ */
+async function generateEventPost(event, businessProfile) {
+  const companyName = businessProfile.name || 'Your Company';
+  const industry = businessProfile.industry || 'General';
+  const brandVoice = businessProfile.brandVoice || 'Professional';
+  const description = businessProfile.description || '';
+  const targetAudience = businessProfile.targetAudience || '';
+  
+  const eventName = event.name || 'Special Day';
+  const eventType = event.type || 'holiday';
+  const eventDescription = event.description || '';
+  const eventDate = event.date || new Date().toISOString().split('T')[0];
+  const marketingTip = event.marketingTip || '';
+  
+  const prompt = `You are a creative social media marketer for ${companyName} (${industry}).
+Create a VIRAL, ready-to-post piece of content that celebrates this special occasion while subtly promoting the business.
+
+=== EVENT DETAILS ===
+Event: ${eventName}
+Type: ${eventType} (${eventType === 'national' ? 'National Holiday' : eventType === 'festival' ? 'Festival' : eventType === 'marketing' ? 'Marketing Day' : 'International Day'})
+Description: ${eventDescription}
+Date: ${eventDate}
+${marketingTip ? `Marketing Tip: ${marketingTip}` : ''}
+
+=== BUSINESS CONTEXT ===
+Company: ${companyName}
+Industry: ${industry}
+Voice: ${brandVoice}
+${description ? `Description: ${description}` : ''}
+${targetAudience ? `Target Audience: ${targetAudience}` : ''}
+
+=== OBJECTIVE ===
+Create content that:
+1. Celebrates the event authentically and respectfully
+2. Connects the event's theme to the business naturally
+3. Engages the audience emotionally
+4. Includes a subtle brand message or CTA
+5. Is culturally appropriate and sensitive
+
+=== GENERATE ===
+Create:
+1. A heartfelt, engaging caption (with emojis, line breaks, emotional hooks)
+2. 15-20 relevant hashtags (event-specific + brand + trending)
+3. A detailed AI image prompt that captures the event's spirit with brand elements
+4. Trending audio suggestions for reels
+5. Best posting times
+6. Engagement hooks and CTAs
+7. Alternative captions for different tones
+8. Story ideas for the event
+
+Return ONLY valid JSON:
+{
+  "caption": "Full caption with emojis, greeting, message, and CTA...",
+  "hashtags": ["#EventHashtag", "#BrandHashtag", "..."],
+  "imagePrompt": "Detailed prompt for AI image: festive imagery combining event theme with brand elements...",
+  "imageStyle": "festive|traditional|modern|warm|celebratory",
+  "trendingAudio": [
+    {"name": "Song/Sound name", "artist": "Artist", "platform": "instagram|tiktok", "mood": "celebratory|emotional|upbeat"}
+  ],
+  "bestPostTimes": {
+    "instagram": "Optimal time with reason",
+    "facebook": "Optimal time",
+    "twitter": "Optimal time",
+    "linkedin": "Optimal time"
+  },
+  "engagementHooks": ["Question for audience", "CTA", "Poll idea"],
+  "altCaptions": ["Formal version", "Fun version", "Minimal version"],
+  "storyIdeas": ["Story slide 1", "Story slide 2", "Story slide 3"],
+  "contentNotes": "Cultural considerations and tips for this event"
+}`;
+
+  try {
+    const response = await callGemini(prompt, { 
+      skipCache: true, 
+      temperature: 0.85, 
+      maxTokens: 2048,
+      timeout: EXTENDED_TIMEOUT 
+    });
+    const parsed = parseGeminiJSON(response);
+    
+    // Generate AI image based on the image prompt
+    if (parsed && parsed.imagePrompt) {
+      try {
+        console.log('🎨 Generating event image for:', eventName);
+        const imageUrl = await generateImageFromCustomPrompt(parsed.imagePrompt);
+        parsed.generatedImageUrl = imageUrl;
+        console.log('✅ Event image generated successfully');
+      } catch (imgError) {
+        console.error('Event image generation error:', imgError);
+        // Fallback to relevant stock image
+        parsed.generatedImageUrl = await getRelevantImage(
+          eventName,
+          industry,
+          eventType,
+          eventDescription,
+          'instagram'
+        );
+      }
+    }
+    
+    return {
+      ...parsed,
+      event: event,
+      businessContext: businessProfile,
+      generatedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Event post generation error:', error);
+    return {
+      caption: `Wishing everyone a wonderful ${eventName}! 🎉\n\nFrom all of us at ${companyName}, we hope this special day brings you joy and happiness.\n\n#${eventName.replace(/\s+/g, '')} #${companyName.replace(/\s+/g, '')}`,
+      hashtags: [`#${eventName.replace(/\s+/g, '')}`, `#${eventType}`, `#${companyName.replace(/\s+/g, '')}`],
+      imagePrompt: `Festive ${eventName} celebration image with ${industry} business theme`,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Get seasonal context based on month (India-focused)
  */
 function getSeasonalContext(month) {
@@ -2262,5 +2382,7 @@ module.exports = {
   // Strategic Advisor functions
   generateStrategicContentSuggestions,
   generatePostFromSuggestion,
-  refineImageWithPrompt
+  refineImageWithPrompt,
+  // Event Post generation
+  generateEventPost
 };

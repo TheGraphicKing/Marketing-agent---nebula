@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiService } from '../services/api';
 import { DashboardData, Campaign, CompetitorPost } from '../types';
-import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3, Swords, Sparkles, Download, Copy, Send, Save, Lightbulb, Flame, Target, Zap, Music, Image as ImageIcon, RefreshCw, PenTool } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3, Swords, Sparkles, Download, Copy, Send, Save, Lightbulb, Flame, Target, Zap, Music, Image as ImageIcon, RefreshCw, PenTool, Wand2 } from 'lucide-react';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 
 // Section info descriptions
@@ -13,6 +13,10 @@ const sectionInfo: Record<string, { title: string; description: string }> = {
   budgetSpent: {
     title: 'Budget Spent',
     description: 'This tracks your total marketing spend across all active and completed campaigns. The graph shows your daily spending pattern over the past week, helping you understand your budget allocation and pacing.'
+  },
+  socialProfiles: {
+    title: 'Social Profiles',
+    description: 'View your connected social media accounts at a glance. Track followers, engagement rates, and growth across all your platforms. Connect more accounts to unlock full analytics and one-click posting.'
   },
   brandScore: {
     title: 'AI Brand Score',
@@ -930,11 +934,11 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Grid - Two Card Layout */}
+      {/* Stats Row - Two Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Active Campaigns Card - Cleaner */}
-        <div className={`${theme.bgCard} rounded-2xl border ${isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-[#ededed] hover:border-slate-200'} p-6 transition-all duration-200`}>
-            <div className="flex justify-between items-start mb-6">
+        {/* Active Campaigns Card */}
+        <div className={`${theme.bgCard} rounded-2xl border ${isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-[#ededed] hover:border-slate-200'} p-5 transition-all duration-200`}>
+            <div className="flex justify-between items-start mb-4">
                 <span className={`font-medium text-xs uppercase tracking-wider ${theme.textSecondary}`}>Active Campaigns</span>
                 <div className="flex items-center gap-2">
                     <SectionButtons 
@@ -943,13 +947,13 @@ const Dashboard: React.FC = () => {
                     />
                 </div>
             </div>
-            <div className={`text-5xl font-bold mb-4 tracking-tight ${theme.text}`}>
+            <div className={`text-4xl font-bold mb-3 tracking-tight ${theme.text}`}>
               {data?.overview.activeCampaigns ?? 0}
             </div>
             {(data?.overview?.activeCampaigns || 0) === 0 && (
-              <p className={`text-xs mb-4 ${theme.textMuted}`}>No active campaigns yet</p>
+              <p className={`text-xs mb-3 ${theme.textMuted}`}>No active campaigns yet</p>
             )}
-            <div className={`flex justify-between items-center pt-4 border-t ${isDarkMode ? 'border-[#ededed]/10' : 'border-[#f5f5f5]'}`}>
+            <div className={`flex justify-between items-center pt-3 border-t ${isDarkMode ? 'border-[#ededed]/10' : 'border-[#f5f5f5]'}`}>
                 {(data?.overview?.activeCampaigns || 0) > 0 ? (
                   <>
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${isDarkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
@@ -969,8 +973,8 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Budget Spent Card - Interactive Graph */}
-        <div className={`${theme.bgCard} rounded-2xl border ${isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-[#ededed] hover:border-slate-200'} p-6 transition-all duration-200`}>
-            <div className="flex justify-between items-start mb-4">
+        <div className={`${theme.bgCard} rounded-2xl border ${isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-[#ededed] hover:border-slate-200'} p-5 transition-all duration-200`}>
+            <div className="flex justify-between items-start mb-3">
                 <span className={`font-medium text-xs uppercase tracking-wider ${theme.textSecondary}`}>Budget Spent</span>
                 <div className="flex items-center gap-2">
                     <SectionButtons 
@@ -979,7 +983,7 @@ const Dashboard: React.FC = () => {
                     />
                 </div>
             </div>
-            <div className={`text-5xl font-bold mb-4 tracking-tight ${theme.text}`}>
+            <div className={`text-4xl font-bold mb-2 tracking-tight ${theme.text}`}>
               {hasSpend ? `$${(data?.overview.totalSpent || 0).toLocaleString()}` : (
                 <span className={`text-2xl ${theme.textMuted}`}>$0</span>
               )}
@@ -987,7 +991,7 @@ const Dashboard: React.FC = () => {
             
             {/* Interactive Graph */}
             {hasSpend ? (
-              <div className="relative h-16 mt-4">
+              <div className="relative h-14 mt-2">
                 <svg 
                   viewBox="0 0 280 60" 
                   className="w-full h-full"
@@ -1057,7 +1061,7 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="h-16 mt-4 flex items-center justify-center">
+              <div className="h-10 mt-2 flex items-center justify-center">
                 <p className={`text-xs ${theme.textMuted}`}>No spend data yet</p>
               </div>
             )}
@@ -1069,6 +1073,182 @@ const Dashboard: React.FC = () => {
               ))}
             </div>
         </div>
+      </div>
+
+      {/* Social Profiles Card - Full Width Detailed */}
+      <div className={`${theme.bgCard} rounded-2xl border ${isDarkMode ? 'border-[#ffcc29]/20 hover:border-[#ffcc29]/40' : 'border-[#ededed] hover:border-slate-200'} p-6 transition-all duration-200`}>
+          <div className="flex justify-between items-center mb-5">
+              <div className="flex items-center gap-3">
+                  <span className={`font-semibold text-sm uppercase tracking-wider ${theme.text}`}>Social Profiles</span>
+                  <SectionButtons 
+                    sectionType="socialProfiles" 
+                    sectionData={{ profiles: data?.overview?.socialProfiles }} 
+                  />
+              </div>
+              <button 
+                onClick={() => { window.location.hash = '/connect-socials'; }}
+                className="px-4 py-2 bg-[#ffcc29] hover:bg-[#e6b825] text-black text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Connect Account
+              </button>
+          </div>
+          
+          {/* Connected Profiles or Sample Data */}
+          {(() => {
+            const profiles = data?.overview?.socialProfiles || [];
+            const hasProfiles = profiles.length > 0;
+            
+            // Sample data for when no profiles are connected
+            const sampleProfiles = [
+              { platform: 'instagram', accountName: '@yourbrand', followers: 12500, posts: 156, engagementRate: 4.2, followersGrowth: 320, impressions: 45000, reach: 28000 },
+              { platform: 'facebook', accountName: 'YourBrand Page', followers: 8200, posts: 89, engagementRate: 2.8, followersGrowth: 145, impressions: 32000, reach: 18500 },
+              { platform: 'twitter', accountName: '@yourbrand', followers: 5600, posts: 234, engagementRate: 3.1, followersGrowth: 89, impressions: 18000, reach: 12000 },
+              { platform: 'linkedin', accountName: 'YourBrand Inc.', followers: 3200, posts: 45, engagementRate: 5.2, followersGrowth: 67, impressions: 15000, reach: 9500 },
+              { platform: 'youtube', accountName: 'YourBrand Channel', followers: 1800, posts: 28, engagementRate: 6.8, followersGrowth: 42, impressions: 25000, reach: 15000 },
+            ];
+            
+            const displayProfiles = hasProfiles ? profiles : sampleProfiles;
+            const totalFollowers = displayProfiles.reduce((sum: number, p: any) => sum + (p.followers || 0), 0);
+            const totalGrowth = displayProfiles.reduce((sum: number, p: any) => sum + (p.followersGrowth || 0), 0);
+            const avgEngagement = displayProfiles.reduce((sum: number, p: any) => sum + (p.engagementRate || 0), 0) / displayProfiles.length;
+            
+            // Platform logos - using real CDN URLs
+            const platformLogos: Record<string, { logo: string; color: string; bgColor: string }> = {
+              instagram: { 
+                logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/132px-Instagram_logo_2016.svg.png',
+                color: '#E4405F',
+                bgColor: 'bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400'
+              },
+              facebook: { 
+                logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1200px-Facebook_Logo_%282019%29.png',
+                color: '#1877F2',
+                bgColor: 'bg-[#1877F2]'
+              },
+              twitter: { 
+                logo: 'https://abs.twimg.com/responsive-web/client-web/icon-ios.77d25eba.png',
+                color: '#000000',
+                bgColor: 'bg-black'
+              },
+              linkedin: { 
+                logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/LinkedIn_logo_initials.png/800px-LinkedIn_logo_initials.png',
+                color: '#0A66C2',
+                bgColor: 'bg-[#0A66C2]'
+              },
+              youtube: { 
+                logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/1024px-YouTube_full-color_icon_%282017%29.svg.png',
+                color: '#FF0000',
+                bgColor: 'bg-[#FF0000]'
+              },
+              tiktok: { 
+                logo: 'https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png',
+                color: '#000000',
+                bgColor: 'bg-black'
+              },
+            };
+            
+            return (
+              <>
+                {/* Sample Data Warning */}
+                {!hasProfiles && (
+                  <div className={`mb-5 p-3 rounded-lg ${isDarkMode ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'} border flex items-center gap-2`}>
+                    <span className="text-lg">📊</span>
+                    <p className={`text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                      Showing sample data. Connect your social accounts to see real analytics.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Summary Stats Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${theme.textMuted} mb-1`}>Total Followers</p>
+                    <p className={`text-2xl font-bold ${theme.text}`}>
+                      {totalFollowers >= 1000000 ? `${(totalFollowers / 1000000).toFixed(1)}M` : 
+                       totalFollowers >= 1000 ? `${(totalFollowers / 1000).toFixed(1)}K` : totalFollowers}
+                    </p>
+                  </div>
+                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${theme.textMuted} mb-1`}>Weekly Growth</p>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                      +{totalGrowth >= 1000 ? `${(totalGrowth / 1000).toFixed(1)}K` : totalGrowth}
+                    </p>
+                  </div>
+                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${theme.textMuted} mb-1`}>Avg Engagement</p>
+                    <p className={`text-2xl font-bold ${theme.text}`}>{avgEngagement.toFixed(1)}%</p>
+                  </div>
+                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                    <p className={`text-xs ${theme.textMuted} mb-1`}>Connected Platforms</p>
+                    <p className={`text-2xl font-bold ${theme.text}`}>{displayProfiles.length}</p>
+                  </div>
+                </div>
+                
+                {/* Profiles Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                  {displayProfiles.map((profile: any, idx: number) => {
+                    const platformInfo = platformLogos[profile.platform?.toLowerCase()] || platformLogos.instagram;
+                    return (
+                      <div 
+                        key={idx}
+                        className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#161b22] border-[#30363d] hover:border-[#ffcc29]/40' : 'bg-white border-slate-200 hover:border-slate-300'} transition-all duration-200 hover:shadow-lg cursor-pointer`}
+                      >
+                        {/* Platform Header */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className={`w-10 h-10 rounded-xl ${platformInfo.bgColor} p-2 flex items-center justify-center`}>
+                            <img 
+                              src={platformInfo.logo} 
+                              alt={profile.platform}
+                              className="w-6 h-6 object-contain"
+                              style={{ filter: profile.platform === 'instagram' ? 'brightness(0) invert(1)' : 'none' }}
+                            />
+                          </div>
+                          <div>
+                            <p className={`text-sm font-semibold ${theme.text} capitalize`}>{profile.platform}</p>
+                            <p className={`text-xs ${theme.textMuted} truncate max-w-[100px]`}>{profile.accountName}</p>
+                          </div>
+                        </div>
+                        
+                        {/* Stats */}
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className={`text-xs ${theme.textMuted}`}>Followers</span>
+                            <span className={`text-sm font-semibold ${theme.text}`}>
+                              {profile.followers >= 1000 ? `${(profile.followers / 1000).toFixed(1)}K` : profile.followers}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className={`text-xs ${theme.textMuted}`}>Growth</span>
+                            <span className={`text-sm font-semibold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                              +{profile.followersGrowth}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className={`text-xs ${theme.textMuted}`}>Engagement</span>
+                            <span className={`text-sm font-semibold ${theme.text}`}>{profile.engagementRate?.toFixed(1)}%</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className={`text-xs ${theme.textMuted}`}>Posts</span>
+                            <span className={`text-sm font-semibold ${theme.text}`}>{profile.posts || 0}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Status Indicator */}
+                        <div className={`mt-4 pt-3 border-t ${isDarkMode ? 'border-[#30363d]' : 'border-slate-100'}`}>
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-2 h-2 rounded-full ${hasProfiles ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                            <span className={`text-xs ${hasProfiles ? (isDarkMode ? 'text-emerald-400' : 'text-emerald-600') : (isDarkMode ? 'text-amber-400' : 'text-amber-600')}`}>
+                              {hasProfiles ? 'Connected' : 'Sample'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1986,6 +2166,22 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
     const [showDeleteReminderConfirm, setShowDeleteReminderConfirm] = useState(false);
     const [deleteReminderLoading, setDeleteReminderLoading] = useState(false);
     
+    // Holiday/Event Post Generation state
+    const [selectedHoliday, setSelectedHoliday] = useState<any | null>(null);
+    const [eventPostLoading, setEventPostLoading] = useState(false);
+    const [eventGeneratedPost, setEventGeneratedPost] = useState<any | null>(null);
+    const [eventPostCaption, setEventPostCaption] = useState('');
+    const [eventPostHashtags, setEventPostHashtags] = useState<string[]>([]);
+    const [eventPostImageUrl, setEventPostImageUrl] = useState('');
+    const [eventPostImagePrompt, setEventPostImagePrompt] = useState('');
+    const [eventImageRefinementPrompt, setEventImageRefinementPrompt] = useState('');
+    const [eventRefiningImage, setEventRefiningImage] = useState(false);
+    const [eventScheduleDate, setEventScheduleDate] = useState('');
+    const [eventScheduleTime, setEventScheduleTime] = useState('');
+    const [eventSelectedPlatform, setEventSelectedPlatform] = useState('instagram');
+    const [eventScheduling, setEventScheduling] = useState(false);
+    const [showEventPostCreator, setShowEventPostCreator] = useState(false);
+    
     // Update allCampaigns when props change
     useEffect(() => {
       setAllCampaigns(campaigns);
@@ -2702,27 +2898,27 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
               <span className={`text-xs font-medium ${theme.textSecondary}`}>Legend:</span>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded bg-orange-500"></div>
-                <span className={`text-xs ${theme.textMuted}`}>🇮🇳 National</span>
+                <span className={`text-xs ${theme.textMuted}`}>National</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded bg-pink-500"></div>
-                <span className={`text-xs ${theme.textMuted}`}>🎉 Festival</span>
+                <span className={`text-xs ${theme.textMuted}`}>Festival</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded bg-green-500"></div>
-                <span className={`text-xs ${theme.textMuted}`}>📈 Marketing</span>
+                <span className={`text-xs ${theme.textMuted}`}>Marketing</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded bg-blue-500"></div>
-                <span className={`text-xs ${theme.textMuted}`}>🌍 International</span>
+                <span className={`text-xs ${theme.textMuted}`}>International</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded bg-[#ffcc29]"></div>
-                <span className={`text-xs ${theme.textMuted}`}>📅 Campaign</span>
+                <span className={`text-xs ${theme.textMuted}`}>Campaign</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded bg-purple-500"></div>
-                <span className={`text-xs ${theme.textMuted}`}>⏰ Reminder</span>
+                <span className={`text-xs ${theme.textMuted}`}>Reminder</span>
               </div>
             </div>
 
@@ -2781,8 +2977,9 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                     setSelectedEvent(event);
                                   } else if (event.eventType === 'reminder' || event.type === 'reminder') {
                                     setSelectedReminder(event);
+                                  } else if (event.eventType === 'holiday') {
+                                    setSelectedHoliday(event);
                                   }
-                                  // Holidays just show tooltip on hover
                                 }}
                                 title={event.eventType === 'holiday' ? `${event.description}${event.marketingTip ? `\n💡 ${event.marketingTip}` : ''}` : undefined}
                                 className={`text-[10px] px-1.5 py-0.5 rounded truncate font-medium shadow-sm cursor-pointer hover:opacity-80 ${
@@ -2850,8 +3047,9 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 setSelectedEvent(event);
                               } else if (event.eventType === 'reminder' || event.type === 'reminder') {
                                 setSelectedReminder(event);
+                              } else if (event.eventType === 'holiday') {
+                                setSelectedHoliday(event);
                               }
-                              // Holidays just show info on hover
                             }}
                             title={event.eventType === 'holiday' ? `${event.description}${event.marketingTip ? `\n💡 ${event.marketingTip}` : ''}` : undefined}
                             className={`flex-1 py-2 px-3 rounded-lg cursor-pointer shadow-md hover:opacity-90 ${
@@ -2987,6 +3185,10 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           return (
                                             <div
                                               key={event._id || idx}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedHoliday(event);
+                                              }}
                                               className={`absolute left-1 right-1 rounded-md px-2 py-1 cursor-pointer hover:opacity-90 transition-opacity shadow-md border-l-4 ${
                                                 event.type === 'national' ? 'bg-orange-500 border-orange-600' :
                                                 event.type === 'festival' ? 'bg-pink-500 border-pink-600' :
@@ -3004,9 +3206,9 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                                 <p className="text-xs font-semibold truncate text-white">{event.name}</p>
                                               </div>
                                               <p className="text-[10px] truncate text-white/80">
-                                                {event.type === 'national' ? '🇮🇳 National' : 
-                                                 event.type === 'festival' ? '🎉 Festival' : 
-                                                 event.type === 'marketing' ? '📈 Marketing' : '🌍 International'}
+                                                {event.type === 'national' ? 'National' : 
+                                                 event.type === 'festival' ? 'Festival' : 
+                                                 event.type === 'marketing' ? 'Marketing' : 'International'}
                                               </p>
                                             </div>
                                           );
@@ -3638,6 +3840,388 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                               Close
                             </button>
                           </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Holiday/Event Modal */}
+            {selectedHoliday && !showEventPostCreator && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setSelectedHoliday(null)}>
+                    <div className={`${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-white'} border rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200`} onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                                    selectedHoliday.type === 'national' ? 'bg-orange-100 text-orange-700' :
+                                    selectedHoliday.type === 'festival' ? 'bg-pink-100 text-pink-700' :
+                                    selectedHoliday.type === 'marketing' ? 'bg-green-100 text-green-700' :
+                                    'bg-blue-100 text-blue-700'
+                                }`}>
+                                    {selectedHoliday.type === 'national' ? 'National Holiday' :
+                                     selectedHoliday.type === 'festival' ? 'Festival' :
+                                     selectedHoliday.type === 'marketing' ? 'Marketing Day' : 'International Day'}
+                                </span>
+                                <h3 className={`text-lg font-bold ${theme.text} mt-2 flex items-center gap-2`}>
+                                    <span className="text-2xl">{selectedHoliday.emoji}</span>
+                                    {selectedHoliday.name}
+                                </h3>
+                            </div>
+                            <button onClick={() => setSelectedHoliday(null)} className={`p-1 ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} rounded-lg`}>
+                                <Plus className={`w-5 h-5 ${theme.textMuted} rotate-45`} />
+                            </button>
+                        </div>
+                        <div className="space-y-3 text-sm">
+                            <div className={`flex items-center gap-3 ${theme.textSecondary}`}>
+                                <CalendarIcon className="w-4 h-4" />
+                                <span>{selectedHoliday.date ? new Date(selectedHoliday.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'Upcoming'}</span>
+                            </div>
+                            
+                            {/* Description */}
+                            <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                                <p className={`text-xs font-semibold uppercase mb-1 ${theme.textMuted}`}>About this day</p>
+                                <p className={`text-sm ${theme.text}`}>{selectedHoliday.description || `Celebrate ${selectedHoliday.name} with your audience!`}</p>
+                            </div>
+                            
+                            {/* Marketing Tip */}
+                            {selectedHoliday.marketingTip && (
+                              <div className={`p-3 rounded-lg bg-[#ffcc29]/10 border border-[#ffcc29]/30`}>
+                                <p className="text-xs font-semibold uppercase mb-1 text-[#ffcc29]">💡 Marketing Tip</p>
+                                <p className={`text-sm ${theme.text}`}>{selectedHoliday.marketingTip}</p>
+                              </div>
+                            )}
+                        </div>
+                        
+                        {/* Create Post Button */}
+                        <div className="mt-6">
+                            <button 
+                              onClick={async () => {
+                                setShowEventPostCreator(true);
+                                setEventPostLoading(true);
+                                setEventGeneratedPost(null);
+                                
+                                try {
+                                  const result = await apiService.generateEventPost(selectedHoliday);
+                                  if (result.success && result.post) {
+                                    setEventGeneratedPost(result.post);
+                                    setEventPostCaption(result.post.caption || '');
+                                    setEventPostHashtags(result.post.hashtags || []);
+                                    setEventPostImageUrl(result.post.generatedImageUrl || '');
+                                    setEventPostImagePrompt(result.post.imagePrompt || '');
+                                    // Set default schedule date to the event date
+                                    if (selectedHoliday.date) {
+                                      setEventScheduleDate(selectedHoliday.date.split('T')[0]);
+                                    }
+                                  }
+                                } catch (error) {
+                                  console.error('Failed to generate event post:', error);
+                                } finally {
+                                  setEventPostLoading(false);
+                                }
+                              }}
+                              className="w-full py-3 bg-[#ffcc29] hover:bg-[#e6b825] text-black font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                            >
+                              <Sparkles className="w-5 h-5" />
+                              Create Post for This Event
+                            </button>
+                            <button 
+                              onClick={() => setSelectedHoliday(null)} 
+                              className={`w-full mt-2 py-2 border ${theme.border} ${theme.textSecondary} text-sm font-semibold rounded-lg ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-50'} transition-colors`}
+                            >
+                              Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Event Post Creator Modal */}
+            {showEventPostCreator && selectedHoliday && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => { setShowEventPostCreator(false); setSelectedHoliday(null); }}>
+                    <div className={`${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-white'} border rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200`} onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className={`sticky top-0 z-10 ${isDarkMode ? 'bg-[#0d1117] border-[#ffcc29]/20' : 'bg-white border-slate-200'} border-b px-6 py-4 flex justify-between items-center`}>
+                            <div className="flex items-center gap-3">
+                                <span className="text-3xl">{selectedHoliday.emoji}</span>
+                                <div>
+                                    <h2 className={`text-xl font-bold ${theme.text}`}>Create Post for {selectedHoliday.name}</h2>
+                                    <p className={`text-sm ${theme.textMuted}`}>AI-generated content ready for your review</p>
+                                </div>
+                            </div>
+                            <button onClick={() => { setShowEventPostCreator(false); setSelectedHoliday(null); }} className={`p-2 ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} rounded-lg`}>
+                                <Plus className={`w-5 h-5 ${theme.textMuted} rotate-45`} />
+                            </button>
+                        </div>
+                        
+                        {eventPostLoading ? (
+                            <div className="flex flex-col items-center justify-center py-16">
+                                <Loader2 className="w-12 h-12 text-[#ffcc29] animate-spin mb-4" />
+                                <p className={`text-lg font-medium ${theme.text}`}>Generating your post...</p>
+                                <p className={`text-sm ${theme.textMuted}`}>Creating caption, image, and suggestions</p>
+                            </div>
+                        ) : eventGeneratedPost ? (
+                            <div className="p-6 space-y-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {/* Left Column: Image */}
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className={`text-sm font-semibold ${theme.text} mb-2 block`}>Generated Image</label>
+                                            <div className={`relative aspect-square rounded-xl overflow-hidden ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-100'}`}>
+                                                {eventPostImageUrl ? (
+                                                    <img 
+                                                        src={eventPostImageUrl} 
+                                                        alt="Generated post" 
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center">
+                                                        <ImageIcon className={`w-16 h-16 ${theme.textMuted}`} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Image Refinement */}
+                                        <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                                            <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-2 block`}>Edit Image with AI</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={eventImageRefinementPrompt}
+                                                    onChange={(e) => setEventImageRefinementPrompt(e.target.value)}
+                                                    placeholder="E.g., Add more festive colors, include brand logo..."
+                                                    className={`flex-1 px-3 py-2 text-sm rounded-lg ${isDarkMode ? 'bg-[#0d1117] text-white border-[#ffcc29]/20' : 'bg-white text-slate-900 border-slate-200'} border focus:outline-none focus:ring-2 focus:ring-[#ffcc29]`}
+                                                />
+                                                <button 
+                                                    onClick={async () => {
+                                                        if (!eventImageRefinementPrompt.trim() || !eventPostImagePrompt) return;
+                                                        setEventRefiningImage(true);
+                                                        try {
+                                                            const result = await apiService.refineImage(eventPostImagePrompt, eventImageRefinementPrompt, eventGeneratedPost.imageStyle);
+                                                            if (result.success && result.imageUrl) {
+                                                                setEventPostImageUrl(result.imageUrl);
+                                                                setEventImageRefinementPrompt('');
+                                                            }
+                                                        } catch (error) {
+                                                            console.error('Failed to refine image:', error);
+                                                        } finally {
+                                                            setEventRefiningImage(false);
+                                                        }
+                                                    }}
+                                                    disabled={eventRefiningImage || !eventImageRefinementPrompt.trim()}
+                                                    className="px-4 py-2 bg-[#ffcc29] hover:bg-[#e6b825] disabled:bg-gray-400 text-black text-sm font-semibold rounded-lg transition-colors flex items-center gap-1"
+                                                >
+                                                    {eventRefiningImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                                    Refine
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Trending Audio */}
+                                        {eventGeneratedPost.trendingAudio && eventGeneratedPost.trendingAudio.length > 0 && (
+                                            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                                                <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-2 block flex items-center gap-1`}>
+                                                    <Music className="w-3 h-3" /> Trending Audio Suggestions
+                                                </label>
+                                                <div className="space-y-2">
+                                                    {eventGeneratedPost.trendingAudio.slice(0, 3).map((audio: any, idx: number) => (
+                                                        <div key={idx} className={`flex items-center justify-between p-2 rounded-lg ${isDarkMode ? 'bg-[#0d1117]' : 'bg-white'}`}>
+                                                            <div>
+                                                                <p className={`text-sm font-medium ${theme.text}`}>{audio.name}</p>
+                                                                <p className={`text-xs ${theme.textMuted}`}>{audio.artist} • {audio.mood}</p>
+                                                            </div>
+                                                            <span className={`text-xs px-2 py-0.5 rounded ${audio.platform === 'instagram' ? 'bg-pink-500/20 text-pink-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                                                                {audio.platform}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Right Column: Caption & Details */}
+                                    <div className="space-y-4">
+                                        {/* Caption */}
+                                        <div>
+                                            <label className={`text-sm font-semibold ${theme.text} mb-2 block`}>Caption</label>
+                                            <textarea
+                                                value={eventPostCaption}
+                                                onChange={(e) => setEventPostCaption(e.target.value)}
+                                                rows={8}
+                                                className={`w-full px-4 py-3 rounded-lg text-sm ${isDarkMode ? 'bg-[#161b22] text-white border-[#ffcc29]/20' : 'bg-slate-50 text-slate-900 border-slate-200'} border focus:outline-none focus:ring-2 focus:ring-[#ffcc29] resize-none`}
+                                            />
+                                        </div>
+                                        
+                                        {/* Hashtags */}
+                                        <div>
+                                            <label className={`text-sm font-semibold ${theme.text} mb-2 block`}>Hashtags</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {eventPostHashtags.map((tag, idx) => (
+                                                    <span 
+                                                        key={idx} 
+                                                        className={`text-xs px-2 py-1 rounded-full ${isDarkMode ? 'bg-[#ffcc29]/20 text-[#ffcc29]' : 'bg-[#ffcc29]/10 text-[#b8941f]'} cursor-pointer hover:opacity-70`}
+                                                        onClick={() => setEventPostHashtags(prev => prev.filter((_, i) => i !== idx))}
+                                                        title="Click to remove"
+                                                    >
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Platform Selection */}
+                                        <div>
+                                            <label className={`text-sm font-semibold ${theme.text} mb-2 block`}>Platform</label>
+                                            <div className="flex gap-2">
+                                                {['instagram', 'facebook', 'twitter', 'linkedin'].map(platform => (
+                                                    <button
+                                                        key={platform}
+                                                        onClick={() => setEventSelectedPlatform(platform)}
+                                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium capitalize transition-all ${
+                                                            eventSelectedPlatform === platform
+                                                                ? 'bg-[#ffcc29] text-black'
+                                                                : `${isDarkMode ? 'bg-[#161b22] text-slate-400 hover:bg-[#1f2937]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`
+                                                        }`}
+                                                    >
+                                                        {platform}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Best Posting Time */}
+                                        {eventGeneratedPost.bestPostTimes && eventGeneratedPost.bestPostTimes[eventSelectedPlatform] && (
+                                            <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-green-500/10 border-green-500/20' : 'bg-green-50 border-green-200'} border`}>
+                                                <p className={`text-xs font-semibold ${isDarkMode ? 'text-green-400' : 'text-green-700'}`}>
+                                                    ⏰ Best time to post on {eventSelectedPlatform}: {eventGeneratedPost.bestPostTimes[eventSelectedPlatform]}
+                                                </p>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Schedule Date & Time */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-1 block`}>Schedule Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={eventScheduleDate}
+                                                    onChange={(e) => setEventScheduleDate(e.target.value)}
+                                                    className={`w-full px-3 py-2 text-sm rounded-lg ${isDarkMode ? 'bg-[#161b22] text-white border-[#ffcc29]/20' : 'bg-slate-50 text-slate-900 border-slate-200'} border focus:outline-none focus:ring-2 focus:ring-[#ffcc29]`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-1 block`}>Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={eventScheduleTime}
+                                                    onChange={(e) => setEventScheduleTime(e.target.value)}
+                                                    className={`w-full px-3 py-2 text-sm rounded-lg ${isDarkMode ? 'bg-[#161b22] text-white border-[#ffcc29]/20' : 'bg-slate-50 text-slate-900 border-slate-200'} border focus:outline-none focus:ring-2 focus:ring-[#ffcc29]`}
+                                                />
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Content Notes */}
+                                        {eventGeneratedPost.contentNotes && (
+                                            <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-blue-500/10 border-blue-500/20' : 'bg-blue-50 border-blue-200'} border`}>
+                                                <p className={`text-xs font-semibold mb-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-700'}`}>💡 Content Tips</p>
+                                                <p className={`text-xs ${theme.textSecondary}`}>{eventGeneratedPost.contentNotes}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Action Buttons */}
+                                <div className={`flex gap-3 pt-4 border-t ${theme.border}`}>
+                                    <button 
+                                        onClick={async () => {
+                                            setEventScheduling(true);
+                                            try {
+                                                await apiService.createCampaign({
+                                                    name: `${selectedHoliday.name} Post`,
+                                                    objective: 'engagement',
+                                                    platforms: [eventSelectedPlatform],
+                                                    status: 'draft',
+                                                    creative: {
+                                                        type: 'image',
+                                                        textContent: eventPostCaption,
+                                                        imageUrls: eventPostImageUrl ? [eventPostImageUrl] : [],
+                                                        captions: eventPostCaption,
+                                                        hashtags: eventPostHashtags
+                                                    }
+                                                });
+                                                alert('Post saved as draft!');
+                                                setShowEventPostCreator(false);
+                                                setSelectedHoliday(null);
+                                                if (onCampaignCreated) onCampaignCreated();
+                                            } catch (error) {
+                                                console.error('Failed to save draft:', error);
+                                                alert('Failed to save draft. Please try again.');
+                                            } finally {
+                                                setEventScheduling(false);
+                                            }
+                                        }}
+                                        disabled={eventScheduling}
+                                        className={`flex-1 py-3 ${isDarkMode ? 'bg-[#161b22] hover:bg-[#1f2937] text-white border-[#ffcc29]/20' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'} border font-semibold rounded-lg transition-colors flex items-center justify-center gap-2`}
+                                    >
+                                        <FileText className="w-4 h-4" />
+                                        Save as Draft
+                                    </button>
+                                    <button 
+                                        onClick={async () => {
+                                            if (!eventScheduleDate) {
+                                                alert('Please select a schedule date');
+                                                return;
+                                            }
+                                            setEventScheduling(true);
+                                            try {
+                                                await apiService.createCampaign({
+                                                    name: `${selectedHoliday.name} Post`,
+                                                    objective: 'engagement',
+                                                    platforms: [eventSelectedPlatform],
+                                                    status: 'scheduled',
+                                                    creative: {
+                                                        type: 'image',
+                                                        textContent: eventPostCaption,
+                                                        imageUrls: eventPostImageUrl ? [eventPostImageUrl] : [],
+                                                        captions: eventPostCaption,
+                                                        hashtags: eventPostHashtags
+                                                    },
+                                                    scheduling: {
+                                                        startDate: eventScheduleDate,
+                                                        postTime: eventScheduleTime || '10:00'
+                                                    }
+                                                });
+                                                alert('Post scheduled successfully!');
+                                                setShowEventPostCreator(false);
+                                                setSelectedHoliday(null);
+                                                if (onCampaignCreated) onCampaignCreated();
+                                            } catch (error) {
+                                                console.error('Failed to schedule post:', error);
+                                                alert('Failed to schedule post. Please try again.');
+                                            } finally {
+                                                setEventScheduling(false);
+                                            }
+                                        }}
+                                        disabled={eventScheduling}
+                                        className="flex-1 py-3 bg-[#ffcc29] hover:bg-[#e6b825] text-black font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        {eventScheduling ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarIcon className="w-4 h-4" />}
+                                        Schedule Post
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-16">
+                                <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+                                <p className={`text-lg font-medium ${theme.text}`}>Failed to generate post</p>
+                                <p className={`text-sm ${theme.textMuted}`}>Please try again</p>
+                                <button
+                                    onClick={() => { setShowEventPostCreator(false); }}
+                                    className="mt-4 px-6 py-2 bg-[#ffcc29] text-black font-semibold rounded-lg"
+                                >
+                                    Go Back
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>

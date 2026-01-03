@@ -167,6 +167,17 @@ export interface Trend {
   relevanceScore?: number;
 }
 
+export interface SocialProfile {
+  platform: string;
+  accountName: string;
+  profileImage?: string;
+  followers: number;
+  posts: number;
+  engagementRate: number;
+  followersGrowth: number;
+  connectedAt?: string;
+}
+
 export interface DashboardMetrics {
   totalCampaigns: number;
   activeCampaigns: number;
@@ -176,6 +187,7 @@ export interface DashboardMetrics {
   activeCampaignsChange: number;
   engagementRate: number;
   connectedPlatforms?: number;
+  socialProfiles?: SocialProfile[];
 }
 
 export interface SuggestedAction {

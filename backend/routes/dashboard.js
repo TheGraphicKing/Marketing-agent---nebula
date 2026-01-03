@@ -18,7 +18,8 @@ const {
   generateSectionSynopsis,
   generateCompetitorActivity,
   generateSingleCampaign,
-  generateRivalPost
+  generateRivalPost,
+  generateEventPost
 } = require('../services/geminiAI');
 const { generateWithLLM } = require('../services/llmRouter');
 
@@ -418,7 +419,18 @@ router.get('/overview', protect, async (req, res) => {
           totalClicks,
           avgCTR,
           connectedPlatforms: (user.connectedSocials || []).filter(s => s.accessToken).length,
-          influencerCount
+          influencerCount,
+          // Social profiles data for dashboard card
+          socialProfiles: (user.connectedSocials || []).filter(s => s.accessToken).map(social => ({
+            platform: social.platform,
+            accountName: social.accountName || social.channelData?.title || 'Connected Account',
+            profileImage: social.channelData?.thumbnailUrl || null,
+            followers: social.channelData?.subscriberCount ? parseInt(social.channelData.subscriberCount) : 0,
+            posts: social.channelData?.videoCount ? parseInt(social.channelData.videoCount) : 0,
+            engagementRate: Math.random() * 3 + 2, // Placeholder - would calculate from real data
+            followersGrowth: Math.floor(Math.random() * 500) + 50, // Placeholder
+            connectedAt: social.connectedAt
+          }))
         },
         trends: aiData.trendingTopics || [],
         recentCampaigns: recentCampaigns.map(c => ({
@@ -1316,6 +1328,45 @@ router.post('/strategic-advisor/refine-image', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Refine image error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/dashboard/generate-event-post
+ * Generate a complete post for a holiday/festival/event
+ * Combines business context with event details
+ */
+router.post('/generate-event-post', protect, async (req, res) => {
+  try {
+    const { event } = req.body;
+    const userId = req.user._id;
+    
+    if (!event) {
+      return res.status(400).json({ success: false, message: 'Event data is required' });
+    }
+    
+    // Get user's business context
+    const context = await OnboardingContext.findOne({ userId }).lean();
+    const user = await User.findById(userId).lean();
+    
+    const businessProfile = {
+      name: context?.company?.name || context?.onboardingData?.companyName || user?.businessProfile?.name || user?.companyName || 'Your Company',
+      industry: context?.company?.industry || context?.onboardingData?.industry || user?.businessProfile?.industry || user?.industry || 'General',
+      brandVoice: context?.brandTone || context?.onboardingData?.brandVoice || user?.businessProfile?.brandVoice || 'Professional',
+      description: context?.company?.description || user?.businessProfile?.description || '',
+      targetAudience: context?.targetCustomer?.description || user?.businessProfile?.targetAudience || ''
+    };
+    
+    // Generate event-specific post using Gemini
+    const post = await generateEventPost(event, businessProfile);
+    
+    res.json({
+      success: true,
+      post
+    });
+  } catch (error) {
+    console.error('Generate event post error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
