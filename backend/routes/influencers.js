@@ -262,25 +262,46 @@ router.post('/discover', protect, async (req, res) => {
       influencers = getFallbackInfluencers(businessContext.industry, businessContext.businessLocation);
     }
 
-    // DEDUPLICATE influencers by handle (case-insensitive)
+    // AGGRESSIVE DEDUPLICATION - Check by handle, full name, and first name
     const seenHandles = new Set();
-    const seenNames = new Set();
+    const seenFullNames = new Set();
+    const seenFirstNames = new Set();
+    
     influencers = influencers.filter(inf => {
-      const handleLower = (inf.handle || '').toLowerCase().replace('@', '');
+      const handleLower = (inf.handle || '').toLowerCase().replace(/@/g, '').trim();
       const nameLower = (inf.name || '').toLowerCase().trim();
+      const firstName = nameLower.split(' ')[0]; // Get first name
       
-      // Skip if we've seen this handle or name before
-      if (seenHandles.has(handleLower) || seenNames.has(nameLower)) {
-        console.log(`🔄 Removing duplicate influencer: ${inf.name} (@${handleLower})`);
+      // Skip if we've seen this handle before
+      if (handleLower && seenHandles.has(handleLower)) {
+        console.log(`🔄 Removing duplicate (same handle): ${inf.name} (@${handleLower})`);
         return false;
       }
       
-      seenHandles.add(handleLower);
-      seenNames.add(nameLower);
+      // Skip if we've seen this exact full name before
+      if (nameLower && seenFullNames.has(nameLower)) {
+        console.log(`🔄 Removing duplicate (same name): ${inf.name}`);
+        return false;
+      }
+      
+      // Skip if first name matches AND it's a common influencer name pattern
+      // This catches cases like "Ranveer Allahbadia" appearing twice
+      if (firstName && firstName.length > 3) {
+        for (const existingName of seenFullNames) {
+          if (existingName.startsWith(firstName + ' ') || existingName === firstName) {
+            console.log(`🔄 Removing duplicate (matching first name): ${inf.name} (matches ${existingName})`);
+            return false;
+          }
+        }
+      }
+      
+      if (handleLower) seenHandles.add(handleLower);
+      if (nameLower) seenFullNames.add(nameLower);
+      if (firstName) seenFirstNames.add(firstName);
       return true;
     });
 
-    console.log(`✅ Found ${influencers.length} unique influencers across all platforms`);
+    console.log(`✅ After deduplication: ${influencers.length} unique influencers`);
 
     // Categorize and save influencers
     const influencersToSave = influencers.map(inf => {
@@ -399,7 +420,8 @@ function categorizeInfluencerTier(followerCount) {
 
 /**
  * Discover influencers across MULTIPLE platforms using Gemini AI
- * Returns exactly 15 influencers: 5 MEGA, 5 MACRO, 5 MICRO
+ * Returns exactly 15 UNIQUE influencers: 5 MEGA, 5 MACRO, 5 MICRO
+ * All influencers must be relevant to the business and located in the business region
  */
 async function discoverMultiPlatformInfluencers(businessContext) {
   const location = businessContext.businessLocation || 'India';
@@ -412,109 +434,95 @@ async function discoverMultiPlatformInfluencers(businessContext) {
   if (state) locationContext = `${state}, ${country}`;
   if (city) locationContext = `${city}, ${state || country}`;
 
-  const prompt = `You are an expert influencer marketing consultant with REAL-TIME knowledge of social media influencers worldwide. Your task is to find REAL, VERIFIED influencers across multiple platforms.
+  const prompt = `You are an expert influencer marketing consultant. Find 15 REAL influencers for this business.
 
-🎯 BUSINESS PROFILE:
-- Company: ${businessContext.companyName}
-- Industry: ${businessContext.industry}
-- Description: ${businessContext.description || 'A growing business'}
-- Target Customer: ${businessContext.targetCustomer || 'Urban consumers aged 18-45'}
-- Value Proposition: ${businessContext.valueProposition || 'Quality products/services'}
-- Primary Marketing Goal: ${businessContext.primaryGoal}
+═══════════════════════════════════════════════════════════════
+📋 BUSINESS DETAILS (USE THIS TO FIND RELEVANT INFLUENCERS):
+═══════════════════════════════════════════════════════════════
+• Company Name: ${businessContext.companyName}
+• Industry/Niche: ${businessContext.industry}
+• Business Description: ${businessContext.description || 'Not provided'}
+• Target Customer: ${businessContext.targetCustomer || 'General consumers'}
+• Value Proposition: ${businessContext.valueProposition || 'Quality products/services'}
+• Marketing Goal: ${businessContext.primaryGoal || 'Brand awareness'}
+• Key Benefits: ${(businessContext.keyBenefits || []).join(', ') || 'Not specified'}
 
-📍 CRITICAL LOCATION REQUIREMENTS:
-- Business Location: ${locationContext}
-- Country: ${country}
-- State/Region: ${state || 'Not specified'}
-- City: ${city || 'Not specified'}
+═══════════════════════════════════════════════════════════════
+📍 LOCATION (CRITICAL - INFLUENCERS MUST BE FROM THIS REGION):
+═══════════════════════════════════════════════════════════════
+• Business Location: ${locationContext}
+• City: ${city || 'Not specified'}
+• State/Region: ${state || 'Not specified'}
+• Country: ${country}
 
-🌍 LOCATION-BASED INFLUENCER RULES:
-${country.toLowerCase().includes('india') ? `
-- MUST prioritize PAN-INDIAN influencers who have national reach
-- Include REGIONAL influencers if state/city is specified:
-  ${state ? `* Include influencers popular in ${state} who create content in local language` : ''}
-  ${city ? `* Include local ${city}-based influencers with strong local following` : ''}
-- Mix of Hindi, English, and regional language content creators
-- Focus on influencers who resonate with Indian audience sensibilities
-` : `
-- MUST prioritize influencers based in or targeting ${country}
-- Include influencers who create content relevant to ${locationContext} audience
-- Mix of local celebrities and national-level influencers from ${country}
-`}
+🔴 MANDATORY: All 15 influencers MUST be based in or primarily create content for audiences in ${locationContext}. 
+${city ? `Prioritize influencers from ${city} or nearby areas.` : ''}
+${state ? `Include influencers popular in ${state}.` : ''}
 
-📱 PLATFORMS TO INCLUDE (distribute across all):
-1. Instagram - Visual content, lifestyle, fashion, food
-2. YouTube - Long-form content, tutorials, reviews, vlogs
-3. Facebook - Community, older demographics, local businesses
-4. Twitter/X - News, opinions, tech, business, politics
-5. LinkedIn - B2B, professional services, corporate
+═══════════════════════════════════════════════════════════════
+🎯 INFLUENCER REQUIREMENTS:
+═══════════════════════════════════════════════════════════════
 
-📊 REQUIRED INFLUENCER BREAKDOWN (EXACTLY 15 TOTAL):
-🔥 5 MEGA Influencers (1M+ followers):
-   - Celebrity-level reach
-   - Household names in ${country}
-   - Mix of platforms (2 Instagram, 1 YouTube, 1 Twitter, 1 Facebook/LinkedIn)
-   
-⭐ 5 MACRO Influencers (100K - 1M followers):
-   - High visibility, established creators
-   - Strong niche authority in ${businessContext.industry}
-   - Mix of platforms (2 Instagram, 2 YouTube, 1 other)
-   
-💎 5 MICRO Influencers (10K - 100K followers):
-   - High engagement rates (5%+)
-   - Niche-focused, authentic content
-   - May include regional/local influencers from ${locationContext}
-   - Mix of platforms
+TIER BREAKDOWN (exactly 15 total):
+1. MEGA (5 influencers): 1M+ followers - National celebrities in ${country}
+2. MACRO (5 influencers): 100K-1M followers - Established niche creators
+3. MICRO (5 influencers): 10K-100K followers - High-engagement local creators
 
-🎯 SELECTION CRITERIA:
-✅ REAL accounts that exist RIGHT NOW (January 2026)
-✅ Active creators who posted within last 30 days
-✅ Content relevant to ${businessContext.industry}
-✅ Audience from ${country} (primary) and ${locationContext} (if specified)
-✅ Good engagement rates (3%+ for larger, 5%+ for smaller accounts)
-✅ Brand-safe, professional content
-✅ Verifiable with real followers and engagement
+RELEVANCE CRITERIA:
+✅ Content MUST relate to: ${businessContext.industry}
+✅ Audience MUST match: ${businessContext.targetCustomer || 'general consumers'}
+✅ All must be REAL, active influencers (posted in last 30 days)
+✅ Mix of platforms: Instagram, YouTube, Twitter, LinkedIn, Facebook
 
-Return EXACTLY this JSON format:
+PLATFORM DISTRIBUTION:
+- Instagram: 5-6 influencers (visual content)
+- YouTube: 4-5 influencers (video content)
+- Twitter/X: 2-3 influencers (thought leaders)
+- LinkedIn: 1-2 influencers (B2B/professional)
+- Facebook: 1-2 influencers (community)
+
+═══════════════════════════════════════════════════════════════
+🚫 CRITICAL: ABSOLUTELY NO DUPLICATES
+═══════════════════════════════════════════════════════════════
+• Each of the 15 influencers must be a DIFFERENT PERSON
+• DO NOT include the same person twice (even on different platforms)
+• If "Ranveer Allahbadia" is included once, do NOT include him again
+• If "Bhuvan Bam" is included once, do NOT include him again
+• Each NAME must be unique across all 15 entries
+• VERIFY before returning: Are all 15 names different people?
+
+═══════════════════════════════════════════════════════════════
+📊 RETURN FORMAT (JSON):
+═══════════════════════════════════════════════════════════════
 {
   "influencers": [
     {
-      "name": "Full Real Name",
-      "handle": "exact_username_on_platform",
+      "name": "Full Real Name (UNIQUE - no duplicates)",
+      "handle": "exact_platform_username",
       "platform": "instagram|youtube|twitter|facebook|linkedin",
-      "bio": "Brief description of what they do",
-      "niche": ["primary_niche", "secondary_niche"],
+      "bio": "What they do and why relevant to ${businessContext.industry}",
+      "niche": ["${businessContext.industry}", "related_niche"],
       "location": "${locationContext}",
       "tier": "mega|macro|micro",
       "followerCount": 1500000,
       "reach": 500000,
       "engagementRate": 4.2,
       "isVerified": true,
-      "contentType": "Type of content they create",
-      "audienceType": "Their audience demographics",
-      "relevanceScore": 88,
-      "relevanceReason": "Why they match this business",
+      "contentType": "Content type they create",
+      "audienceType": "Demographics of their audience",
+      "relevanceScore": 85,
+      "relevanceReason": "Specific reason why they match ${businessContext.companyName}",
       "estimatedCost": "₹50,000 - ₹1,00,000 per post"
     }
   ]
 }
 
-⚠️ CRITICAL RULES:
-1. Return EXACTLY 15 UNIQUE influencers - 5 mega, 5 macro, 5 micro
-2. ⛔ ABSOLUTELY NO DUPLICATES - Each of the 15 influencers MUST BE A COMPLETELY DIFFERENT PERSON
-   - DO NOT repeat the same person with different handles
-   - DO NOT include the same person who has accounts on multiple platforms
-   - Each influencer name must be unique
-3. Every influencer MUST be REAL and verifiable  
-4. Distribute across platforms (not all Instagram)
-5. AT LEAST 80% must be from ${country}
-6. Include regional influencers if city/state is specified
-7. Use local currency for estimatedCost (₹ for India, $ for USA, etc.)
-8. 📊 FOLLOWER COUNTS MUST BE ACCURATE - Use your knowledge of their actual current follower counts as of January 2026. Do NOT guess or use round numbers.
-
-🚨 BEFORE RETURNING: Double-check that all 15 names are UNIQUE individuals. If you have duplicates, replace them with different influencers.
-9. Never return fake or made-up influencers
-10. Each person should appear ONLY ONCE - do not repeat the same person across different platforms`;
+FINAL CHECK BEFORE RESPONDING:
+□ All 15 influencers have DIFFERENT names? 
+□ All are from ${locationContext} or ${country}?
+□ All create content relevant to ${businessContext.industry}?
+□ Follower counts are realistic and accurate?
+□ Mix of platforms (not all Instagram)?`;
 
   try {
     const response = await callGemini(prompt, { maxTokens: 4000, skipCache: true });
