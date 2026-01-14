@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { apiService } from '../services/api';
 import { DashboardData, Campaign, CompetitorPost } from '../types';
 import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3, Swords, Sparkles, Download, Copy, Send, Save, Lightbulb, Flame, Target, Zap, Music, Image as ImageIcon, RefreshCw, PenTool, Wand2 } from 'lucide-react';
@@ -452,10 +452,14 @@ const Dashboard: React.FC = () => {
   const hasCampaigns = (data?.overview?.totalCampaigns || 0) > 0;
   const hasSpend = (data?.overview?.totalSpent || 0) > 0;
   
+  // Fetch dashboard data
   const fetchData = async () => {
+    const startTime = Date.now();
+    
     try {
       const dashboardData = await apiService.getDashboardOverview();
       setData(dashboardData);
+      console.log(`Dashboard loaded in ${Date.now() - startTime}ms`);
     } catch (error) {
       console.error("Failed to load dashboard", error);
     } finally {
@@ -463,7 +467,7 @@ const Dashboard: React.FC = () => {
     }
   };
   
-  // Fetch Strategic Advisor suggestions
+  // Fetch Strategic Advisor suggestions (lazy load after dashboard is ready)
   const fetchStrategicSuggestions = async () => {
     console.log('[Strategic] Fetching suggestions...');
     setStrategicLoading(true);
@@ -906,7 +910,7 @@ const Dashboard: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center text-slate-400 gap-2"><div className="w-4 h-4 bg-#ffcc29 rounded-full animate-bounce"></div> Loading metrics...</div>;
+    return null;
   }
 
   const currentCompetitor = data?.competitorActivity?.[competitorIndex];
@@ -1094,24 +1098,20 @@ const Dashboard: React.FC = () => {
               </button>
           </div>
           
-          {/* Connected Profiles or Sample Data */}
+          {/* Connected Profiles or Empty State */}
           {(() => {
             const profiles = data?.overview?.socialProfiles || [];
             const hasProfiles = profiles.length > 0;
             
-            // Sample data for when no profiles are connected
-            const sampleProfiles = [
-              { platform: 'instagram', accountName: '@yourbrand', followers: 12500, posts: 156, engagementRate: 4.2, followersGrowth: 320, impressions: 45000, reach: 28000 },
-              { platform: 'facebook', accountName: 'YourBrand Page', followers: 8200, posts: 89, engagementRate: 2.8, followersGrowth: 145, impressions: 32000, reach: 18500 },
-              { platform: 'twitter', accountName: '@yourbrand', followers: 5600, posts: 234, engagementRate: 3.1, followersGrowth: 89, impressions: 18000, reach: 12000 },
-              { platform: 'linkedin', accountName: 'YourBrand Inc.', followers: 3200, posts: 45, engagementRate: 5.2, followersGrowth: 67, impressions: 15000, reach: 9500 },
-              { platform: 'youtube', accountName: 'YourBrand Channel', followers: 1800, posts: 28, engagementRate: 6.8, followersGrowth: 42, impressions: 25000, reach: 15000 },
+            // Platform info for connect buttons
+            const availablePlatforms = [
+              { platform: 'instagram', name: 'Instagram', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/132px-Instagram_logo_2016.svg.png', bgColor: 'bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400' },
+              { platform: 'facebook', name: 'Facebook', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1200px-Facebook_Logo_%282019%29.png', bgColor: 'bg-[#1877F2]' },
+              { platform: 'twitter', name: 'X (Twitter)', logo: 'https://abs.twimg.com/responsive-web/client-web/icon-ios.77d25eba.png', bgColor: 'bg-black' },
+              { platform: 'linkedin', name: 'LinkedIn', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/LinkedIn_logo_initials.png/800px-LinkedIn_logo_initials.png', bgColor: 'bg-[#0A66C2]' },
+              { platform: 'youtube', name: 'YouTube', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/1024px-YouTube_full-color_icon_%282017%29.svg.png', bgColor: 'bg-[#FF0000]' },
+              { platform: 'tiktok', name: 'TikTok', logo: 'https://sf-tb-sg.ibytedtos.com/obj/eden-sg/uhtyvueh7nulogpoguhm/tiktok-icon2.png', bgColor: 'bg-black' },
             ];
-            
-            const displayProfiles = hasProfiles ? profiles : sampleProfiles;
-            const totalFollowers = displayProfiles.reduce((sum: number, p: any) => sum + (p.followers || 0), 0);
-            const totalGrowth = displayProfiles.reduce((sum: number, p: any) => sum + (p.followersGrowth || 0), 0);
-            const avgEngagement = displayProfiles.reduce((sum: number, p: any) => sum + (p.engagementRate || 0), 0) / displayProfiles.length;
             
             // Platform logos - using real CDN URLs
             const platformLogos: Record<string, { logo: string; color: string; bgColor: string }> = {
@@ -1147,18 +1147,57 @@ const Dashboard: React.FC = () => {
               },
             };
             
-            return (
-              <>
-                {/* Sample Data Warning */}
-                {!hasProfiles && (
-                  <div className={`mb-5 p-3 rounded-lg ${isDarkMode ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'} border flex items-center gap-2`}>
-                    <span className="text-lg">📊</span>
-                    <p className={`text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>
-                      Showing sample data. Connect your social accounts to see real analytics.
+            // If no profiles connected, show empty state with connect options
+            if (!hasProfiles) {
+              return (
+                <div className="py-8">
+                  {/* Empty State Message */}
+                  <div className="text-center mb-8">
+                    <div className={`w-16 h-16 mx-auto mb-4 rounded-full ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'} flex items-center justify-center`}>
+                      <svg className={`w-8 h-8 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                    </div>
+                    <h3 className={`text-lg font-semibold ${theme.text} mb-2`}>No Social Accounts Connected</h3>
+                    <p className={`text-sm ${theme.textMuted} max-w-md mx-auto`}>
+                      Connect your social media accounts to view real-time analytics, track growth, and manage all your profiles in one place.
                     </p>
                   </div>
-                )}
-                
+                  
+                  {/* Connect Platform Buttons */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    {availablePlatforms.map((platform) => (
+                      <button
+                        key={platform.platform}
+                        onClick={() => { window.location.hash = '/connect-socials'; }}
+                        className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#161b22] border-[#30363d] hover:border-[#ffcc29]/50' : 'bg-white border-slate-200 hover:border-[#ffcc29]'} transition-all duration-200 hover:shadow-lg group`}
+                      >
+                        <div className={`w-12 h-12 mx-auto mb-3 rounded-xl ${platform.bgColor} p-2.5 flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                          <img 
+                            src={platform.logo} 
+                            alt={platform.name}
+                            className="w-7 h-7 object-contain"
+                            style={{ filter: platform.platform === 'instagram' ? 'brightness(0) invert(1)' : 'none' }}
+                          />
+                        </div>
+                        <p className={`text-sm font-medium ${theme.text} text-center mb-2`}>{platform.name}</p>
+                        <div className={`text-xs text-center px-2 py-1 rounded-full ${isDarkMode ? 'bg-[#ffcc29]/10 text-[#ffcc29]' : 'bg-[#ffcc29]/20 text-amber-700'}`}>
+                          Connect
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            
+            // Show connected profiles with stats
+            const totalFollowers = profiles.reduce((sum: number, p: any) => sum + (p.followers || 0), 0);
+            const totalGrowth = profiles.reduce((sum: number, p: any) => sum + (p.followersGrowth || 0), 0);
+            const avgEngagement = profiles.reduce((sum: number, p: any) => sum + (p.engagementRate || 0), 0) / profiles.length;
+            
+            return (
+              <>
                 {/* Summary Stats Row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
@@ -1180,13 +1219,13 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
                     <p className={`text-xs ${theme.textMuted} mb-1`}>Connected Platforms</p>
-                    <p className={`text-2xl font-bold ${theme.text}`}>{displayProfiles.length}</p>
+                    <p className={`text-2xl font-bold ${theme.text}`}>{profiles.length}</p>
                   </div>
                 </div>
                 
                 {/* Profiles Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                  {displayProfiles.map((profile: any, idx: number) => {
+                  {profiles.map((profile: any, idx: number) => {
                     const platformInfo = platformLogos[profile.platform?.toLowerCase()] || platformLogos.instagram;
                     return (
                       <div 
@@ -1220,12 +1259,12 @@ const Dashboard: React.FC = () => {
                           <div className="flex justify-between items-center">
                             <span className={`text-xs ${theme.textMuted}`}>Growth</span>
                             <span className={`text-sm font-semibold ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                              +{profile.followersGrowth}
+                              +{profile.followersGrowth || 0}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className={`text-xs ${theme.textMuted}`}>Engagement</span>
-                            <span className={`text-sm font-semibold ${theme.text}`}>{profile.engagementRate?.toFixed(1)}%</span>
+                            <span className={`text-sm font-semibold ${theme.text}`}>{profile.engagementRate?.toFixed(1) || 0}%</span>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className={`text-xs ${theme.textMuted}`}>Posts</span>
@@ -1236,15 +1275,26 @@ const Dashboard: React.FC = () => {
                         {/* Status Indicator */}
                         <div className={`mt-4 pt-3 border-t ${isDarkMode ? 'border-[#30363d]' : 'border-slate-100'}`}>
                           <div className="flex items-center gap-1.5">
-                            <div className={`w-2 h-2 rounded-full ${hasProfiles ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                            <span className={`text-xs ${hasProfiles ? (isDarkMode ? 'text-emerald-400' : 'text-emerald-600') : (isDarkMode ? 'text-amber-400' : 'text-amber-600')}`}>
-                              {hasProfiles ? 'Connected' : 'Sample'}
+                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                            <span className={`text-xs ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                              Connected
                             </span>
                           </div>
                         </div>
                       </div>
                     );
                   })}
+                  
+                  {/* Add More Account Card */}
+                  <button
+                    onClick={() => { window.location.hash = '/connect-socials'; }}
+                    className={`p-4 rounded-xl border-2 border-dashed ${isDarkMode ? 'border-[#30363d] hover:border-[#ffcc29]/50 bg-transparent' : 'border-slate-200 hover:border-[#ffcc29] bg-transparent'} transition-all duration-200 flex flex-col items-center justify-center min-h-[200px] group`}
+                  >
+                    <div className={`w-12 h-12 rounded-full ${isDarkMode ? 'bg-slate-800 group-hover:bg-[#ffcc29]/20' : 'bg-slate-100 group-hover:bg-[#ffcc29]/20'} flex items-center justify-center mb-3 transition-colors`}>
+                      <Plus className={`w-6 h-6 ${isDarkMode ? 'text-slate-500 group-hover:text-[#ffcc29]' : 'text-slate-400 group-hover:text-[#ffcc29]'} transition-colors`} />
+                    </div>
+                    <p className={`text-sm font-medium ${theme.textMuted} group-hover:text-[#ffcc29] transition-colors`}>Add Account</p>
+                  </button>
                 </div>
               </>
             );

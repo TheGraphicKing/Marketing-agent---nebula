@@ -13,9 +13,13 @@ const OnboardingContext = require('../models/OnboardingContext');
 const { generateWithLLM } = require('../services/llmRouter');
 const { scrapeWebsite, extractTextContent, getPageTitle } = require('../services/scraper');
 
-// Import real social media API service
+// Import Gemini AI for generating competitor insights (not for posts)
+const { generateCompetitorActivity } = require('../services/geminiAI');
+
+// Import real social media API service for fetching actual posts
 const {
   scrapeInstagramProfile,
+  scrapeInstagramPosts,
   scrapeTwitterProfile,
   scrapeTikTokProfile,
   scrapeCompetitor
@@ -283,27 +287,31 @@ async function discoverCompetitorsWithGemini(businessContext) {
   const prompt = `You are a senior market research analyst at a top consulting firm (like McKinsey, BCG, or Bain). 
 Your expertise is identifying the most FAMOUS, WELL-ESTABLISHED competitors for businesses.
 
+⚠️ CRITICAL LOCATION CONTEXT: The business is located in ${businessContext.location}
+You MUST prioritize competitors that operate in or serve customers in ${businessContext.location}!
+
 🎯 RESEARCH TASK:
 First, mentally research "${businessContext.companyName}" - understand what they do based on:
 - Company Name: ${businessContext.companyName}
 - Industry: ${businessContext.industry}
 - Description: ${businessContext.description || 'Not provided'}
 - Target Customer: ${businessContext.targetCustomer || 'General market'}
-- Location: ${businessContext.location}
+- Business Location: ${businessContext.location}
 
 📊 COMPETITOR REQUIREMENTS:
-Find 10-12 FAMOUS, WELL-KNOWN competitors. These must be:
+Find 10-12 FAMOUS, WELL-KNOWN competitors that operate in ${businessContext.location}. These must be:
 
 ✅ MUST INCLUDE:
-1. **Household name brands** - Companies that most people would recognize
-2. **Publicly traded companies** or **well-funded startups** (Series B+)
+1. **Household name brands in ${businessContext.location}** - Companies that people in ${businessContext.location} would recognize
+2. **Publicly traded companies** or **well-funded startups** (Series B+) with presence in ${businessContext.location}
 3. **Companies with verified social media** (blue tick preferred)
 4. **Companies with Wikipedia pages** or major press coverage
-5. **Market leaders** in the ${businessContext.industry} space
+5. **Market leaders** in the ${businessContext.industry} space in ${businessContext.location}
 
 ❌ MUST EXCLUDE:
+- Companies that DON'T operate in ${businessContext.location}
 - Unknown local businesses without brand recognition
-- Companies with non-English names or content
+- Companies with non-English names or content (unless local to ${businessContext.location})
 - Religious or political organizations
 - Companies without professional social media presence
 - Businesses that appear spammy or unprofessional
@@ -312,11 +320,11 @@ Find 10-12 FAMOUS, WELL-KNOWN competitors. These must be:
 🏆 FAMOUS BRANDS IN ${businessContext.industry.toUpperCase()} (use these as reference):
 ${brandExamples}
 
-📋 COMPETITOR MIX (must include all categories):
-1. **Market Leaders (3-4)**: Top companies everyone knows (e.g., biggest brands in India)
-2. **Direct Competitors (3-4)**: Similar-sized companies in same space
-3. **Aspirational Brands (2-3)**: Premium/global brands to benchmark against
-4. **Emerging Players (2-3)**: Well-funded startups disrupting the space
+📋 COMPETITOR MIX (must include all categories, ALL from ${businessContext.location} market):
+1. **Market Leaders (3-4)**: Top companies everyone in ${businessContext.location} knows
+2. **Direct Competitors (3-4)**: Similar-sized companies in same space in ${businessContext.location}
+3. **Aspirational Brands (2-3)**: Premium/global brands with strong ${businessContext.location} presence
+4. **Emerging Players (2-3)**: Well-funded startups disrupting the space in ${businessContext.location}
 
 Return ONLY this JSON (no other text):
 {
@@ -327,14 +335,16 @@ Return ONLY this JSON (no other text):
       "twitter": "@verified_handle", 
       "website": "https://official-website.com",
       "description": "Brief description of what they do",
+      "location": "${businessContext.location}",
       "estimatedFollowers": 100000,
       "competitorType": "market_leader|direct|aspirational|emerging",
-      "famousFor": "What they're known for"
+      "famousFor": "What they're known for in ${businessContext.location}"
     }
   ]
 }
 
-⚠️ QUALITY CHECK: Only include competitors you are 100% certain are real, famous brands. 
+⚠️ QUALITY CHECK: Only include competitors that operate in ${businessContext.location}. 
+At least 80% must be ${businessContext.location}-based or have major presence there.
 If in doubt, use the reference brands I provided above. Never return less than 10 competitors.`;
 
   try {
@@ -398,16 +408,21 @@ function isEnglishContent(text) {
 /**
  * Fetch posts for a list of competitors
  * Only keeps English-language posts from verified brands
+ * CRITICAL: Only posts from the last 3 months are allowed - NO older posts
  */
 async function fetchPostsForCompetitors(competitors) {
   const allPosts = [];
+  
+  // STRICT 3-MONTH THRESHOLD - Posts older than this are NEVER shown
+  const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+  console.log(`📅 3-month threshold: ${new Date(threeMonthsAgo).toLocaleDateString()} - Only posts after this date will be shown`);
 
   for (const competitor of competitors.slice(0, 5)) { // Limit to 5
     const instagramHandle = competitor.socialHandles?.instagram?.replace('@', '');
     
     if (instagramHandle) {
       try {
-        console.log(`📸 Fetching Instagram posts for ${competitor.name} (@${instagramHandle})...`);
+        console.log(`📸 Fetching REAL Instagram posts for ${competitor.name} (@${instagramHandle})...`);
         const result = await scrapeInstagramProfile(instagramHandle);
         
         if (result && result.recentPosts && result.recentPosts.length > 0) {
@@ -416,26 +431,43 @@ async function fetchPostsForCompetitors(competitors) {
             isEnglishContent(post.caption || post.text || '')
           );
           
-          const posts = englishPosts.slice(0, 5).map(post => ({
-            competitorId: competitor._id,
-            competitorName: competitor.name,
-            platform: 'instagram',
-            content: post.caption || post.text || '',
-            likes: post.likes || post.likesCount || 0,
-            comments: post.comments || post.commentsCount || 0,
-            imageUrl: post.imageUrl || post.thumbnailUrl || null,
-            postUrl: post.url || post.postUrl || `https://instagram.com/p/${post.shortCode || ''}`,
-            postedAt: post.timestamp || post.date || new Date(),
-            sentiment: analyzeSentiment(post.caption || ''),
-            isRealData: true
-          }));
+          // Map posts with timestamps
+          const mappedPosts = englishPosts.map(post => {
+            const timestamp = new Date(post.timestamp || post.takenAtTimestamp * 1000 || post.date || Date.now()).getTime();
+            return {
+              competitorId: competitor._id,
+              competitorName: competitor.name,
+              platform: 'instagram',
+              content: post.caption || post.text || '',
+              likes: post.likes || post.likesCount || 0,
+              comments: post.comments || post.commentsCount || 0,
+              imageUrl: post.imageUrl || post.displayUrl || post.thumbnailUrl || null,
+              postUrl: post.url || post.postUrl || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
+              postedAt: post.timestamp || post.takenAtTimestamp || post.date || new Date(),
+              postedAtTimestamp: timestamp,
+              sentiment: analyzeSentiment(post.caption || ''),
+              isRealData: true
+            };
+          });
+          
+          // STRICT 3-MONTH FILTER: Remove any posts older than 3 months
+          const recentPosts = mappedPosts.filter(post => {
+            if (post.postedAtTimestamp < threeMonthsAgo) {
+              console.log(`⚠️ Filtering out old post from ${competitor.name} - posted ${new Date(post.postedAtTimestamp).toLocaleDateString()}`);
+              return false;
+            }
+            return true;
+          });
+          
+          const posts = recentPosts.slice(0, 5);
+          console.log(`📅 Kept ${posts.length}/${mappedPosts.length} posts after 3-month filter for ${competitor.name}`);
           
           // Save posts to competitor
           competitor.posts = posts;
           await competitor.save();
           
           allPosts.push(...posts);
-          console.log(`✅ Got ${posts.length} English posts for ${competitor.name}`);
+          console.log(`✅ Got ${posts.length} REAL recent English posts for ${competitor.name}`);
         }
       } catch (fetchError) {
         console.error(`Failed to fetch posts for ${competitor.name}:`, fetchError.message);
@@ -574,6 +606,8 @@ router.get('/real/:id', protect, async (req, res) => {
     let realData = null;
     
     try {
+      console.log(`📸 Fetching REAL data for ${competitor.name} (@${handle}) on ${platform}...`);
+      
       switch (platform) {
         case 'instagram':
           realData = await scrapeInstagramProfile(handle);
@@ -603,9 +637,10 @@ router.get('/real/:id', protect, async (req, res) => {
             likes: post.likes || post.likesCount || 0,
             comments: post.comments || post.commentsCount || 0,
             shares: post.shares || post.sharesCount || 0,
-            imageUrl: post.imageUrl || post.thumbnailUrl || null,
-            postUrl: post.url || post.postUrl || null,
-            postedAt: post.timestamp || post.date || new Date(),
+            imageUrl: post.imageUrl || post.displayUrl || post.thumbnailUrl || null,
+            postUrl: post.url || post.postUrl || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
+            postedAt: post.timestamp || post.takenAtTimestamp || post.date || new Date(),
+            postedAtTimestamp: new Date(post.timestamp || post.takenAtTimestamp * 1000 || post.date || Date.now()).getTime(),
             fetchedAt: new Date(),
             isRealData: true
           }));
@@ -660,7 +695,7 @@ router.get('/real/:id', protect, async (req, res) => {
 
 /**
  * POST /api/competitors/scrape-all
- * Scrape real-time data for all active competitors
+ * Scrape real-time data for all active competitors using Apify
  */
 router.post('/scrape-all', protect, async (req, res) => {
   try {
@@ -675,13 +710,30 @@ router.post('/scrape-all', protect, async (req, res) => {
       
       if (handle) {
         try {
+          console.log(`📸 Fetching REAL data for ${competitor.name} (@${handle})...`);
           const realData = await scrapeInstagramProfile(handle);
-          if (realData && !realData.error) {
+          
+          if (realData && !realData.error && realData.recentPosts) {
+            // Update competitor with real posts
+            competitor.posts = realData.recentPosts.slice(0, 5).map(post => ({
+              platform: 'instagram',
+              content: post.caption || post.text || '',
+              likes: post.likes || post.likesCount || 0,
+              comments: post.comments || post.commentsCount || 0,
+              imageUrl: post.imageUrl || post.displayUrl || null,
+              postUrl: post.url || post.postUrl || `https://instagram.com/p/${post.shortCode || ''}`,
+              postedAt: post.timestamp || post.takenAtTimestamp || new Date(),
+              postedAtTimestamp: new Date(post.timestamp || post.takenAtTimestamp * 1000 || Date.now()).getTime(),
+              isRealData: true
+            }));
+            
+            await competitor.save();
+            
             results.push({
               competitorId: competitor._id,
               name: competitor.name,
               success: true,
-              data: realData
+              postsCount: competitor.posts.length
             });
           } else {
             results.push({

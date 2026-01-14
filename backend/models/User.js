@@ -48,8 +48,9 @@ const userSchema = new mongoose.Schema({
     industry: { type: String, default: '' },
     niche: { type: String, default: '' },
     businessType: { type: String, enum: ['B2B', 'B2C', 'Both', ''], default: '' },
+    businessLocation: { type: String, default: '' },
     targetAudience: { type: String, default: '' },
-    brandVoice: { type: String, default: 'Professional' },
+    brandVoice: { type: mongoose.Schema.Types.Mixed, default: ['Professional'] }, // Can be string or array
     marketingGoals: [{ type: String }],
     description: { type: String, default: '' },
     competitors: [{ type: String }]
@@ -75,6 +76,13 @@ const userSchema = new mongoose.Schema({
     plan: { type: String, enum: ['free', 'pro', 'enterprise'], default: 'free' },
     status: { type: String, enum: ['active', 'cancelled', 'expired'], default: 'active' },
     expiresAt: { type: Date }
+  },
+  // Ayrshare integration for social media management
+  ayrshare: {
+    profileKey: { type: String, default: '' },  // User's Ayrshare Profile Key for API calls
+    refId: { type: String, default: '' },        // Ayrshare reference ID
+    title: { type: String, default: '' },        // Profile title in Ayrshare
+    createdAt: { type: Date }                    // When Ayrshare profile was created
   },
   lastLoginAt: {
     type: Date,

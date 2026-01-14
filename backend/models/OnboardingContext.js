@@ -114,12 +114,10 @@ const onboardingContextSchema = new mongoose.Schema({
     enum: ['leads', 'demos', 'sales', 'partnerships', 'awareness', 'signups']
   }],
   
-  // Brand Voice & Messaging
+  // Brand Voice & Messaging (supports multiple tones)
   brandTone: {
-    type: String,
-    enum: ['formal', 'friendly', 'bold', 'professional', 'casual', 'authoritative', 'empathetic', 'witty'],
-    required: [true, 'Brand tone is required'],
-    default: 'professional'
+    type: mongoose.Schema.Types.Mixed, // Can be string or array of strings
+    default: ['professional']
   },
   
   // Value Proposition

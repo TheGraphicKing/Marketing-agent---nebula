@@ -112,8 +112,25 @@ const ConnectSocials: React.FC = () => {
       const response = await apiService.getPlatformAuthUrl(platform);
       
       if (response.success && response.authUrl) {
-        // Redirect to the auth page (either platform OAuth or Ayrshare dashboard)
-        window.location.href = response.authUrl;
+        // For Ayrshare JWT flow, open in a new tab/window as recommended by Ayrshare docs
+        // This allows the Close button to work properly and return the user to our app
+        if (response.method === 'ayrshare_jwt') {
+          // Open Ayrshare social linking page in a new tab
+          const newWindow = window.open(response.authUrl, '_blank', 'noopener,noreferrer');
+          if (newWindow) {
+            newWindow.focus();
+          }
+          // Reset loading state since user will return via redirect
+          setLoadingPlatform(null);
+          setConnectingPlatform(null);
+          setNotification({
+            type: 'success',
+            message: `A new tab has opened. Connect your ${platform} account there and return here when done.`
+          });
+        } else {
+          // For direct OAuth (like YouTube), redirect in the same window
+          window.location.href = response.authUrl;
+        }
       } else {
         // Some error occurred
         setNotification({ 

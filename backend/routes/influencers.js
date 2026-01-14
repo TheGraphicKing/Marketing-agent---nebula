@@ -11,7 +11,6 @@ const User = require('../models/User');
 const BrandProfile = require('../models/BrandProfile');
 const OnboardingContext = require('../models/OnboardingContext');
 const { callGemini, parseGeminiJSON, calculateInfluencerMatchScore } = require('../services/geminiAI');
-const socialMediaAPI = require('../services/socialMediaAPI');
 
 /**
  * GET /api/influencers
@@ -212,6 +211,7 @@ router.post('/discover', protect, async (req, res) => {
       industry: onboardingContext?.company?.industry || bp.industry || 'General Business',
       description: onboardingContext?.company?.description || bp.niche || '',
       targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || '',
+      businessLocation: onboardingContext?.geography?.businessLocation || bp.businessLocation || 'India',
       regions: onboardingContext?.geography?.regions || [],
       countries: onboardingContext?.geography?.countries || [],
       valueProposition: onboardingContext?.valueProposition?.main || '',
@@ -391,14 +391,20 @@ async function discoverInfluencersWithGemini(businessContext, limit = 15) {
   
   const industryInfo = industryInfluencerMap[industryKey];
 
-  const prompt = `You are an expert influencer marketing consultant with deep knowledge of Indian and global Instagram influencers. Your task is to find REAL, VERIFIED influencers who would be perfect partners for a business.
+  const prompt = `You are an expert influencer marketing consultant with deep knowledge of Instagram influencers worldwide. Your task is to find REAL, VERIFIED influencers who would be perfect partners for a business.
+
+⚠️ CRITICAL: The business is located in ${businessContext.businessLocation}. You MUST prioritize influencers who:
+1. Are based in or primarily target audiences in ${businessContext.businessLocation}
+2. Create content relevant to ${businessContext.businessLocation} audience
+3. Have followers predominantly from ${businessContext.businessLocation} region
 
 BUSINESS CONTEXT:
 - Company: ${businessContext.companyName}
 - Industry: ${businessContext.industry}
 - Description: ${businessContext.description || 'A growing business in this industry'}
 - Target Customer: ${businessContext.targetCustomer || 'Urban consumers aged 18-45'}
-- Target Regions: ${businessContext.regions?.join(', ') || 'India, Global'}
+- Business Location: ${businessContext.businessLocation}
+- Target Regions: ${businessContext.regions?.join(', ') || businessContext.businessLocation}
 - Value Proposition: ${businessContext.valueProposition || 'Quality products/services'}
 - Primary Marketing Goal: ${businessContext.primaryGoal || 'brand awareness'}
 
@@ -412,18 +418,24 @@ YOUR TASK:
 Find ${limit} REAL Instagram influencers who would be ideal brand partners. You MUST include:
 
 📊 INFLUENCER MIX (REQUIRED):
-- 2-3 MEGA influencers (1M+ followers) - Celebrity-level reach
-- 4-5 MACRO influencers (100K-1M followers) - High visibility
-- 5-6 MICRO influencers (10K-100K followers) - High engagement, niche audiences
-- 2-3 NANO influencers (5K-10K followers) - Ultra-targeted, authentic
+- 2-3 MEGA influencers (1M+ followers) - Celebrity-level reach in ${businessContext.businessLocation}
+- 4-5 MACRO influencers (100K-1M followers) - High visibility in ${businessContext.businessLocation}
+- 5-6 MICRO influencers (10K-100K followers) - High engagement, niche audiences in ${businessContext.businessLocation}
+- 2-3 NANO influencers (5K-10K followers) - Ultra-targeted, authentic local influencers
+
+🌍 LOCATION PRIORITY:
+- AT LEAST 80% of influencers MUST be based in or primarily serve ${businessContext.businessLocation}
+- Focus on influencers who create content in local languages or for local audiences
+- Include influencers popular in the specific region/city mentioned
 
 🎯 SELECTION CRITERIA:
 ✅ REAL accounts that exist on Instagram right now
 ✅ Active posting (posted within last 30 days)
 ✅ Content relevant to ${businessContext.industry}
-✅ Audience demographics match target customer
+✅ Audience demographics match target customer in ${businessContext.businessLocation}
 ✅ Good engagement rates (3%+ for smaller accounts, 1%+ for larger)
 ✅ Brand-safe content (professional, no controversies)
+✅ MUST have significant audience from ${businessContext.businessLocation}
 
 Return EXACTLY ${limit} influencers in this JSON format:
 {
@@ -433,6 +445,7 @@ Return EXACTLY ${limit} influencers in this JSON format:
       "handle": "exact_instagram_username",
       "bio": "Their actual bio or content focus description",
       "niche": ["primary_niche", "secondary_niche"],
+      "location": "City/Country where they are based",
       "followerCount": 500000,
       "engagementRate": 4.5,
       "isVerified": true,
@@ -449,9 +462,10 @@ Return EXACTLY ${limit} influencers in this JSON format:
 1. You MUST return exactly ${limit} influencers - never fewer
 2. Every influencer MUST be a real person/account that exists on Instagram
 3. Include a diverse mix of follower counts as specified above
-4. If unsure about specific handles, include well-known influencers in the ${businessContext.industry} space
-5. Prioritize Indian influencers for Indian businesses, but include global influencers too
-6. NEVER return an empty list or say "no influencers found"`;
+4. AT LEAST 80% must be from or popular in ${businessContext.businessLocation}
+5. If the business is in India, prioritize Indian influencers; if USA, prioritize American influencers, etc.
+6. NEVER return an empty list or say "no influencers found"
+7. Match the local market, culture, and language preferences of ${businessContext.businessLocation}`;
 
   try {
     const response = await callGemini(prompt, { maxTokens: 3000, skipCache: true });

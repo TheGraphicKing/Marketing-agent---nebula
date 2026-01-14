@@ -604,6 +604,7 @@ export const apiService = {
     configured: boolean; 
     authUrl?: string; 
     message?: string;
+    method?: 'direct_oauth' | 'ayrshare_jwt' | 'ayrshare';
     setupInstructions?: { url: string; steps: string[] };
   }> => {
     try {
@@ -612,6 +613,7 @@ export const apiService = {
         configured: boolean; 
         authUrl?: string; 
         message?: string;
+        method?: 'direct_oauth' | 'ayrshare_jwt' | 'ayrshare';
         setupInstructions?: { url: string; steps: string[] };
       }>(
         `/social/${platform.toLowerCase()}/auth`,

@@ -234,6 +234,174 @@ function getAyrshareConnectUrl(platform, redirectUrl) {
   }
 }
 
+/**
+ * Create a new Ayrshare User Profile
+ * Required for Business Plan integration - each user needs their own profile
+ * @param {string} title - Unique title for the profile (e.g., user's email or company name)
+ * @param {object} options - Optional settings (disableSocial, hideTopHeader, etc.)
+ * @returns {Promise<{success: boolean, profileKey?: string, refId?: string, error?: string}>}
+ */
+async function createAyrshareProfile(title, options = {}) {
+  if (!AYRSHARE_API_KEY) {
+    console.warn('Ayrshare API key not configured');
+    return { success: false, error: 'API not configured' };
+  }
+
+  try {
+    const body = {
+      title: title,
+      ...options
+    };
+
+    const response = await makeRequest('https://api.ayrshare.com/api/profiles', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: body
+    });
+
+    console.log('Ayrshare create profile response:', response.status, response.data);
+
+    if (response.status === 200 && response.data?.status === 'success') {
+      return {
+        success: true,
+        profileKey: response.data.profileKey,
+        refId: response.data.refId,
+        title: response.data.title
+      };
+    } else {
+      return {
+        success: false,
+        error: response.data?.message || 'Failed to create Ayrshare profile',
+        code: response.data?.code
+      };
+    }
+  } catch (error) {
+    console.error('Ayrshare create profile error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Generate JWT for Ayrshare Single Sign-On
+ * This creates a secure URL that redirects users to Ayrshare's social linking page
+ * @param {string} profileKey - The user's Ayrshare Profile Key
+ * @param {object} options - Optional settings (redirect URL, logout, domain)
+ * @returns {Promise<{success: boolean, url?: string, error?: string}>}
+ */
+async function generateAyrshareJWT(profileKey, options = {}) {
+  if (!AYRSHARE_API_KEY) {
+    console.warn('Ayrshare API key not configured');
+    return { success: false, error: 'API not configured' };
+  }
+
+  if (!profileKey) {
+    return { success: false, error: 'Profile key is required' };
+  }
+
+  try {
+    const body = {
+      profileKey: profileKey,
+      ...(options.redirect && { redirect: options.redirect }),
+      ...(options.logout && { logout: true })
+    };
+
+    const response = await makeRequest('https://api.ayrshare.com/api/profiles/generateJWT', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: body
+    });
+
+    console.log('Ayrshare generate JWT response:', response.status);
+
+    if (response.status === 200 && response.data?.url) {
+      return {
+        success: true,
+        url: response.data.url
+      };
+    } else {
+      return {
+        success: false,
+        error: response.data?.message || 'Failed to generate JWT URL'
+      };
+    }
+  } catch (error) {
+    console.error('Ayrshare generate JWT error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get User Profile details from Ayrshare (with Profile Key)
+ * @param {string} profileKey - The user's Ayrshare Profile Key
+ * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+ */
+async function getAyrshareUserProfile(profileKey) {
+  if (!AYRSHARE_API_KEY) {
+    return { success: false, error: 'API not configured' };
+  }
+
+  try {
+    const response = await makeRequest('https://api.ayrshare.com/api/user', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+        'Profile-Key': profileKey
+      }
+    });
+
+    if (response.status === 200) {
+      return {
+        success: true,
+        data: response.data,
+        activeSocialAccounts: response.data?.activeSocialAccounts || []
+      };
+    } else {
+      return {
+        success: false,
+        error: response.data?.message || 'Failed to get user profile'
+      };
+    }
+  } catch (error) {
+    console.error('Ayrshare get user profile error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Delete an Ayrshare User Profile
+ * @param {string} profileKey - The user's Ayrshare Profile Key
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function deleteAyrshareProfile(profileKey) {
+  if (!AYRSHARE_API_KEY) {
+    return { success: false, error: 'API not configured' };
+  }
+
+  try {
+    const response = await makeRequest('https://api.ayrshare.com/api/profiles', {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+        'Profile-Key': profileKey
+      }
+    });
+
+    return {
+      success: response.status === 200,
+      error: response.status !== 200 ? (response.data?.message || 'Failed to delete profile') : undefined
+    };
+  } catch (error) {
+    console.error('Ayrshare delete profile error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ============================================
 // APIFY API - Web Scraping
 // ============================================
@@ -440,21 +608,30 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
           
           if (result.success && result.data && result.data.length > 0) {
             const profile = result.data[0];
-            const posts = (profile.latestPosts || profile.posts || []).slice(0, limit).map((post, idx) => ({
-              id: `real_ig_${instagram}_${idx}_${Date.now()}`,
-              competitorName: name,
-              competitorLogo: name?.charAt(0)?.toUpperCase() || 'C',
-              content: post.caption || post.text || post.description || 'No caption',
-              platform: 'instagram',
-              likes: post.likesCount || post.likes || 0,
-              comments: post.commentsCount || post.comments || 0,
-              sentiment: analyzeSentiment(post.caption || ''),
-              postType: detectPostType(post.caption || ''),
-              postedAt: formatPostDate(post.timestamp || post.takenAt),
-              postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id}`,
-              imageUrl: post.displayUrl || post.imageUrl || null,
-              isReal: true
-            }));
+            const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000); // 3 months in ms
+            
+            const posts = (profile.latestPosts || profile.posts || [])
+              .map((post, idx) => {
+                const timeInfo = formatPostDate(post.timestamp || post.takenAt || post.taken_at_timestamp * 1000);
+                return {
+                  id: `real_ig_${instagram}_${idx}_${Date.now()}`,
+                  competitorName: name,
+                  competitorLogo: name?.charAt(0)?.toUpperCase() || 'C',
+                  content: post.caption || post.text || post.description || 'No caption',
+                  platform: 'instagram',
+                  likes: post.likesCount || post.likes || 0,
+                  comments: post.commentsCount || post.comments || 0,
+                  sentiment: analyzeSentiment(post.caption || ''),
+                  postType: detectPostType(post.caption || ''),
+                  postedAt: timeInfo.displayString,
+                  postedAtTimestamp: timeInfo.timestamp,
+                  postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id}`,
+                  imageUrl: post.displayUrl || post.imageUrl || null,
+                  isReal: true
+                };
+              })
+              .filter(post => post.postedAtTimestamp > threeMonthsAgo) // Filter out posts older than 3 months
+              .slice(0, limit);
             
             allPosts.push(...posts);
             setCache(cacheKey, { posts });
@@ -483,21 +660,30 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
           }, { timeout: 60000 });
           
           if (result.success && result.data && result.data.length > 0) {
-            const posts = result.data.slice(0, limit).map((tweet, idx) => ({
-              id: `real_tw_${twitter}_${idx}_${Date.now()}`,
-              competitorName: name,
-              competitorLogo: name?.charAt(0)?.toUpperCase() || 'C',
-              content: tweet.text || tweet.full_text || 'No content',
-              platform: 'twitter',
-              likes: tweet.favorite_count || tweet.likes || 0,
-              comments: tweet.reply_count || tweet.replies || 0,
-              retweets: tweet.retweet_count || 0,
-              sentiment: analyzeSentiment(tweet.text || ''),
-              postType: detectPostType(tweet.text || ''),
-              postedAt: formatPostDate(tweet.created_at),
-              postUrl: tweet.url || `https://twitter.com/${twitter}/status/${tweet.id_str || tweet.id}`,
-              isReal: true
-            }));
+            const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+            
+            const posts = result.data
+              .map((tweet, idx) => {
+                const timeInfo = formatPostDate(tweet.created_at);
+                return {
+                  id: `real_tw_${twitter}_${idx}_${Date.now()}`,
+                  competitorName: name,
+                  competitorLogo: name?.charAt(0)?.toUpperCase() || 'C',
+                  content: tweet.text || tweet.full_text || 'No content',
+                  platform: 'twitter',
+                  likes: tweet.favorite_count || tweet.likes || 0,
+                  comments: tweet.reply_count || tweet.replies || 0,
+                  retweets: tweet.retweet_count || 0,
+                  sentiment: analyzeSentiment(tweet.text || ''),
+                  postType: detectPostType(tweet.text || ''),
+                  postedAt: timeInfo.displayString,
+                  postedAtTimestamp: timeInfo.timestamp,
+                  postUrl: tweet.url || `https://twitter.com/${twitter}/status/${tweet.id_str || tweet.id}`,
+                  isReal: true
+                };
+              })
+              .filter(post => post.postedAtTimestamp > threeMonthsAgo)
+              .slice(0, limit);
             
             allPosts.push(...posts);
             setCache(cacheKey, { posts });
@@ -525,21 +711,30 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
           }, { timeout: 60000 });
           
           if (result.success && result.data && result.data.length > 0) {
-            const posts = result.data.slice(0, limit).map((video, idx) => ({
-              id: `real_tt_${tiktok}_${idx}_${Date.now()}`,
-              competitorName: name,
-              competitorLogo: name?.charAt(0)?.toUpperCase() || 'C',
-              content: video.text || video.desc || video.description || 'No description',
-              platform: 'tiktok',
-              likes: video.diggCount || video.likes || 0,
-              comments: video.commentCount || video.comments || 0,
-              views: video.playCount || video.views || 0,
-              sentiment: analyzeSentiment(video.text || video.desc || ''),
-              postType: 'video',
-              postedAt: formatPostDate(video.createTime * 1000),
-              postUrl: video.webVideoUrl || `https://tiktok.com/@${tiktok}/video/${video.id}`,
-              isReal: true
-            }));
+            const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+            
+            const posts = result.data
+              .map((video, idx) => {
+                const timeInfo = formatPostDate(video.createTime * 1000);
+                return {
+                  id: `real_tt_${tiktok}_${idx}_${Date.now()}`,
+                  competitorName: name,
+                  competitorLogo: name?.charAt(0)?.toUpperCase() || 'C',
+                  content: video.text || video.desc || video.description || 'No description',
+                  platform: 'tiktok',
+                  likes: video.diggCount || video.likes || 0,
+                  comments: video.commentCount || video.comments || 0,
+                  views: video.playCount || video.views || 0,
+                  sentiment: analyzeSentiment(video.text || video.desc || ''),
+                  postType: 'video',
+                  postedAt: timeInfo.displayString,
+                  postedAtTimestamp: timeInfo.timestamp,
+                  postUrl: video.webVideoUrl || `https://tiktok.com/@${tiktok}/video/${video.id}`,
+                  isReal: true
+                };
+              })
+              .filter(post => post.postedAtTimestamp > threeMonthsAgo)
+              .slice(0, limit);
             
             allPosts.push(...posts);
             setCache(cacheKey, { posts });
@@ -552,11 +747,11 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
     }
   }
   
-  // Sort by most recent
+  // Sort by most recent (using postedAtTimestamp for accurate sorting)
   allPosts.sort((a, b) => {
-    const dateA = new Date(a.postedAt || 0);
-    const dateB = new Date(b.postedAt || 0);
-    return dateB - dateA;
+    const timestampA = a.postedAtTimestamp || 0;
+    const timestampB = b.postedAtTimestamp || 0;
+    return timestampB - timestampA; // Most recent first
   });
   
   return { 
@@ -600,10 +795,10 @@ function detectPostType(text) {
 }
 
 /**
- * Format post date to relative time
+ * Format post date to relative time and return both display string and timestamp
  */
 function formatPostDate(timestamp) {
-  if (!timestamp) return 'Recently';
+  if (!timestamp) return { displayString: 'Recently', timestamp: Date.now() };
   
   const date = new Date(timestamp);
   const now = new Date();
@@ -612,12 +807,15 @@ function formatPostDate(timestamp) {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
   
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return '1d ago';
-  if (diffDays < 7) return `${diffDays}d ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-  return date.toLocaleDateString();
+  let displayString;
+  if (diffMins < 60) displayString = `${diffMins}m ago`;
+  else if (diffHours < 24) displayString = `${diffHours}h ago`;
+  else if (diffDays === 1) displayString = '1d ago';
+  else if (diffDays < 7) displayString = `${diffDays}d ago`;
+  else if (diffDays < 30) displayString = `${Math.floor(diffDays / 7)}w ago`;
+  else displayString = date.toLocaleDateString();
+  
+  return { displayString, timestamp: date.getTime() };
 }
 
 // ============================================
@@ -1657,6 +1855,11 @@ module.exports = {
   deletePost,
   getAyrshareProfile,
   getAyrshareConnectUrl,
+  // Ayrshare Business Plan functions (profile & JWT)
+  createAyrshareProfile,
+  generateAyrshareJWT,
+  getAyrshareUserProfile,
+  deleteAyrshareProfile,
   
   // Apify functions
   runApifyActor,

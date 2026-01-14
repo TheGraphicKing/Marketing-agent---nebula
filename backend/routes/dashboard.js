@@ -23,7 +23,58 @@ const {
 } = require('../services/geminiAI');
 const { generateWithLLM } = require('../services/llmRouter');
 
-// Import socialMediaAPI for real competitor scraping
+// In-memory dashboard cache for fast loading
+const dashboardCache = new Map();
+const CACHE_TTL = 60 * 1000; // 1 minute cache for dashboard data
+
+// Cache helper functions
+function getCachedDashboard(userId) {
+  const cached = dashboardCache.get(userId);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log(`📦 Dashboard cache hit for user ${userId}`);
+    return cached.data;
+  }
+  return null;
+}
+
+function setCachedDashboard(userId, data) {
+  dashboardCache.set(userId, {
+    data,
+    timestamp: Date.now()
+  });
+  
+  // Clean old cache entries
+  if (dashboardCache.size > 100) {
+    const now = Date.now();
+    for (const [key, value] of dashboardCache.entries()) {
+      if (now - value.timestamp > CACHE_TTL * 5) {
+        dashboardCache.delete(key);
+      }
+    }
+  }
+}
+
+// Helper to generate competitor profile URLs
+function getCompetitorProfileUrl(name, platform) {
+  const handle = (name || 'competitor').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/\s+/g, '');
+  switch (platform?.toLowerCase()) {
+    case 'instagram':
+      return `https://www.instagram.com/${handle}/`;
+    case 'twitter':
+    case 'x':
+      return `https://twitter.com/${handle}`;
+    case 'facebook':
+      return `https://www.facebook.com/${handle}`;
+    case 'linkedin':
+      return `https://www.linkedin.com/company/${handle}`;
+    case 'youtube':
+      return `https://www.youtube.com/@${handle}`;
+    default:
+      return `https://www.google.com/search?q=${encodeURIComponent(name)}+${platform}`;
+  }
+}
+
+// Import socialMediaAPI for real competitor scraping (optional - mainly use Gemini)
 let socialMediaAPI = null;
 try {
   socialMediaAPI = require('../services/socialMediaAPI');
@@ -74,19 +125,25 @@ async function autoDiscoverCompetitorsForUser(userId, businessContext) {
   
   const prompt = `You are a market research expert. Find REAL competitors for this business.
 
+⚠️ CRITICAL: The business is located in ${businessContext.location}. You MUST find competitors that:
+1. Operate in or target customers in ${businessContext.location}
+2. Are direct competitors in the same geographical market
+3. Have presence in ${businessContext.location} region
+
 BUSINESS CONTEXT:
 - Company: ${businessContext.companyName}
 - Industry: ${businessContext.industry}
 - Description: ${businessContext.description}
 - Target Customer: ${businessContext.targetCustomer}
-- Location: ${businessContext.location}
+- Business Location: ${businessContext.location}
 
 REQUIREMENTS:
-1. Find 5-6 REAL competitors that operate in or near ${businessContext.location}
-2. These must be ACTUAL businesses with social media presence
-3. Focus on direct competitors in the same industry
+1. Find 5-6 REAL competitors that operate in ${businessContext.location}
+2. These must be ACTUAL businesses with social media presence in ${businessContext.location}
+3. Focus on direct competitors in the same industry AND same geographical market
 4. Include their REAL Instagram handles (verified to exist)
-5. Mix of large and smaller competitors
+5. Mix of large and smaller competitors from ${businessContext.location}
+6. AT LEAST 80% of competitors must be based in or primarily serve ${businessContext.location}
 
 Return ONLY valid JSON:
 {
@@ -97,12 +154,13 @@ Return ONLY valid JSON:
       "twitter": "@twitter_handle",
       "website": "https://website.com",
       "description": "Brief description of what they do",
+      "location": "City/Region where they operate",
       "estimatedFollowers": 50000
     }
   ]
 }
 
-IMPORTANT: Only include businesses you are confident are REAL.`;
+IMPORTANT: Only include businesses that are REAL and operate in ${businessContext.location}.`;
 
   try {
     const result = await generateWithLLM({ provider: 'gemini', prompt, taskType: 'analysis' });
@@ -185,16 +243,32 @@ function generatePlatformPostUrl(platform, socialHandles) {
  * Get personalized dashboard overview with REAL data from database
  */
 router.get('/overview', protect, async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const userId = req.user.userId || req.user.id;
-    const user = await User.findById(userId);
+    
+    // Check cache first for instant response
+    const cached = getCachedDashboard(userId);
+    if (cached) {
+      console.log(`⚡ Dashboard served from cache in ${Date.now() - startTime}ms`);
+      return res.json(cached);
+    }
+    
+    // Run initial queries in parallel for faster loading
+    const [user, allCampaigns, competitors] = await Promise.all([
+      User.findById(userId).lean(),
+      Campaign.find({ userId }).sort({ createdAt: -1 }).lean(),
+      Competitor.find({ userId }).limit(10).lean()
+    ]);
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    
+    console.log(`📊 Initial queries completed in ${Date.now() - startTime}ms`);
 
-    // Get REAL campaign data from database
-    const allCampaigns = await Campaign.find({ userId }).sort({ createdAt: -1 });
+    // Process campaign data
     const activeCampaigns = allCampaigns.filter(c => ['active', 'posted', 'scheduled'].includes(c.status));
     const recentCampaigns = allCampaigns.slice(0, 10);
     
@@ -225,20 +299,20 @@ router.get('/overview', protect, async (req, res) => {
     const totalEngagement = allCampaigns.reduce((sum, c) => sum + (c.performance?.engagement || 0), 0);
     const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
     
-    // Get competitor data - prioritize database records, then auto-discover using AI
-    let competitors = await Competitor.find({ userId }).limit(10);
+    // Get competitor data - already fetched in parallel above
+    let competitorList = [...competitors]; // Use from parallel query
     let competitorPosts = [];
     
     // Get competitor names from onboarding (businessProfile.competitors)
     const onboardingCompetitors = user.businessProfile?.competitors || [];
     
-    // If no Competitor documents exist but we have names from onboarding, create them
-    if (competitors.length === 0 && onboardingCompetitors.length > 0) {
+    // If no Competitor documents exist but we have names from onboarding, create them (background task)
+    if (competitorList.length === 0 && onboardingCompetitors.length > 0) {
       console.log('Syncing competitors from onboarding:', onboardingCompetitors);
       
-      // Create Competitor documents from onboarding data
-      for (const competitorName of onboardingCompetitors) {
-        if (competitorName && competitorName.trim()) {
+      // Create Competitor documents from onboarding data (don't await - do in background)
+      Promise.all(onboardingCompetitors.filter(n => n && n.trim()).map(async (competitorName) => {
+        try {
           const existingComp = await Competitor.findOne({ userId, name: competitorName.trim() });
           if (!existingComp) {
             await Competitor.create({
@@ -248,62 +322,222 @@ router.get('/overview', protect, async (req, res) => {
               posts: []
             });
           }
+        } catch (e) {
+          console.error('Error creating competitor:', e.message);
         }
-      }
+      })).catch(console.error);
       
+      // Use onboarding competitors for this request
+      competitorList = onboardingCompetitors.filter(n => n && n.trim()).map(name => ({
+        name: name.trim(),
+        platforms: ['instagram', 'twitter', 'linkedin'],
+        posts: []
+      }));
       // Re-fetch competitors after creation
-      competitors = await Competitor.find({ userId }).limit(10);
+      competitorList = await Competitor.find({ userId }).limit(10).lean();
     }
     
-    // If still no competitors, AUTO-DISCOVER using Gemini AI
-    if (competitors.length === 0) {
-      console.log('🔍 No competitors found - attempting auto-discovery...');
+    // If still no competitors, skip auto-discovery for speed (do in background later)
+    if (competitorList.length === 0) {
+      console.log('⚠️ No competitors found - will auto-discover in background');
       
-      // Get business context from OnboardingContext or businessProfile
-      const onboardingContext = await OnboardingContext.findOne({ userId });
+      // Start background auto-discovery (don't wait)
+      const onboardingContext = await OnboardingContext.findOne({ userId }).lean();
       const bp = user?.businessProfile || {};
-      
-      console.log('📋 Business profile:', JSON.stringify(bp, null, 2));
-      console.log('📋 Onboarding context:', onboardingContext ? 'Found' : 'Not found');
       
       const businessContext = {
         companyName: onboardingContext?.company?.name || bp.name || bp.companyName || 'Your Business',
-        industry: onboardingContext?.company?.industry || bp.industry || bp.niche || bp.category || 'Automotive Service',
-        description: onboardingContext?.company?.description || bp.description || bp.niche || 'Premium automotive service and maintenance',
-        targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || 'Car owners and automotive enthusiasts',
-        location: onboardingContext?.geography?.businessLocation || 
-                  onboardingContext?.geography?.regions?.[0] || 
-                  onboardingContext?.geography?.countries?.[0] || 
-                  bp.location ||
-                  'India'
+        industry: onboardingContext?.company?.industry || bp.industry || bp.niche || bp.category || 'General',
+        description: onboardingContext?.company?.description || bp.description || bp.niche || 'Business services',
+        targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || 'General consumers',
+        location: onboardingContext?.geography?.businessLocation || bp.location || 'India'
       };
       
-      console.log('🎯 Business context for discovery:', JSON.stringify(businessContext, null, 2));
-      
-      // Auto-discover for all users - even if we have minimal context
-      const discoveredCompetitors = await autoDiscoverCompetitorsForUser(userId, businessContext);
-      if (discoveredCompetitors.length > 0) {
-        competitors = discoveredCompetitors;
-        console.log(`✅ Auto-discovered ${competitors.length} competitors`);
-      } else {
-        console.log('⚠️ Auto-discovery returned no competitors');
-      }
+      // Run auto-discovery in background (non-blocking)
+      autoDiscoverCompetitorsForUser(userId, businessContext).catch(console.error);
     }
     
     // Get competitor names for activity generation
-    const competitorNames = competitors.length > 0 
-      ? competitors.map(c => c.name)
+    const competitorNames = competitorList.length > 0 
+      ? competitorList.map(c => c.name)
       : onboardingCompetitors.filter(n => n && n.trim());
     
-    // If we have competitor names but no posts in DB, try to fetch REAL posts using Apify
-    const hasPostsInDB = competitors.some(c => c.posts && c.posts.length > 0);
+    // Check if we have fresh posts in DB (less than 2 hours old)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const threeMonthsAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    
+    const hasRecentPostsInDB = competitorList.some(c => 
+      c.posts && c.posts.length > 0 && 
+      c.posts.some(p => p.fetchedAt && new Date(p.fetchedAt) > twoHoursAgo)
+    );
     
     if (competitorNames.length > 0) {
-      if (hasPostsInDB) {
-        // Use posts from database
-        for (const comp of competitors) {
+      // PRIORITY 1: Try to fetch REAL posts using Apify
+      if (!hasRecentPostsInDB && socialMediaAPI?.fetchRealCompetitorPosts) {
+        try {
+          console.log('Fetching REAL competitor posts using Apify...');
+          
+          // Build competitor handles for real scraping
+          const competitorHandles = competitorList.map(comp => ({
+            name: comp.name,
+            instagram: comp.socialHandles?.instagram?.replace('@', '') || comp.name?.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            twitter: comp.socialHandles?.twitter?.replace('@', '') || null,
+            tiktok: comp.socialHandles?.tiktok?.replace('@', '') || null
+          }));
+          
+          const realResult = await socialMediaAPI.fetchRealCompetitorPosts(competitorHandles, { limit: 5 });
+          
+          if (realResult.success && realResult.posts && realResult.posts.length > 0) {
+            console.log(`✅ Fetched ${realResult.posts.length} REAL competitor posts`);
+            
+            // STRICT 3-MONTH FILTER: Only show posts from the last 3 months
+            // This is a CRITICAL requirement - NO posts older than 3 months should ever be displayed
+            const threeMonthsAgoTimestamp = Date.now() - (90 * 24 * 60 * 60 * 1000);
+            const filteredPosts = realResult.posts.filter(post => {
+              const postTime = post.postedAtTimestamp || 0;
+              if (postTime < threeMonthsAgoTimestamp) {
+                console.log(`⚠️ Filtering out old post from ${post.competitorName} - posted ${new Date(postTime).toLocaleDateString()}`);
+                return false;
+              }
+              return true;
+            });
+            
+            console.log(`📅 After 3-month filter: ${filteredPosts.length} posts (removed ${realResult.posts.length - filteredPosts.length} old posts)`);
+            
+            // Sort by timestamp (most recent first)
+            filteredPosts.sort((a, b) => (b.postedAtTimestamp || 0) - (a.postedAtTimestamp || 0));
+            
+            competitorPosts = filteredPosts.map(post => ({
+              id: post.id,
+              competitorName: post.competitorName,
+              competitorLogo: post.competitorLogo || post.competitorName?.charAt(0) || 'C',
+              content: post.content || 'No content available',
+              sentiment: post.sentiment || 'neutral',
+              postedAt: post.postedAt || 'Recently',
+              postedAtTimestamp: post.postedAtTimestamp || Date.now(),
+              likes: post.likes || 0,
+              comments: post.comments || 0,
+              platform: post.platform || 'instagram',
+              postUrl: post.postUrl || getCompetitorProfileUrl(post.competitorName, post.platform),
+              imageUrl: post.imageUrl || null,
+              isReal: true // These are REAL posts from Apify
+            }));
+            
+            // Save fetched posts to DB for caching (only posts within 3 months)
+            for (const comp of competitorList) {
+              const compPosts = competitorPosts.filter(p => p.competitorName === comp.name && p.postedAtTimestamp > threeMonthsAgoTimestamp);
+              if (compPosts.length > 0 && comp._id) {
+                try {
+                  await Competitor.findByIdAndUpdate(comp._id, {
+                    posts: compPosts.map(p => ({
+                      platform: p.platform,
+                      content: p.content,
+                      likes: p.likes,
+                      comments: p.comments,
+                      postUrl: p.postUrl,
+                      imageUrl: p.imageUrl,
+                      postedAt: p.postedAtTimestamp ? new Date(p.postedAtTimestamp) : new Date(),
+                      postedAtTimestamp: p.postedAtTimestamp,
+                      fetchedAt: new Date(),
+                      isRealData: true
+                    })),
+                    'metrics.lastFetched': new Date()
+                  });
+                } catch (saveErr) {
+                  console.log('Could not save posts to DB:', saveErr.message);
+                }
+              }
+            }
+          }
+        } catch (realError) {
+          console.log('Real post fetching failed, will try Gemini fallback:', realError.message);
+        }
+      }
+      
+      // PRIORITY 2: Fallback to Gemini AI if no real posts found
+      if (competitorPosts.length === 0 && !hasRecentPostsInDB) {
+        try {
+          console.log('Falling back to Gemini AI for competitor posts...');
+          
+          // Generate posts using Gemini AI
+          const generatedPosts = await generateCompetitorActivity(competitorNames, {
+            industry: user.businessProfile?.industry || 'General',
+            niche: user.businessProfile?.niche || '',
+            targetAudience: user.businessProfile?.targetAudience || 'General consumers',
+            location: user.businessProfile?.businessLocation || 'India'
+          });
+          
+          if (generatedPosts && generatedPosts.length > 0) {
+            console.log(`Generated ${generatedPosts.length} competitor posts via Gemini`);
+            
+            // Filter posts older than 3 months (based on generated timestamp)
+            const recentPosts = generatedPosts.filter(post => 
+              !post.postedAtTimestamp || post.postedAtTimestamp > threeMonthsAgo.getTime()
+            );
+            
+            // Sort by timestamp (most recent first)
+            recentPosts.sort((a, b) => (b.postedAtTimestamp || 0) - (a.postedAtTimestamp || 0));
+            
+            // Use generated posts
+            competitorPosts = recentPosts.map(post => ({
+              id: post.id || `gemini-${Math.random().toString(36).slice(2)}`,
+              competitorName: post.competitorName,
+              competitorLogo: post.competitorLogo || post.competitorName?.charAt(0) || 'C',
+              content: post.content || 'No content available',
+              sentiment: post.sentiment || 'neutral',
+              postedAt: post.postedAt || 'Recently',
+              postedAtTimestamp: post.postedAtTimestamp || Date.now(),
+              likes: post.likes || 0,
+              comments: post.comments || 0,
+              platform: post.platform || 'instagram',
+              postUrl: post.postUrl || getCompetitorProfileUrl(post.competitorName, post.platform),
+              isReal: false // Generated by AI
+            }));
+          }
+        } catch (genError) {
+          console.log('Gemini post generation failed:', genError.message);
+        }
+      }
+      
+      // If we didn't get posts from Gemini, check database
+      if (competitorPosts.length === 0) {
+        for (const comp of competitorList) {
           if (comp.posts && comp.posts.length > 0) {
-            comp.posts.slice(0, 3).forEach(post => {
+            // Filter out posts older than 3 months
+            const recentDbPosts = comp.posts.filter(p => 
+              !p.postedAt || new Date(p.postedAt) > threeMonthsAgo
+            );
+            
+            recentDbPosts.slice(0, 5).forEach(post => {
+              // Get timestamp for sorting
+              const postTimestamp = post.postedAt ? new Date(post.postedAt).getTime() : 0;
+              
+              // Generate profile URL if postUrl is missing or invalid
+              let validPostUrl = post.postUrl;
+              if (!validPostUrl || validPostUrl === '#' || validPostUrl === '') {
+                const platform = post.platform || comp.platforms?.[0] || 'instagram';
+                const handle = comp.socialHandles?.[platform] || comp.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                switch (platform) {
+                  case 'instagram':
+                    validPostUrl = `https://www.instagram.com/${handle}/`;
+                    break;
+                  case 'twitter':
+                    validPostUrl = `https://twitter.com/${handle}`;
+                    break;
+                  case 'facebook':
+                    validPostUrl = `https://www.facebook.com/${handle}`;
+                    break;
+                  case 'linkedin':
+                    validPostUrl = `https://www.linkedin.com/company/${handle}`;
+                    break;
+                  case 'youtube':
+                    validPostUrl = `https://www.youtube.com/@${handle}`;
+                    break;
+                  default:
+                    validPostUrl = `https://www.google.com/search?q=${encodeURIComponent(comp.name)}+${platform}`;
+                }
+              }
+              
               competitorPosts.push({
                 id: post._id?.toString() || Math.random().toString(),
                 competitorName: comp.name,
@@ -311,72 +545,76 @@ router.get('/overview', protect, async (req, res) => {
                 content: post.content || 'No content available',
                 sentiment: post.sentiment || 'neutral',
                 postedAt: post.postedAt ? getRelativeTime(post.postedAt) : 'Recently',
+                postedAtTimestamp: postTimestamp,
                 likes: post.likes || 0,
                 comments: post.comments || 0,
                 platform: post.platform || comp.platforms?.[0] || 'unknown',
-                postUrl: post.postUrl || generatePlatformPostUrl(post.platform, comp.socialHandles),
+                postUrl: validPostUrl,
                 isReal: true
               });
             });
           }
         }
-      } else {
-        // Try to fetch REAL posts from social media using Apify
-        console.log('Attempting to fetch REAL competitor posts for:', competitorNames);
         
-        if (socialMediaAPI && socialMediaAPI.fetchRealCompetitorPosts) {
-          try {
-            // Build competitor handles from database or use names as handles
-            const competitorHandles = competitors.map(c => ({
-              name: c.name,
-              instagram: c.socialHandles?.instagram || c.name.toLowerCase().replace(/\s+/g, ''),
-              twitter: c.socialHandles?.twitter,
-              facebook: c.socialHandles?.facebook
-            }));
-            
-            const realPosts = await socialMediaAPI.fetchRealCompetitorPosts(competitorHandles, { limit: 3 });
-            
-            if (realPosts.success && realPosts.posts && realPosts.posts.length > 0) {
-              console.log(`Fetched ${realPosts.posts.length} REAL competitor posts`);
-              competitorPosts = realPosts.posts;
-              
-              // Save real posts to database for future use
-              for (const post of realPosts.posts) {
-                const competitor = await Competitor.findOne({ userId, name: post.competitorName });
-                if (competitor) {
-                  competitor.posts.push({
-                    platform: post.platform,
-                    postUrl: post.postUrl,
-                    content: post.content,
-                    imageUrl: post.imageUrl,
-                    likes: post.likes,
-                    comments: post.comments,
-                    sentiment: post.sentiment,
-                    postedAt: new Date(),
-                    fetchedAt: new Date()
-                  });
-                  await competitor.save();
-                }
-              }
-            } else {
-              // Fallback to AI-generated if real scraping fails
-              console.log('Real scraping returned no posts, falling back to AI generation');
-              competitorPosts = await generateCompetitorActivity(competitorNames, user.businessProfile);
-            }
-          } catch (scrapeError) {
-            console.error('Real competitor scraping failed:', scrapeError.message);
-            // Fallback to AI-generated activity
-            competitorPosts = await generateCompetitorActivity(competitorNames, user.businessProfile);
+        // Sort by timestamp (most recent first)
+        competitorPosts.sort((a, b) => (b.postedAtTimestamp || 0) - (a.postedAtTimestamp || 0));
+      }
+      
+      // If still no posts, show a message that we're fetching real data
+      if (competitorPosts.length === 0) {
+        console.log('No real posts available yet, showing placeholder');
+        
+        // Helper to generate actual platform profile URLs
+        const getCompetitorProfileUrl = (name, platform) => {
+          const handle = name.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/\s+/g, '');
+          switch (platform) {
+            case 'instagram':
+              return `https://www.instagram.com/${handle}/`;
+            case 'twitter':
+              return `https://twitter.com/${handle}`;
+            case 'facebook':
+              return `https://www.facebook.com/${handle}`;
+            case 'linkedin':
+              return `https://www.linkedin.com/company/${handle}`;
+            case 'youtube':
+              return `https://www.youtube.com/@${handle}`;
+            default:
+              return `https://www.google.com/search?q=${encodeURIComponent(name)}+${platform}`;
           }
-        } else {
-          // No socialMediaAPI available, use AI-generated
-          console.log('socialMediaAPI not available, using AI generation');
-          competitorPosts = await generateCompetitorActivity(competitorNames, user.businessProfile);
-        }
+        };
+        
+        // Create timestamps for proper sorting (most recent first)
+        const now = Date.now();
+        const timestamps = [
+          now - (2 * 60 * 60 * 1000),  // 2 hours ago
+          now - (5 * 60 * 60 * 1000),  // 5 hours ago
+          now - (24 * 60 * 60 * 1000), // 1 day ago
+        ];
+        
+        competitorPosts = competitorNames.slice(0, 3).map((name, index) => {
+          const platform = ['instagram', 'twitter', 'linkedin'][index % 3];
+          return {
+            id: `sample-${index}`,
+            competitorName: name,
+            competitorLogo: name.charAt(0).toUpperCase(),
+            content: `Check out ${name}'s latest marketing activity in your industry.`,
+            sentiment: ['positive', 'neutral', 'positive'][index % 3],
+            postedAt: getRelativeTime(new Date(timestamps[index])),
+            postedAtTimestamp: timestamps[index],
+            likes: Math.floor(Math.random() * 500) + 100,
+            comments: Math.floor(Math.random() * 50) + 10,
+            platform: platform,
+            postUrl: getCompetitorProfileUrl(name, platform),
+            isReal: false
+          };
+        });
+        
+        // Sort by timestamp (most recent first)
+        competitorPosts.sort((a, b) => (b.postedAtTimestamp || 0) - (a.postedAtTimestamp || 0));
       }
     }
 
-    // Get REAL influencer count
+    // Get REAL influencer count (already in parallel, but just count is fast)
     const influencerCount = await Influencer.countDocuments({ userId });
     
     // Generate AI-powered insights using Gemini (with real context)
@@ -398,7 +636,7 @@ router.get('/overview', protect, async (req, res) => {
       totalImpressions,
       totalEngagement,
       avgCTR,
-      competitorCount: competitors.length,
+      competitorCount: competitorList.length,
       influencerCount
     });
     
@@ -513,6 +751,10 @@ router.get('/overview', protect, async (req, res) => {
         dataSource: 'real' // Indicates this is real data, not mock
       }
     };
+
+    // Cache the response for faster subsequent loads
+    setCachedDashboard(userId, dashboardData);
+    console.log(`⚡ Dashboard generated in ${Date.now() - startTime}ms (cached for next load)`);
 
     res.json(dashboardData);
   } catch (error) {
@@ -1217,15 +1459,16 @@ router.get('/strategic-advisor', protect, async (req, res) => {
     // Get user's business context
     const context = await OnboardingContext.findOne({ userId }).lean();
     const user = await User.findById(userId).lean();
+    const bp = user?.businessProfile || {};
     
     const businessProfile = {
-      name: context?.onboardingData?.companyName || user?.companyName || 'Your Company',
-      industry: context?.onboardingData?.industry || user?.industry || 'General',
-      niche: context?.onboardingData?.niche || '',
-      targetAudience: context?.onboardingData?.targetCustomer || user?.targetAudience || 'General consumers',
-      brandVoice: context?.onboardingData?.brandVoice || 'Professional',
-      location: context?.onboardingData?.location || 'India',
-      businessType: context?.onboardingData?.businessType || 'B2C'
+      name: context?.company?.name || bp.name || bp.companyName || user?.companyName || 'Your Company',
+      industry: context?.company?.industry || bp.industry || user?.industry || 'General',
+      niche: context?.company?.description || bp.niche || '',
+      targetAudience: context?.targetCustomer?.description || bp.targetAudience || user?.targetAudience || 'General consumers',
+      brandVoice: context?.brandTone || bp.brandVoice || 'Professional',
+      location: context?.geography?.businessLocation || bp.businessLocation || bp.location || 'India',
+      businessType: bp.businessType || 'B2C'
     };
     
     // Get recent competitor posts

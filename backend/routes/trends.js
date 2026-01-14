@@ -8,11 +8,47 @@ const router = express.Router();
 const { protect } = require('../middleware/auth');
 const Trend = require('../models/Trend');
 const BrandProfile = require('../models/BrandProfile');
+const OnboardingContext = require('../models/OnboardingContext');
+const User = require('../models/User');
 const { searchNews, fetchRSS } = require('../services/scraper');
 const { clusterTopics, brainstormIdeas, generateWithLLM } = require('../services/llmRouter');
 
 // Import SearchAPI for real-time trends
 const { searchGoogle, getGoogleTrends, getTrendingTopics, searchIndustryNews } = require('../services/socialMediaAPI');
+
+// Helper to get location code from business location
+function getLocationCode(businessLocation) {
+  if (!businessLocation) return 'us';
+  const loc = businessLocation.toLowerCase();
+  
+  // Map common locations to Google Trends location codes
+  if (loc.includes('india') || loc.includes('delhi') || loc.includes('mumbai') || loc.includes('bangalore') || loc.includes('chennai') || loc.includes('kolkata') || loc.includes('hyderabad')) return 'in';
+  if (loc.includes('usa') || loc.includes('united states') || loc.includes('america') || loc.includes('new york') || loc.includes('california') || loc.includes('texas')) return 'us';
+  if (loc.includes('uk') || loc.includes('united kingdom') || loc.includes('london') || loc.includes('england')) return 'gb';
+  if (loc.includes('canada') || loc.includes('toronto') || loc.includes('vancouver')) return 'ca';
+  if (loc.includes('australia') || loc.includes('sydney') || loc.includes('melbourne')) return 'au';
+  if (loc.includes('germany') || loc.includes('berlin') || loc.includes('munich')) return 'de';
+  if (loc.includes('france') || loc.includes('paris')) return 'fr';
+  if (loc.includes('japan') || loc.includes('tokyo')) return 'jp';
+  if (loc.includes('china') || loc.includes('beijing') || loc.includes('shanghai')) return 'cn';
+  if (loc.includes('singapore')) return 'sg';
+  if (loc.includes('uae') || loc.includes('dubai') || loc.includes('abu dhabi')) return 'ae';
+  if (loc.includes('brazil') || loc.includes('sao paulo')) return 'br';
+  if (loc.includes('indonesia') || loc.includes('jakarta')) return 'id';
+  if (loc.includes('malaysia') || loc.includes('kuala lumpur')) return 'my';
+  if (loc.includes('philippines') || loc.includes('manila')) return 'ph';
+  if (loc.includes('thailand') || loc.includes('bangkok')) return 'th';
+  if (loc.includes('vietnam') || loc.includes('hanoi') || loc.includes('ho chi minh')) return 'vn';
+  if (loc.includes('south korea') || loc.includes('korea') || loc.includes('seoul')) return 'kr';
+  if (loc.includes('mexico') || loc.includes('mexico city')) return 'mx';
+  if (loc.includes('spain') || loc.includes('madrid') || loc.includes('barcelona')) return 'es';
+  if (loc.includes('italy') || loc.includes('rome') || loc.includes('milan')) return 'it';
+  if (loc.includes('netherlands') || loc.includes('amsterdam')) return 'nl';
+  if (loc.includes('russia') || loc.includes('moscow')) return 'ru';
+  if (loc.includes('south africa') || loc.includes('johannesburg') || loc.includes('cape town')) return 'za';
+  
+  return 'us'; // Default to US
+}
 
 // RSS feeds for different industries
 const INDUSTRY_FEEDS = {
@@ -49,10 +85,20 @@ const INDUSTRY_FEEDS = {
  */
 router.get('/real-time', protect, async (req, res) => {
   try {
-    const { query, category = 'marketing', location = 'us' } = req.query;
+    const userId = req.user._id || req.user.userId || req.user.id;
+    
+    // Get user's business location
+    const onboardingContext = await OnboardingContext.findOne({ userId }).lean();
+    const user = await User.findById(userId).lean();
+    const bp = user?.businessProfile || {};
+    const businessLocation = onboardingContext?.geography?.businessLocation || bp.businessLocation || bp.location || 'India';
+    
+    // Use user's location or override from query
+    const { query, category = 'marketing' } = req.query;
+    const location = req.query.location || getLocationCode(businessLocation);
     
     // Use SearchAPI for real-time trend data
-    const searchQuery = query || `${category} trends 2025`;
+    const searchQuery = query || `${category} trends 2025 ${businessLocation}`;
     
     const [trendsResult, trendingTopics] = await Promise.all([
       searchGoogle(searchQuery, { num: 10 }),

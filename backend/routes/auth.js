@@ -343,7 +343,12 @@ router.put('/complete-onboarding', protect, async (req, res) => {
           : businessProfile?.goals?.toLowerCase()?.includes('sale') ? 'sales'
           : businessProfile?.goals?.toLowerCase()?.includes('awareness') ? 'awareness'
           : 'leads',
-        brandTone: businessProfile?.tone || 'professional',
+        // Handle brandVoice as array or string
+        brandTone: Array.isArray(businessProfile?.brandVoice) 
+          ? businessProfile.brandVoice 
+          : businessProfile?.brandVoice 
+            ? [businessProfile.brandVoice] 
+            : ['professional'],
         valueProposition: {
           main: businessProfile?.tagline || businessProfile?.niche || '',
           keyBenefits: [],

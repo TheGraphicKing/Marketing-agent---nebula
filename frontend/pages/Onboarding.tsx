@@ -66,7 +66,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         businessType: '',
         businessLocation: '',
         targetAudience: '',
-        brandVoice: 'Professional',
+        brandVoice: [] as string[],
         marketingGoals: [],
         description: '',
         competitors: []
@@ -185,20 +185,40 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         try {
             const result = await apiService.analyzeWebsite(formData.website);
             
+            console.log('Website analysis result:', result);
+            
             if (result.success && result.data) {
+                console.log('Extracted data:', result.data);
+                
                 // Auto-fill form with analyzed data including businessType and businessLocation
-                setFormData(prev => ({
-                    ...prev,
-                    name: result.data.companyName || prev.name,
-                    industry: result.data.industry || prev.industry,
-                    niche: result.data.niche || prev.niche,
-                    businessType: result.data.businessType || prev.businessType,
-                    businessLocation: result.data.businessLocation || prev.businessLocation,
-                    description: result.data.description || prev.description,
-                    targetAudience: result.data.targetAudience || prev.targetAudience,
-                    brandVoice: result.data.brandVoice || prev.brandVoice,
-                    marketingGoals: result.data.suggestedGoals?.length > 0 ? result.data.suggestedGoals : prev.marketingGoals
-                }));
+                // Handle brandVoice - ensure it's always an array
+                const analyzedBrandVoice = result.data.brandVoice;
+                let brandVoiceArray: string[] = [];
+                if (Array.isArray(analyzedBrandVoice)) {
+                    brandVoiceArray = analyzedBrandVoice;
+                } else if (typeof analyzedBrandVoice === 'string' && analyzedBrandVoice) {
+                    brandVoiceArray = [analyzedBrandVoice];
+                } else if (Array.isArray(formData.brandVoice)) {
+                    brandVoiceArray = formData.brandVoice;
+                } else if (typeof formData.brandVoice === 'string' && formData.brandVoice) {
+                    brandVoiceArray = [formData.brandVoice];
+                }
+                
+                const newFormData = {
+                    ...formData,
+                    name: result.data.companyName || formData.name,
+                    industry: result.data.industry || formData.industry,
+                    niche: result.data.niche || formData.niche,
+                    businessType: result.data.businessType || formData.businessType,
+                    businessLocation: result.data.businessLocation || formData.businessLocation,
+                    description: result.data.description || formData.description,
+                    targetAudience: result.data.targetAudience || formData.targetAudience,
+                    brandVoice: brandVoiceArray,
+                    marketingGoals: result.data.suggestedGoals?.length > 0 ? result.data.suggestedGoals : formData.marketingGoals
+                };
+                
+                console.log('New form data:', newFormData);
+                setFormData(newFormData);
                 
                 // Store the full analysis for use throughout the app
                 if (result.data) {
@@ -224,7 +244,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         } finally {
             setAnalyzingWebsite(false);
         }
-    }, [formData.website]);
+    }, [formData]);
 
     const toggleGoal = (goal: string) => {
         const current = formData.marketingGoals;
@@ -528,10 +548,76 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                             onChange={e => handleChange('industry', e.target.value)}
                                         >
                                             <option value="">Select...</option>
-                                            <option value="Ecommerce">E-commerce</option>
-                                            <option value="SaaS">SaaS / Tech</option>
-                                            <option value="Service">Service Business</option>
-                                            <option value="Content">Content Creator</option>
+                                            {/* Retail & E-commerce */}
+                                            <option value="Ecommerce">E-commerce / Online Retail</option>
+                                            <option value="Retail">Retail / Brick & Mortar</option>
+                                            <option value="D2C">D2C (Direct to Consumer)</option>
+                                            <option value="Marketplace">Marketplace / Platform</option>
+                                            {/* Technology */}
+                                            <option value="SaaS">SaaS / Software</option>
+                                            <option value="Tech">Technology / IT Services</option>
+                                            <option value="AI_ML">AI / Machine Learning</option>
+                                            <option value="Fintech">Fintech / Financial Technology</option>
+                                            <option value="Edtech">Edtech / Education Technology</option>
+                                            <option value="Healthtech">Healthtech / Medical Tech</option>
+                                            <option value="MobileApp">Mobile App</option>
+                                            {/* Professional Services */}
+                                            <option value="Consulting">Consulting / Advisory</option>
+                                            <option value="Agency">Marketing / Creative Agency</option>
+                                            <option value="Legal">Legal Services</option>
+                                            <option value="Accounting">Accounting / Finance</option>
+                                            <option value="RealEstate">Real Estate</option>
+                                            <option value="Insurance">Insurance</option>
+                                            {/* Healthcare & Wellness */}
+                                            <option value="Healthcare">Healthcare / Medical</option>
+                                            <option value="Fitness">Fitness / Gym</option>
+                                            <option value="Wellness">Wellness / Spa</option>
+                                            <option value="Nutrition">Nutrition / Diet</option>
+                                            <option value="MentalHealth">Mental Health / Therapy</option>
+                                            {/* Food & Beverage */}
+                                            <option value="Restaurant">Restaurant / Cafe</option>
+                                            <option value="FoodDelivery">Food Delivery</option>
+                                            <option value="FMCG">FMCG / Consumer Goods</option>
+                                            <option value="Beverage">Beverage / Drinks</option>
+                                            <option value="Snacks">Snacks / Confectionery</option>
+                                            {/* Fashion & Beauty */}
+                                            <option value="Fashion">Fashion / Apparel</option>
+                                            <option value="Beauty">Beauty / Cosmetics</option>
+                                            <option value="Jewelry">Jewelry / Accessories</option>
+                                            <option value="Luxury">Luxury Goods</option>
+                                            {/* Media & Entertainment */}
+                                            <option value="Content">Content Creator / Influencer</option>
+                                            <option value="Media">Media / Publishing</option>
+                                            <option value="Entertainment">Entertainment / Events</option>
+                                            <option value="Gaming">Gaming / Esports</option>
+                                            <option value="Music">Music / Audio</option>
+                                            <option value="Video">Video / Streaming</option>
+                                            {/* Education */}
+                                            <option value="Education">Education / Training</option>
+                                            <option value="Coaching">Coaching / Mentorship</option>
+                                            <option value="OnlineCourses">Online Courses</option>
+                                            {/* Travel & Hospitality */}
+                                            <option value="Travel">Travel / Tourism</option>
+                                            <option value="Hospitality">Hospitality / Hotels</option>
+                                            <option value="Airlines">Airlines / Transportation</option>
+                                            {/* B2B & Manufacturing */}
+                                            <option value="B2B">B2B Services</option>
+                                            <option value="Manufacturing">Manufacturing</option>
+                                            <option value="Logistics">Logistics / Supply Chain</option>
+                                            <option value="Wholesale">Wholesale / Distribution</option>
+                                            {/* Home & Living */}
+                                            <option value="HomeDecor">Home Decor / Furniture</option>
+                                            <option value="HomeServices">Home Services</option>
+                                            <option value="Construction">Construction / Renovation</option>
+                                            {/* Automotive */}
+                                            <option value="Automotive">Automotive / Vehicles</option>
+                                            <option value="AutoServices">Auto Services / Repairs</option>
+                                            {/* Non-profit & Others */}
+                                            <option value="Nonprofit">Non-profit / NGO</option>
+                                            <option value="Government">Government / Public Sector</option>
+                                            <option value="Agriculture">Agriculture / Farming</option>
+                                            <option value="Pets">Pets / Animal Care</option>
+                                            <option value="Sports">Sports / Athletics</option>
                                             <option value="Other">Other</option>
                                         </select>
                                     </div>
@@ -626,23 +712,36 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                     />
                                 </div>
                                 <div>
-                                    <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Brand Voice</label>
+                                    <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Brand Voice <span className="text-xs font-normal opacity-60">(select multiple)</span></label>
                                     <div className="grid grid-cols-2 gap-3">
-                                        {['Professional', 'Friendly', 'Witty', 'Empathetic', 'Bold', 'Educational'].map(voice => (
-                                            <button
-                                                key={voice}
-                                                onClick={() => handleChange('brandVoice', voice)}
-                                                className={`p-3 rounded-lg border text-sm font-medium transition-all ${
-                                                    formData.brandVoice === voice 
-                                                    ? 'border-[#ffcc29] bg-[#ffcc29]/10 text-[#ffcc29]' 
-                                                    : theme === 'dark' 
-                                                        ? 'border-[#ededed]/20 hover:border-[#ffcc29]/50 text-[#ededed]/70'
-                                                        : 'border-gray-200 hover:border-[#ffcc29]/50 text-gray-600'
-                                                }`}
-                                            >
-                                                {voice}
-                                            </button>
-                                        ))}
+                                        {['Professional', 'Friendly', 'Witty', 'Empathetic', 'Bold', 'Educational'].map(voice => {
+                                            const isSelected = Array.isArray(formData.brandVoice) 
+                                                ? formData.brandVoice.includes(voice)
+                                                : formData.brandVoice === voice;
+                                            return (
+                                                <button
+                                                    key={voice}
+                                                    onClick={() => {
+                                                        const currentVoices = Array.isArray(formData.brandVoice) 
+                                                            ? formData.brandVoice 
+                                                            : formData.brandVoice ? [formData.brandVoice] : [];
+                                                        const newVoices = isSelected
+                                                            ? currentVoices.filter(v => v !== voice)
+                                                            : [...currentVoices, voice];
+                                                        handleChange('brandVoice', newVoices);
+                                                    }}
+                                                    className={`p-3 rounded-lg border text-sm font-medium transition-all ${
+                                                        isSelected 
+                                                        ? 'border-[#ffcc29] bg-[#ffcc29]/10 text-[#ffcc29]' 
+                                                        : theme === 'dark' 
+                                                            ? 'border-[#ededed]/20 hover:border-[#ffcc29]/50 text-[#ededed]/70'
+                                                            : 'border-gray-200 hover:border-[#ffcc29]/50 text-gray-600'
+                                                    }`}
+                                                >
+                                                    {isSelected && <span className="mr-1">✓</span>}{voice}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>

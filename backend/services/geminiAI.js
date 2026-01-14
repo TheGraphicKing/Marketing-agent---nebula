@@ -1201,6 +1201,12 @@ Business Context:
 Generate 2-3 realistic social media posts PER COMPETITOR that would appear on their profiles.
 Make posts industry-specific, authentic, and varied (promotional, educational, engagement-focused).
 
+**CRITICAL RULE - VERY IMPORTANT:**
+- ALL posts MUST be from the LAST 3 MONTHS ONLY (last 90 days maximum)
+- hoursAgo value MUST be between 1 and 2160 (which is 90 days = 3 months)
+- NEVER generate posts older than 3 months
+- Each post should have a DIFFERENT posting time - vary the hoursAgo value
+
 Return ONLY valid JSON in this EXACT format:
 {
   "posts": [
@@ -1212,7 +1218,7 @@ Return ONLY valid JSON in this EXACT format:
       "comments": 56,
       "sentiment": "positive",
       "postType": "promotional|educational|engagement|announcement",
-      "postedDaysAgo": 1
+      "hoursAgo": 3
     }
   ]
 }
@@ -1221,7 +1227,7 @@ Important:
 - Use platforms: instagram, twitter, linkedin, facebook
 - Likes should be 100-50000 (realistic ranges)
 - Comments should be 5-500 
-- postedDaysAgo: 0-7 (recent posts)
+- hoursAgo: MUST be between 1-2160 hours (last 3 months only). Example: 2, 8, 24, 72, 168, 336, 720
 - Make content authentic and industry-specific
 - Include hashtags for Instagram/Twitter posts
 - LinkedIn posts should be more professional`;
@@ -1231,21 +1237,45 @@ Important:
     const parsed = parseGeminiJSON(response);
     
     if (parsed && parsed.posts && Array.isArray(parsed.posts)) {
-      // Add generated timestamps and IDs
-      return parsed.posts.map((post, index) => ({
-        id: `comp_post_${Date.now()}_${index}`,
-        competitorName: post.competitorName,
-        competitorLogo: post.competitorName?.charAt(0)?.toUpperCase() || 'C',
-        content: post.content,
-        platform: post.platform?.toLowerCase() || 'instagram',
-        likes: post.likes || Math.floor(Math.random() * 5000) + 100,
-        comments: post.comments || Math.floor(Math.random() * 100) + 5,
-        sentiment: post.sentiment || 'neutral',
-        postType: post.postType || 'promotional',
-        postedAt: getRelativeTimeFromDays(post.postedDaysAgo || Math.floor(Math.random() * 7)),
-        postUrl: generatePostUrl(post.platform, post.competitorName),
-        isAIGenerated: false // We present this as "real" tracked data
-      }));
+      // STRICT 3-MONTH THRESHOLD - enforce even if AI doesn't follow prompt
+      const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+      const maxHoursAgo = 2160; // 90 days in hours
+      
+      // Add generated timestamps and IDs - sort by most recent first
+      const postsWithTimestamps = parsed.posts.map((post, index) => {
+        // Get hours ago from AI response (use hoursAgo, fallback to postedDaysAgo * 24, or random)
+        let hoursAgo = post.hoursAgo ?? (post.postedDaysAgo ? post.postedDaysAgo * 24 : (index + 1) * 8 + Math.floor(Math.random() * 12));
+        
+        // ENFORCE 3-month limit: Cap hoursAgo at 2160 (90 days)
+        if (hoursAgo > maxHoursAgo) {
+          console.log(`⚠️ Post hoursAgo ${hoursAgo} exceeds 3-month limit, capping to ${maxHoursAgo}`);
+          hoursAgo = Math.floor(Math.random() * 168) + 1; // Reset to within 1 week
+        }
+        
+        const timeInfo = getRelativeTimeFromHours(hoursAgo);
+        return {
+          id: `comp_post_${Date.now()}_${index}`,
+          competitorName: post.competitorName,
+          competitorLogo: post.competitorName?.charAt(0)?.toUpperCase() || 'C',
+          content: post.content,
+          platform: post.platform?.toLowerCase() || 'instagram',
+          likes: post.likes || Math.floor(Math.random() * 5000) + 100,
+          comments: post.comments || Math.floor(Math.random() * 100) + 5,
+          sentiment: post.sentiment || 'neutral',
+          postType: post.postType || 'promotional',
+          postedAt: timeInfo.displayString,
+          postedAtTimestamp: timeInfo.timestamp,
+          postUrl: generatePostUrl(post.platform, post.competitorName),
+          isAIGenerated: false // We present this as "real" tracked data
+        };
+      });
+      
+      // FINAL SAFETY CHECK: Filter out any posts older than 3 months
+      const recentPosts = postsWithTimestamps.filter(post => post.postedAtTimestamp > threeMonthsAgo);
+      
+      // Sort by timestamp (most recent first)
+      recentPosts.sort((a, b) => b.postedAtTimestamp - a.postedAtTimestamp);
+      return recentPosts;
     }
     
     return generateFallbackCompetitorPosts(competitorNames, businessProfile);
@@ -1291,12 +1321,20 @@ function generateFallbackCompetitorPosts(competitorNames, businessProfile) {
     }
   ];
 
+  // Generate varied hours for different posts to ensure different timestamps
+  const hoursOptions = [2, 5, 12, 18, 28, 42, 56, 72, 96, 120];
+  let hoursIndex = 0;
+
   competitorNames.forEach((name, compIndex) => {
     // Generate 2-3 posts per competitor
     const numPosts = 2 + (compIndex % 2);
     for (let i = 0; i < numPosts; i++) {
       const template = postTemplates[(compIndex + i) % postTemplates.length];
       const platform = platforms[(compIndex + i) % platforms.length];
+      // Use varied hours for each post to ensure different timestamps
+      const hoursAgo = hoursOptions[hoursIndex % hoursOptions.length] + Math.floor(Math.random() * 3);
+      hoursIndex++;
+      const timeInfo = getRelativeTimeFromHours(hoursAgo);
       posts.push({
         id: `comp_post_${Date.now()}_${compIndex}_${i}`,
         competitorName: name,
@@ -1307,27 +1345,75 @@ function generateFallbackCompetitorPosts(competitorNames, businessProfile) {
         comments: Math.floor(Math.random() * 200) + 10,
         sentiment: template.sentiment,
         postType: template.type,
-        postedAt: getRelativeTimeFromDays(Math.floor(Math.random() * 7)),
+        postedAt: timeInfo.displayString,
+        postedAtTimestamp: timeInfo.timestamp,
         postUrl: generatePostUrl(platform, name),
         isAIGenerated: false
       });
     }
   });
 
+  // Sort by timestamp (most recent first)
+  posts.sort((a, b) => b.postedAtTimestamp - a.postedAtTimestamp);
   return posts;
 }
 
 /**
- * Helper to get relative time string from days ago
+ * Helper to get relative time string and timestamp from days/hours ago
+ * Returns both the display string and the actual timestamp for sorting
  */
 function getRelativeTimeFromDays(daysAgo) {
+  const now = Date.now();
+  let timestamp;
+  let displayString;
+  
   if (daysAgo === 0) {
+    // Random hours between 1-12 for "today"
     const hours = Math.floor(Math.random() * 12) + 1;
-    return `${hours}h ago`;
+    timestamp = now - (hours * 60 * 60 * 1000);
+    displayString = `${hours}h ago`;
+  } else if (daysAgo === 1) {
+    // Yesterday - random hour
+    const hours = 24 + Math.floor(Math.random() * 12);
+    timestamp = now - (hours * 60 * 60 * 1000);
+    displayString = 'Yesterday';
+  } else if (daysAgo < 7) {
+    timestamp = now - (daysAgo * 24 * 60 * 60 * 1000) - (Math.random() * 12 * 60 * 60 * 1000);
+    displayString = `${daysAgo}d ago`;
+  } else {
+    const weeks = Math.floor(daysAgo / 7);
+    timestamp = now - (daysAgo * 24 * 60 * 60 * 1000);
+    displayString = `${weeks}w ago`;
   }
-  if (daysAgo === 1) return 'Yesterday';
-  if (daysAgo < 7) return `${daysAgo}d ago`;
-  return `${Math.floor(daysAgo / 7)}w ago`;
+  
+  return { displayString, timestamp };
+}
+
+/**
+ * Helper to get relative time string and timestamp from hours ago
+ * This provides more precise timing for posts
+ */
+function getRelativeTimeFromHours(hoursAgo) {
+  const now = Date.now();
+  const timestamp = now - (hoursAgo * 60 * 60 * 1000);
+  let displayString;
+  
+  if (hoursAgo < 1) {
+    const minutes = Math.max(1, Math.floor(hoursAgo * 60));
+    displayString = `${minutes}m ago`;
+  } else if (hoursAgo < 24) {
+    displayString = `${Math.floor(hoursAgo)}h ago`;
+  } else if (hoursAgo < 48) {
+    displayString = 'Yesterday';
+  } else if (hoursAgo < 168) { // Less than 7 days
+    const days = Math.floor(hoursAgo / 24);
+    displayString = `${days}d ago`;
+  } else {
+    const weeks = Math.floor(hoursAgo / 168);
+    displayString = `${weeks}w ago`;
+  }
+  
+  return { displayString, timestamp };
 }
 
 /**

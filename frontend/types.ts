@@ -6,7 +6,7 @@ export interface BusinessProfile {
   businessType: 'B2B' | 'B2C' | 'Both' | '';
   businessLocation: string; // City, State/Region where business operates
   targetAudience: string;
-  brandVoice: string; // e.g., Professional, Witty, Empathetic
+  brandVoice: string | string[]; // e.g., Professional, Witty, Empathetic - can be multiple
   marketingGoals: string[]; // e.g., Brand Awareness, Sales, Leads
   description: string;
   competitors?: string[]; // Competitor names/brands to track

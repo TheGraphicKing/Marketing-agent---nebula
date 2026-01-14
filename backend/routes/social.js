@@ -9,7 +9,12 @@ const {
   getAyrshareAnalytics,
   getAPIStatus,
   getAyrshareProfile,
-  getAyrshareConnectUrl
+  getAyrshareConnectUrl,
+  // Ayrshare Business Plan functions
+  createAyrshareProfile,
+  generateAyrshareJWT,
+  getAyrshareUserProfile,
+  deleteAyrshareProfile
 } = require('../services/socialMediaAPI');
 
 // ============================================
@@ -153,14 +158,20 @@ const AYRSHARE_PLATFORM_MAP = {
 /**
  * GET /api/social/:platform/auth
  * Universal OAuth initiation for any platform
- * Uses direct OAuth if configured, otherwise redirects to Ayrshare dashboard
+ * Uses Ayrshare JWT/SSO for social account linking (Business Plan)
+ * If user doesn't have an Ayrshare profile yet, creates one first
  */
 router.get('/:platform/auth', protect, async (req, res) => {
   const { platform } = req.params;
   const platformLower = platform.toLowerCase();
   
   try {
-    // For YouTube, always use Google OAuth if configured
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // For YouTube, always use Google OAuth if configured (direct OAuth)
     if (platformLower === 'youtube' && isOAuthConfigured('youtube')) {
       const state = generateStateToken(req.user._id.toString(), platform);
       const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -175,21 +186,115 @@ router.get('/:platform/auth', protect, async (req, res) => {
       return res.json({
         success: true,
         configured: true,
-        authUrl: authUrl.toString()
+        authUrl: authUrl.toString(),
+        method: 'direct_oauth'
       });
     }
     
-    // For other platforms, use Ayrshare dashboard for social account linking
-    // This is the recommended approach with the Ayrshare free/starter tier
+    // For all other platforms, use Ayrshare JWT/SSO flow (Business Plan approach)
+    // Step 1: Check if user has an Ayrshare profile, if not create one
+    let profileKey = user.ayrshare?.profileKey;
+    
+    if (!profileKey) {
+      console.log(`Creating Ayrshare profile for user: ${user.email}`);
+      
+      // Create a unique title for this user's Ayrshare profile
+      const profileTitle = `Nebula-${user._id.toString().slice(-8)}-${user.email.split('@')[0]}`;
+      
+      // Configure which social networks to show (hide those not relevant)
+      const disableSocial = ['gmb', 'snapchat', 'telegram', 'threads']; // Hide less common ones
+      
+      const createResult = await createAyrshareProfile(profileTitle, {
+        hideTopHeader: false,
+        topHeader: `Connect Social Accounts for ${user.businessProfile?.name || user.firstName || 'Your Business'}`,
+        subHeader: 'Click an icon below to securely connect your social media account',
+        disableSocial: disableSocial
+      });
+      
+      if (!createResult.success) {
+        // Check if profile already exists (code 146)
+        if (createResult.code === 146) {
+          console.log('Ayrshare profile already exists, title conflict');
+          // Try with a more unique title
+          const uniqueTitle = `Nebula-${Date.now()}-${user._id.toString().slice(-6)}`;
+          const retryResult = await createAyrshareProfile(uniqueTitle, {
+            hideTopHeader: false,
+            disableSocial: disableSocial
+          });
+          
+          if (!retryResult.success) {
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to create social linking profile. Please try again.',
+              error: retryResult.error
+            });
+          }
+          
+          profileKey = retryResult.profileKey;
+          user.ayrshare = {
+            profileKey: retryResult.profileKey,
+            refId: retryResult.refId,
+            title: uniqueTitle,
+            createdAt: new Date()
+          };
+        } else {
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to create social linking profile',
+            error: createResult.error
+          });
+        }
+      } else {
+        profileKey = createResult.profileKey;
+        user.ayrshare = {
+          profileKey: createResult.profileKey,
+          refId: createResult.refId,
+          title: profileTitle,
+          createdAt: new Date()
+        };
+      }
+      
+      await user.save();
+      console.log(`Ayrshare profile created for user: ${user.email}, profileKey: ${profileKey?.slice(0, 8)}...`);
+    }
+    
+    // Step 2: Generate JWT URL for SSO to social linking page
+    const redirectUrl = `${FRONTEND_URL}/connect-socials?${platformLower}=connected`;
+    
+    const jwtResult = await generateAyrshareJWT(profileKey, {
+      redirect: redirectUrl,
+      logout: false // Don't force logout for faster UX
+    });
+    
+    if (!jwtResult.success) {
+      console.error('Failed to generate Ayrshare JWT:', jwtResult.error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to generate social linking URL',
+        error: jwtResult.error
+      });
+    }
+    
+    // The JWT URL includes the domain and jwt token, user will be redirected to Ayrshare's social linking page
+    // After linking, they'll be redirected back to our app via the redirect URL
     const ayrshareplatform = AYRSHARE_PLATFORM_MAP[platformLower] || platformLower;
-    const ayrshareConnectUrl = `https://app.ayrshare.com/social-accounts?network=${ayrshareplatform}`;
+    
+    // Add platform-specific network parameter to pre-select the platform
+    let authUrl = jwtResult.url;
+    if (authUrl.includes('?')) {
+      authUrl += `&network=${ayrshareplatform}`;
+    } else {
+      authUrl += `?network=${ayrshareplatform}`;
+    }
+    
+    console.log(`Generated Ayrshare JWT URL for ${platform}:`, authUrl.slice(0, 80) + '...');
     
     return res.json({
       success: true,
       configured: true,
-      authUrl: ayrshareConnectUrl,
-      method: 'ayrshare',
-      message: `Connect your ${platform} account through Ayrshare`
+      authUrl: authUrl,
+      method: 'ayrshare_jwt',
+      message: `Connect your ${platform} account securely`
     });
 
   } catch (error) {
@@ -837,17 +942,33 @@ router.get('/status', protect, async (req, res) => {
     // Build status for all platforms (removed TikTok and Snapchat, renamed Twitter to X)
     const platforms = ['Instagram', 'Facebook', 'X', 'LinkedIn', 'YouTube', 'Pinterest', 'Reddit'];
     
-    // Also get Ayrshare connected accounts
+    // Get user's Ayrshare connected accounts using their profile key
     let ayrshareAccounts = [];
     let ayrshareDisplayNames = [];
-    try {
-      const ayrshareProfile = await getAyrshareProfile();
-      if (ayrshareProfile.success) {
-        ayrshareAccounts = ayrshareProfile.data?.activeSocialAccounts || [];
-        ayrshareDisplayNames = ayrshareProfile.data?.displayNames || [];
+    
+    if (user.ayrshare?.profileKey) {
+      try {
+        // Use user's specific profile key to get their connected accounts
+        const userProfile = await getAyrshareUserProfile(user.ayrshare.profileKey);
+        if (userProfile.success) {
+          ayrshareAccounts = userProfile.data?.activeSocialAccounts || [];
+          ayrshareDisplayNames = userProfile.data?.displayNames || [];
+          console.log(`User ${user.email} Ayrshare accounts:`, ayrshareAccounts);
+        }
+      } catch (e) {
+        console.log('Ayrshare user profile check failed:', e.message);
       }
-    } catch (e) {
-      console.log('Ayrshare profile check failed:', e.message);
+    } else {
+      // Fallback to primary profile check for backwards compatibility
+      try {
+        const ayrshareProfile = await getAyrshareProfile();
+        if (ayrshareProfile.success) {
+          ayrshareAccounts = ayrshareProfile.data?.activeSocialAccounts || [];
+          ayrshareDisplayNames = ayrshareProfile.data?.displayNames || [];
+        }
+      } catch (e) {
+        console.log('Ayrshare profile check failed:', e.message);
+      }
     }
     
     const connections = platforms.map(platform => {

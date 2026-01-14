@@ -472,8 +472,16 @@ router.post('/quick-analyze', protect, async (req, res) => {
     
     console.log(`📡 Quick analyzing website: ${validUrl.origin}`);
     
-    // Scrape the main page
-    const scrapedResult = await scrapeWebsite(validUrl.origin);
+    // Scrape the main page (force fresh for better results)
+    const scrapedResult = await scrapeWebsite(validUrl.origin, { forceRefresh: true });
+    console.log('🔍 Scrape result:', JSON.stringify({
+      success: scrapedResult.success,
+      cached: scrapedResult.cached,
+      hasParsed: !!scrapedResult.parsed,
+      parsedTitle: scrapedResult.parsed?.title,
+      parsedDescription: scrapedResult.parsed?.description?.substring(0, 100),
+      textLength: scrapedResult.parsed?.text?.length || 0
+    }));
     
     if (!scrapedResult || !scrapedResult.success) {
       return res.status(400).json({
@@ -492,6 +500,15 @@ router.post('/quick-analyze', protect, async (req, res) => {
       parsed.headings?.map(h => h.text).join(' ') || '',
       parsed.text?.substring(0, 5000) || ''
     ].join('\n').substring(0, 10000);
+    
+    console.log('📝 Scraped content length:', textContent.length);
+    console.log('📝 Content preview:', textContent.substring(0, 500));
+    
+    // If we couldn't get enough content, try to infer from URL
+    const minContentLength = 100;
+    if (textContent.length < minContentLength) {
+      console.log('⚠️ Not enough content scraped, will rely more on URL inference');
+    }
     
     // Use Gemini to analyze the website content
     const analysisPrompt = `Analyze this website content and extract comprehensive business information. Return ONLY valid JSON.
@@ -541,8 +558,31 @@ Important: For businessLocation, look for addresses, phone numbers with area cod
       confidence: 0.5
     };
     
-    if (analysis.json) {
-      extractedData = { ...extractedData, ...analysis.json };
+    console.log('🤖 LLM analysis result:', {
+      type: typeof analysis,
+      isObject: typeof analysis === 'object',
+      keys: typeof analysis === 'object' ? Object.keys(analysis) : 'N/A',
+      preview: JSON.stringify(analysis).substring(0, 500)
+    });
+    
+    // generateWithLLM returns the parsed JSON directly when jsonSchema is provided
+    if (analysis && typeof analysis === 'object') {
+      extractedData = { ...extractedData, ...analysis };
+      console.log('✅ Extracted data:', JSON.stringify(extractedData, null, 2));
+    } else if (typeof analysis === 'string') {
+      // Try to parse JSON from text response (fallback)
+      try {
+        const jsonMatch = analysis.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          extractedData = { ...extractedData, ...parsed };
+          console.log('✅ Parsed JSON from text:', JSON.stringify(extractedData, null, 2));
+        }
+      } catch (e) {
+        console.log('⚠️ Could not parse JSON from text response:', e.message);
+      }
+    } else {
+      console.log('⚠️ Unexpected analysis result type:', typeof analysis);
     }
     
     // Capitalize company name
