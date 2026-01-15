@@ -176,21 +176,31 @@ const Campaigns: React.FC = () => {
     });
   };
 
-  // Load cached campaigns from localStorage on mount
+  // Use ref to track if we loaded from cache (avoids race condition)
+  const loadedFromCacheRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+
+  // Load cached campaigns from localStorage on mount - BEFORE any other effects
   useEffect(() => {
+    if (initialLoadDoneRef.current) return;
+    initialLoadDoneRef.current = true;
+    
     const cachedCampaigns = localStorage.getItem('nebula_suggested_campaigns');
     if (cachedCampaigns) {
       try {
         const parsed = JSON.parse(cachedCampaigns);
         if (parsed.campaigns && parsed.campaigns.length > 0) {
-          // Check if cache is less than 1 hour old
+          // Check if cache is less than 2 hours old
           const cacheAge = Date.now() - (parsed.timestamp || 0);
-          if (cacheAge < 60 * 60 * 1000) { // 1 hour
+          if (cacheAge < 2 * 60 * 60 * 1000) { // 2 hours
+            console.log('✅ Loading campaigns from cache (age:', Math.round(cacheAge / 60000), 'minutes)');
             setSuggestedCampaigns(parsed.campaigns);
             setLoadingSuggestions(false);
             setIsCached(true);
-            console.log('✅ Loaded campaigns from cache');
+            loadedFromCacheRef.current = true;
             return;
+          } else {
+            console.log('⏰ Cache expired, will regenerate');
           }
         }
       } catch (e) {
@@ -201,10 +211,18 @@ const Campaigns: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'suggestions') {
+      // Skip if we already loaded from cache
+      if (loadedFromCacheRef.current) {
+        console.log('✅ Using cached campaigns, skipping generation');
+        loadedFromCacheRef.current = false; // Reset for next tab switch
+        setLoadingSuggestions(false);
+        return;
+      }
       // Only generate if no campaigns exist in state
       if (suggestedCampaigns.length === 0) {
         generateSuggestions();
       } else {
+        console.log('✅ Campaigns already in state, skipping generation');
         setLoadingSuggestions(false);
       }
     } else {
@@ -235,6 +253,26 @@ const Campaigns: React.FC = () => {
     } = profile || {};
     
     const industryImages: Record<string, string[]> = {
+      'Startup': [
+        'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1531545514256-b1400bc00f31?w=800&h=600&fit=crop'
+      ],
+      'Education': [
+        'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop'
+      ],
+      'Edtech': [
+        'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop'
+      ],
       'Ecommerce': [
         'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&h=600&fit=crop',
         'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=600&fit=crop',
@@ -256,13 +294,20 @@ const Campaigns: React.FC = () => {
         'https://images.unsplash.com/photo-1488229297570-58520851e868?w=800&h=600&fit=crop'
       ],
       'default': [
-        'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&h=600&fit=crop',
         'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
-        'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&h=600&fit=crop'
+        'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop'
       ]
     };
     
-    const images = industryImages[industry] || industryImages['default'];
+    // Check if this is a startup/accelerator/incubator business based on niche
+    const nicheLC = (niche || '').toLowerCase();
+    const isStartupAccelerator = nicheLC.includes('startup') || nicheLC.includes('accelerator') || nicheLC.includes('incubator') || nicheLC.includes('entrepreneurship') || nicheLC.includes('bootcamp');
+    
+    // Use startup images if it's a startup accelerator
+    const images = isStartupAccelerator 
+      ? industryImages['Startup'] 
+      : (industryImages[industry] || industryImages['default']);
     
     const voiceTones: Record<string, { emoji: string; style: string }> = {
       'Professional': { emoji: '📈', style: 'formal and trustworthy' },

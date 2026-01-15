@@ -555,6 +555,25 @@ function getRelevantStockImage(campaignTitle, industry, objective, platform) {
   
   // Keyword-based image mapping for relevance
   const keywordImages = {
+    // Startup & Entrepreneurship
+    'startup': 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+    'accelerator': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+    'incubator': 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+    'entrepreneur': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+    'bootcamp': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+    'founder': 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+    'pitch': 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+    'mentor': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+    'cohort': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+    'innovation': 'https://images.unsplash.com/photo-1531545514256-b1400bc00f31?w=800&h=600&fit=crop',
+    
+    // Education & Learning
+    'workshop': 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+    'training': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+    'learning': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+    'course': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+    'student': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+    
     // Sports & Athletics
     'champion': 'https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?w=800&h=600&fit=crop',
     'athlete': 'https://images.pexels.com/photos/2294361/pexels-photo-2294361.jpeg?w=800&h=600&fit=crop',
@@ -567,33 +586,30 @@ function getRelevantStockImage(campaignTitle, industry, objective, platform) {
     // Fashion & Style
     'style': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
     'fashion': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
-    'school': 'https://images.pexels.com/photos/5212345/pexels-photo-5212345.jpeg?w=800&h=600&fit=crop',
-    'back-to-school': 'https://images.pexels.com/photos/5212345/pexels-photo-5212345.jpeg?w=800&h=600&fit=crop',
-    'sneaker': 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?w=800&h=600&fit=crop',
-    'shoes': 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?w=800&h=600&fit=crop',
-    'design': 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?w=800&h=600&fit=crop',
+    'school': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+    'back-to-school': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
     
     // Community & People
-    'community': 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?w=800&h=600&fit=crop',
-    'spotlight': 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?w=800&h=600&fit=crop',
-    'team': 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?w=800&h=600&fit=crop',
-    'young': 'https://images.pexels.com/photos/8613089/pexels-photo-8613089.jpeg?w=800&h=600&fit=crop',
+    'community': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+    'spotlight': 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+    'team': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+    'success': 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+    'brand': 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
+    'story': 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
     
     // Business & Marketing
-    'lead': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
-    'business': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
-    'partner': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
-    'organization': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop',
-    
-    // Products
-    'gear': 'https://images.pexels.com/photos/4397840/pexels-photo-4397840.jpeg?w=800&h=600&fit=crop',
-    'product': 'https://images.pexels.com/photos/4397840/pexels-photo-4397840.jpeg?w=800&h=600&fit=crop',
-    'makers': 'https://images.pexels.com/photos/3912992/pexels-photo-3912992.jpeg?w=800&h=600&fit=crop',
-    'behind': 'https://images.pexels.com/photos/3912992/pexels-photo-3912992.jpeg?w=800&h=600&fit=crop'
+    'lead': 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+    'business': 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+    'partner': 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+    'organization': 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop'
   };
   
   // Industry-specific defaults
   const industryDefaults = {
+    'startup': 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+    'accelerator': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+    'edtech': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+    'education': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
     'sports': 'https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?w=800&h=600&fit=crop',
     'apparel': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
     'fashion': 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?w=800&h=600&fit=crop',
@@ -601,7 +617,7 @@ function getRelevantStockImage(campaignTitle, industry, objective, platform) {
     'food': 'https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?w=800&h=600&fit=crop',
     'health': 'https://images.pexels.com/photos/841130/pexels-photo-841130.jpeg?w=800&h=600&fit=crop',
     'ecommerce': 'https://images.pexels.com/photos/5632402/pexels-photo-5632402.jpeg?w=800&h=600&fit=crop',
-    'default': 'https://images.pexels.com/photos/3183197/pexels-photo-3183197.jpeg?w=800&h=600&fit=crop'
+    'default': 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop'
   };
   
   // Find matching keyword in campaign title
@@ -755,6 +771,27 @@ async function getRelevantImage(searchQuery, industry, objective, campaignTitle 
 function getFallbackImage(industry, objective) {
   // Curated high-quality images by industry and objective
   const industryImages = {
+    'startup': {
+      'awareness': 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+      'engagement': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop',
+      'sales': 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+      'traffic': 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+      'conversion': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop'
+    },
+    'edtech': {
+      'awareness': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+      'engagement': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+      'sales': 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+      'traffic': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+      'conversion': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop'
+    },
+    'education': {
+      'awareness': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800&h=600&fit=crop',
+      'engagement': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+      'sales': 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+      'traffic': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+      'conversion': 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=800&h=600&fit=crop'
+    },
     'ecommerce': {
       'awareness': 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=600&fit=crop',
       'engagement': 'https://images.unsplash.com/photo-1556742111-a301076d9d18?w=800&h=600&fit=crop',
