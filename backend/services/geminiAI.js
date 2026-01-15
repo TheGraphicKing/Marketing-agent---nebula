@@ -539,32 +539,46 @@ Make the image specific to ${brandContext.companyName || 'the brand'}'s actual b
   console.log('Generating brand-specific image for:', campaignTitle);
   
   try {
-    // Try Gemini Imagen 3 first
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: platform === 'youtube' ? '16:9' : '4:3',
-            safetyFilterLevel: 'block_few',
-            personGeneration: 'allow_adult'
-          }
-        })
-      }
-    );
-
-    const data = await response.json();
+    // Try Imagen 4 first (best quality)
+    console.log('🎨 Attempting Imagen 4 Fast...');
+    const imagenModels = [
+      'imagen-4.0-fast-generate-001',  // Fast + Good quality
+      'imagen-4.0-generate-001',        // Standard quality
+    ];
     
-    if (data.predictions && data.predictions[0]?.bytesBase64Encoded) {
-      console.log('✅ Gemini Imagen 3 generated image successfully');
-      return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+    for (const model of imagenModels) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              instances: [{ prompt }],
+              parameters: {
+                sampleCount: 1,
+                aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
+                safetyFilterLevel: 'block_few',
+                personGeneration: 'allow_adult'
+              }
+            })
+          }
+        );
+
+        const data = await response.json();
+        
+        if (data.predictions && data.predictions[0]?.bytesBase64Encoded) {
+          console.log(`✅ ${model} generated image successfully`);
+          return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+        }
+        
+        console.log(`${model} response:`, JSON.stringify(data).substring(0, 200));
+      } catch (modelError) {
+        console.log(`${model} failed:`, modelError.message);
+      }
     }
     
-    console.log('Imagen 3 response:', JSON.stringify(data).substring(0, 200));
+    // Fallback to Gemini native image generation
     return await generateImageWithGeminiFlash(campaignTitle, campaignDescription, industry, objective, platform, brandContext);
     
   } catch (error) {
@@ -583,40 +597,51 @@ async function generateImageWithGeminiFlash(campaignTitle, campaignDescription, 
   
   const prompt = `Generate a stunning, professional social media image ${brandInfo} campaign called "${campaignTitle}". The image should be perfect for ${platform}, with modern design, vibrant and eye-catching visuals that represent the brand's products/services${targetInfo}. No text in the image. High-quality commercial photography style.`;
   
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: `Generate an image: ${prompt}` }]
-          }],
-          generationConfig: {
-            responseModalities: ['IMAGE', 'TEXT']
-          }
-        })
-      }
-    );
+  // Try multiple Gemini native image generation models
+  const imageModels = [
+    'gemini-2.5-flash-image',              // Gemini 2.5 native image
+    'gemini-3-pro-image-preview',          // Gemini 3 Pro image (best)
+    'gemini-2.0-flash-exp-image-generation' // Gemini 2.0 fallback
+  ];
+  
+  for (const model of imageModels) {
+    try {
+      console.log(`🎨 Trying ${model} for image generation...`);
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: `Generate an image: ${prompt}` }]
+            }],
+            generationConfig: {
+              responseModalities: ['IMAGE', 'TEXT']
+            }
+          })
+        }
+      );
 
-    const data = await response.json();
-    
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    for (const part of parts) {
-      if (part.inlineData?.mimeType?.startsWith('image/')) {
-        console.log('✅ Gemini Flash generated image successfully');
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      const data = await response.json();
+      
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData?.mimeType?.startsWith('image/')) {
+          console.log(`✅ ${model} generated image successfully`);
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
       }
+      
+      console.log(`${model} response:`, JSON.stringify(data).substring(0, 200));
+    } catch (error) {
+      console.log(`${model} failed:`, error.message);
     }
-    
-    console.log('Gemini Flash response:', JSON.stringify(data).substring(0, 300));
-    return getRelevantStockImage(campaignTitle, industry, objective, platform);
-    
-  } catch (error) {
-    console.error('Gemini Flash image error:', error.message);
-    return getRelevantStockImage(campaignTitle, industry, objective, platform);
   }
+  
+  // All models failed, use stock image
+  console.log('⚠️ All Gemini image models failed, using stock image');
+  return getRelevantStockImage(campaignTitle, industry, objective, platform);
 }
 
 /**
