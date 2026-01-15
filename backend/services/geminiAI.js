@@ -184,6 +184,18 @@ async function generateCampaignSuggestions(businessProfile, count = 6) {
   // Get unique selling points
   const usps = businessProfile.uniqueSellingPoints?.join(', ') || businessProfile.valuePropositions?.join(', ') || '';
   
+  // Get brand assets if available
+  const brandAssets = businessProfile.brandAssets || {};
+  const logoUrl = brandAssets.logoUrl || brandAssets.ogImage || '';
+  const brandColors = (brandAssets.brandColors || []).slice(0, 5).join(', ');
+  const brandImages = brandAssets.images || [];
+  
+  // Find product/service images from brand assets
+  const productImages = brandImages
+    .filter(img => !img.isLogo && img.alt && img.alt.length > 2)
+    .slice(0, 5)
+    .map(img => img.src);
+
   const prompt = `You are an expert social media marketing strategist for "${companyName}". Generate ${count} highly personalized, ready-to-post social media campaign ideas that are SPECIFICALLY tailored to this business.
 
 === BUSINESS PROFILE ===
@@ -197,6 +209,8 @@ Unique Selling Points: ${usps || 'To be determined from context'}
 Target Audience: ${targetAudience}
 Brand Voice: ${brandVoice} (IMPORTANT: All captions MUST match this voice)
 Marketing Goals: ${marketingGoals}
+${brandColors ? `Brand Colors: ${brandColors} (use these colors in image prompts)` : ''}
+${logoUrl ? `Logo Available: Yes (brand visual identity is important)` : ''}
 
 === REQUIREMENTS ===
 1. Each campaign MUST be directly related to ${companyName}'s actual products/services
@@ -206,6 +220,7 @@ Marketing Goals: ${marketingGoals}
 5. Include seasonal/trending angles where relevant
 6. Each campaign should have a different objective to cover various marketing needs
 7. Provide an image search query that would find the PERFECT stock image for this specific campaign
+${brandColors ? `8. Image prompts should mention brand colors: ${brandColors}` : ''}
 
 === BRAND VOICE GUIDELINES ===
 ${brandVoice === 'Professional' ? '- Use formal language, industry terminology, focus on expertise and credibility' : ''}
@@ -252,7 +267,12 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
       usps: usps,
       targetAudience,
       brandVoice,
-      description
+      description,
+      // Include brand assets for image generation
+      logoUrl,
+      brandColors: brandAssets.brandColors || [],
+      productImages, // Actual product images from website
+      ogImage: brandAssets.ogImage || ''
     };
     
     // Enhance campaigns with AI-generated images based on campaign content AND brand context
@@ -260,14 +280,28 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
       parsed.campaigns = await Promise.all(parsed.campaigns.map(async (campaign, index) => {
         // Generate contextually relevant AI image based on campaign details AND brand
         const imageQuery = campaign.imageSearchQuery || campaign.description || campaign.caption || `${niche} ${campaign.objective} marketing`;
-        const imageUrl = await getRelevantImage(
-          imageQuery, 
-          industry, 
-          campaign.objective,
-          campaign.title || campaign.name,
-          campaign.platform || 'instagram',
-          brandContext // Pass full brand context for personalized images
-        );
+        
+        // Try to use product images from the website first
+        let imageUrl;
+        if (productImages.length > 0 && index < productImages.length) {
+          // Use actual product image from brand's website
+          imageUrl = productImages[index];
+          console.log(`📸 Using product image from brand website: ${imageUrl}`);
+        } else if (logoUrl && index === 0) {
+          // For brand awareness campaigns, use the logo/ogImage
+          imageUrl = logoUrl;
+          console.log(`🏷️ Using brand logo for campaign: ${logoUrl}`);
+        } else {
+          // Generate relevant image with brand context
+          imageUrl = await getRelevantImage(
+            imageQuery, 
+            industry, 
+            campaign.objective,
+            campaign.title || campaign.name,
+            campaign.platform || 'instagram',
+            brandContext // Pass full brand context for personalized images
+          );
+        }
         
         return {
           ...campaign,
@@ -421,7 +455,18 @@ async function generateAIImage(campaignTitle, campaignDescription, objective, pl
   if (brandContext.niche) brandDetails.push(`Business type: ${brandContext.niche}`);
   if (brandContext.description) brandDetails.push(`About: ${brandContext.description.substring(0, 100)}`);
   
+  // Add brand colors if available
+  const brandColors = brandContext.brandColors || [];
+  if (brandColors.length > 0) {
+    brandDetails.push(`Brand colors: ${brandColors.slice(0, 3).join(', ')} (incorporate these colors)`);
+  }
+  
   const brandInfo = brandDetails.length > 0 ? brandDetails.join('. ') + '.' : '';
+  
+  // Color guidance for image generation
+  const colorGuidance = brandColors.length > 0 
+    ? `Use these brand colors prominently: ${brandColors.slice(0, 3).join(', ')}.` 
+    : '';
   
   // Create a very specific image prompt based on the niche
   let nicheSpecificStyle = '';
@@ -444,6 +489,7 @@ async function generateAIImage(campaignTitle, campaignDescription, objective, pl
 
 BRAND CONTEXT:
 ${brandInfo}
+${colorGuidance}
 
 CAMPAIGN: "${campaignTitle}"
 ${campaignContext.substring(0, 200)}

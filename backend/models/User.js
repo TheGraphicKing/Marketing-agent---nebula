@@ -53,7 +53,19 @@ const userSchema = new mongoose.Schema({
     brandVoice: { type: mongoose.Schema.Types.Mixed, default: ['Professional'] }, // Can be string or array
     marketingGoals: [{ type: String }],
     description: { type: String, default: '' },
-    competitors: [{ type: String }]
+    competitors: [{ type: String }],
+    // Brand assets extracted from website
+    brandAssets: {
+      logoUrl: { type: String, default: '' },
+      ogImage: { type: String, default: '' },
+      favicon: { type: String, default: '' },
+      brandColors: [{ type: String }],
+      images: [{
+        src: { type: String },
+        alt: { type: String },
+        isLogo: { type: Boolean }
+      }]
+    }
   },
   connectedSocials: [{
     platform: { type: String },

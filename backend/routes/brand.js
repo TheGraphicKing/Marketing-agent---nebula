@@ -798,6 +798,37 @@ Return ONLY valid JSON, no other text.`;
     // Also convert competitors array to the format expected by frontend
     extractedData.competitorHints = extractedData.competitors?.map(c => c.name) || [];
     
+    // Extract and save brand assets from the scraped website
+    const brandAssets = {
+      logoUrl: parsed.logoUrl || '',
+      ogImage: parsed.ogImage || '',
+      favicon: parsed.favicon || '',
+      brandColors: parsed.brandColors || [],
+      images: (parsed.images || []).slice(0, 10) // Top 10 images
+    };
+    
+    console.log('🎨 Extracted brand assets:', JSON.stringify(brandAssets, null, 2));
+    
+    // Save brand assets to user's profile
+    try {
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+      if (user) {
+        // Make sure businessProfile exists
+        if (!user.businessProfile) {
+          user.businessProfile = {};
+        }
+        user.businessProfile.brandAssets = brandAssets;
+        await user.save();
+        console.log('✅ Brand assets saved to user profile');
+      }
+    } catch (brandAssetError) {
+      console.error('⚠️ Error saving brand assets:', brandAssetError.message);
+    }
+    
+    // Include brand assets in response
+    extractedData.brandAssets = brandAssets;
+    
     res.json({
       success: true,
       validUrl: true,

@@ -328,7 +328,7 @@ async function scrape(url, options = {}) {
 /**
  * Parse HTML and extract content
  */
-function parseHTML(html) {
+function parseHTML(html, baseUrl = '') {
   // Remove scripts, styles, and comments
   let cleaned = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -348,6 +348,72 @@ function parseHTML(html) {
   // Extract meta keywords
   const keywordsMatch = cleaned.match(/<meta[^>]*name=["']keywords["'][^>]*content=["']([^"']*)["']/i);
   const keywords = keywordsMatch ? keywordsMatch[1].split(',').map(k => k.trim()) : [];
+  
+  // Extract Open Graph image (often the logo or main brand image)
+  const ogImageMatch = cleaned.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i) ||
+                       cleaned.match(/<meta[^>]*content=["']([^"']*)["'][^>]*property=["']og:image["']/i);
+  const ogImage = ogImageMatch ? ogImageMatch[1].trim() : '';
+  
+  // Extract favicon/logo
+  const faviconMatch = cleaned.match(/<link[^>]*rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]*href=["']([^"']*)["']/i) ||
+                       cleaned.match(/<link[^>]*href=["']([^"']*)["'][^>]*rel=["'](?:icon|shortcut icon|apple-touch-icon)["']/i);
+  const favicon = faviconMatch ? faviconMatch[1].trim() : '';
+  
+  // Extract all images with their alt text and src
+  const images = [];
+  const imgMatches = cleaned.matchAll(/<img[^>]*>/gi);
+  for (const match of imgMatches) {
+    const imgTag = match[0];
+    const srcMatch = imgTag.match(/src=["']([^"']+)["']/i);
+    const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
+    const classMatch = imgTag.match(/class=["']([^"']*)["']/i);
+    
+    if (srcMatch) {
+      let src = srcMatch[1];
+      // Make relative URLs absolute
+      if (src.startsWith('/') && baseUrl) {
+        try {
+          const base = new URL(baseUrl);
+          src = `${base.protocol}//${base.host}${src}`;
+        } catch (e) {}
+      } else if (!src.startsWith('http') && !src.startsWith('data:') && baseUrl) {
+        try {
+          const base = new URL(baseUrl);
+          src = `${base.protocol}//${base.host}/${src}`;
+        } catch (e) {}
+      }
+      
+      const alt = altMatch ? altMatch[1].trim() : '';
+      const className = classMatch ? classMatch[1].toLowerCase() : '';
+      
+      // Identify potential logos
+      const isLogo = className.includes('logo') || 
+                     alt.toLowerCase().includes('logo') ||
+                     src.toLowerCase().includes('logo');
+      
+      images.push({ src, alt, isLogo });
+    }
+  }
+  
+  // Find the most likely logo
+  let logoUrl = ogImage; // OG image is often the brand image
+  const logoImage = images.find(img => img.isLogo);
+  if (logoImage) {
+    logoUrl = logoImage.src;
+  }
+  
+  // Extract brand colors from inline styles or CSS
+  const colorMatches = cleaned.matchAll(/(?:background-color|color|border-color):\s*([#][0-9a-fA-F]{3,6}|rgb[a]?\([^)]+\))/gi);
+  const brandColors = new Set();
+  for (const match of colorMatches) {
+    brandColors.add(match[1]);
+  }
+  
+  // Also check for CSS variables or theme colors
+  const themeColorMatch = cleaned.match(/<meta[^>]*name=["']theme-color["'][^>]*content=["']([^"']*)["']/i);
+  if (themeColorMatch) {
+    brandColors.add(themeColorMatch[1]);
+  }
   
   // Extract headings
   const headings = [];
@@ -404,7 +470,13 @@ function parseHTML(html) {
     paragraphs: paragraphs.slice(0, 50), // Limit paragraphs
     listItems: listItems.slice(0, 50),
     fullText,
-    wordCount: fullText.split(/\s+/).length
+    wordCount: fullText.split(/\s+/).length,
+    // NEW: Brand assets
+    logoUrl,
+    ogImage,
+    favicon,
+    images: images.slice(0, 20), // Top 20 images
+    brandColors: Array.from(brandColors).slice(0, 10)
   };
 }
 
@@ -425,7 +497,7 @@ async function scrapeWebsite(url, options = {}) {
     return result;
   }
   
-  const parsed = parseHTML(result.data);
+  const parsed = parseHTML(result.data, url);
   
   return {
     ...result,
