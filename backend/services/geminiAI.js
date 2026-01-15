@@ -17,6 +17,10 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 const API_TIMEOUT = 15000; // 15 second timeout for API calls (increased for complex generation)
 const EXTENDED_TIMEOUT = 30000; // 30 second timeout for heavy content generation
 
+// Rate limit tracking
+let lastApiCall = 0;
+const MIN_DELAY_BETWEEN_CALLS = 500; // 500ms minimum between API calls
+
 // Cache cleanup - run every 10 minutes
 setInterval(() => {
   const now = Date.now();
@@ -30,6 +34,13 @@ setInterval(() => {
 function getCacheKey(prompt) {
   // Create a simple hash of the prompt
   return prompt.substring(0, 100).replace(/\s+/g, '_');
+}
+
+/**
+ * Sleep helper for rate limiting
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -75,62 +86,79 @@ async function callGemini(prompt, options = {}) {
   }
 
   const timeout = options.timeout || API_TIMEOUT;
+  const maxRetries = 3; // Retry up to 3 times for rate limiting
   
   for (const model of GEMINI_MODELS) {
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    try {
-      const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }],
-          generationConfig: {
-            temperature: options.temperature || 0.7,
-            maxOutputTokens: options.maxTokens || 1024, // Reduced for faster responses
-            topP: 0.9
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Rate limiting: ensure minimum delay between calls
+        const timeSinceLastCall = Date.now() - lastApiCall;
+        if (timeSinceLastCall < MIN_DELAY_BETWEEN_CALLS) {
+          await sleep(MIN_DELAY_BETWEEN_CALLS - timeSinceLastCall);
+        }
+        lastApiCall = Date.now();
+        
+        const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: prompt }]
+            }],
+            generationConfig: {
+              temperature: options.temperature || 0.7,
+              maxOutputTokens: options.maxTokens || 1024, // Reduced for faster responses
+              topP: 0.9
+            }
+          })
+        }, timeout);
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          console.error(`Gemini API error (${model}):`, data.error?.message || data);
+          // If rate limited, wait and retry with exponential backoff
+          if (data.error?.code === 429 || data.error?.code === 503) {
+            const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000); // 1s, 2s, 4s, max 8s
+            console.log(`Rate limited on ${model}, waiting ${backoffMs}ms before retry ${attempt + 1}/${maxRetries}...`);
+            await sleep(backoffMs);
+            continue; // Retry same model
           }
-        })
-      }, timeout);
+          // If model not found, try next model
+          if (data.error?.code === 404) {
+            console.log(`Model ${model} not found, trying next...`);
+            break; // Break retry loop, try next model
+          }
+          throw new Error(data.error?.message || 'Gemini API error');
+        }
 
-      const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          throw new Error('No response from Gemini');
+        }
 
-      if (!response.ok) {
-        console.error(`Gemini API error (${model}):`, data.error?.message || data);
-        // If quota exceeded or rate limited, try next model
-        if (data.error?.code === 429 || data.error?.code === 503) {
-          console.log(`Rate limited on ${model}, trying next model...`);
+        // Cache successful response
+        if (!options.skipCache) {
+          const cacheKey = getCacheKey(prompt);
+          responseCache.set(cacheKey, { response: text, timestamp: Date.now() });
+        }
+
+        const duration = Date.now() - startTime;
+        console.log(`✅ Gemini response from ${model} in ${duration}ms`);
+        return text;
+      } catch (error) {
+        console.error(`Gemini API call to ${model} failed (attempt ${attempt + 1}):`, error.message);
+        if (attempt < maxRetries - 1) {
+          await sleep(1000 * (attempt + 1)); // Wait before retry
           continue;
         }
-        // If model not found, try next
-        if (data.error?.code === 404) {
-          console.log(`Model ${model} not found, trying next...`);
-          continue;
-        }
-        throw new Error(data.error?.message || 'Gemini API error');
+        // All retries failed for this model, try next
+        break;
       }
-
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error('No response from Gemini');
-      }
-
-      // Cache successful response
-      if (!options.skipCache) {
-        const cacheKey = getCacheKey(prompt);
-        responseCache.set(cacheKey, { response: text, timestamp: Date.now() });
-      }
-
-      const duration = Date.now() - startTime;
-      console.log(`✅ Gemini response from ${model} in ${duration}ms`);
-      return text;
-    } catch (error) {
-      console.error(`Gemini API call to ${model} failed:`, error.message);
-      // Continue to next model if available
-      continue;
     }
   }
   
