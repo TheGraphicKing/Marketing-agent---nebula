@@ -157,12 +157,13 @@ Based on the description, identify:
 Location: ${businessContext.location}
 
 Find this mix:
+🚨🚨🚨 MANDATORY: RETURN EXACTLY 8 COMPETITORS 🚨🚨🚨
 - 2 REGIONAL competitors (same city/state as ${businessContext.location})
-- 3 NATIONAL competitors (major players in the country)
-- 1-2 GLOBAL competitors (aspirational/world leaders)
+- 4 NATIONAL competitors (major players in the country)
+- 2 GLOBAL competitors (aspirational/world leaders)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 RETURN THIS JSON:
+📋 RETURN THIS JSON (EXACTLY 8 COMPETITORS):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {
   "competitors": [
@@ -202,7 +203,19 @@ Find this mix:
       "type": "national"
     },
     {
-      "name": "Global Leader",
+      "name": "National Player 4",
+      "instagram": "@handle",
+      "description": "What they do",
+      "type": "national"
+    },
+    {
+      "name": "Global Leader 1",
+      "instagram": "@handle",
+      "description": "Why they're aspirational",
+      "type": "global"
+    },
+    {
+      "name": "Global Leader 2",
       "instagram": "@handle",
       "description": "Why they're aspirational",
       "type": "global"
@@ -211,9 +224,10 @@ Find this mix:
 }
 
 ⚠️ VERIFICATION CHECKLIST:
+☐ You returned EXACTLY 8 competitors?
 ☐ All competitors do THE SAME THING as this business?
 ☐ Instagram handles are REAL and VERIFIED?
-☐ Mix of regional + national + global?
+☐ Mix of 2 regional + 4 national + 2 global?
 ☐ All are REAL companies that exist?
 
 Return ONLY valid JSON.`;

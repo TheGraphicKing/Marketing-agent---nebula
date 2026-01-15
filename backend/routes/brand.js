@@ -545,19 +545,24 @@ DON'T just say "Edtech" or "SaaS". Be HYPER-SPECIFIC:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔥 STEP 3: FIND EXACT COMPETITORS (MOST IMPORTANT!)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚨🚨🚨 MANDATORY: YOU MUST RETURN EXACTLY 8 COMPETITORS 🚨🚨🚨
+This is a HARD requirement. Not 2, not 3, EXACTLY 8 real competitors.
+I will reject any response with fewer than 8 competitors.
+
 Find competitors who do THE SAME THING, not just same industry.
 
-⚠️ CRITICAL EXAMPLES:
-- If business is "Startup Accelerator" → Competitors are: T-Hub, NSRCEL, Antler, Y Combinator, Venture Catalysts, 100x.VC, Headstart
-- If business is "Startup Accelerator" → Competitors are NOT: upGrad, Unacademy, BYJU'S (these are general edtech, WRONG!)
-- If business is "Coding Bootcamp" → Competitors are: Masai School, Scaler, Newton School, Coding Ninjas
-- If business is "Online MBA" → Competitors are: upGrad, Great Learning, Emeritus, Jaro Education
-- If business is "K-12 Tutoring" → Competitors are: BYJU'S, Vedantu, Physics Wallah, Unacademy
+⚠️ CRITICAL - UNDERSTAND THE NICHE FIRST:
+- If business is "Startup Accelerator/Incubator" → Competitors are: T-Hub, NSRCEL, IIT Madras Incubation Cell, Antler India, Y Combinator, Venture Catalysts, 100x.VC, Headstart Network, StartupTN, EDII-TN, Zone Startups, Techstars, 500 Startups
+- If business is "Startup Accelerator" → Competitors are NOT: upGrad, Unacademy, BYJU'S (these are general edtech - COMPLETELY WRONG!)
+- If business is "Coding Bootcamp" → Competitors are: Masai School, Scaler, Newton School, Coding Ninjas, AlmaBetter, Striver, CodeChef
+- If business is "Online MBA" → Competitors are: upGrad, Great Learning, Emeritus, Jaro Education, ISB Online, IIM Online
+- If business is "K-12 Tutoring" → Competitors are: BYJU'S, Vedantu, Physics Wallah, Unacademy, Toppr
 
-🔍 COMPETITOR CATEGORIES TO FIND:
-1. REGIONAL (same city/state): 2-3 local competitors
-2. NATIONAL (same country): 3-4 major national players
-3. GLOBAL (aspirational): 1-2 global leaders in the space
+📍 GEOGRAPHY DISTRIBUTION (MANDATORY - ALL 3 LEVELS):
+1. REGIONAL (same state/city): EXACTLY 2 competitors from the same state/city
+2. NATIONAL (India/country leaders): EXACTLY 4 national competitors 
+3. GLOBAL (aspirational): EXACTLY 2 global leaders
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 RETURN THIS JSON STRUCTURE:
@@ -576,21 +581,21 @@ Find competitors who do THE SAME THING, not just same industry.
   "keyProducts": ["List of main products/services with specifics"],
   "competitors": [
     {
-      "name": "Regional Competitor 1",
+      "name": "Regional Competitor 1 (same city/state)",
       "type": "regional",
       "reason": "Why they compete (be specific)",
-      "instagram": "@handle",
+      "instagram": "@actual_real_handle",
       "twitter": "@handle",
       "website": "https://..."
     },
     {
-      "name": "Regional Competitor 2",
+      "name": "Regional Competitor 2 (same city/state)",
       "type": "regional",
       "reason": "Why they compete",
       "instagram": "@handle"
     },
     {
-      "name": "National Competitor 1 (market leader)",
+      "name": "National Competitor 1 (MARKET LEADER in country)",
       "type": "national",
       "reason": "Why they compete",
       "instagram": "@handle"
@@ -608,7 +613,19 @@ Find competitors who do THE SAME THING, not just same industry.
       "instagram": "@handle"
     },
     {
-      "name": "Global Leader (aspirational)",
+      "name": "National Competitor 4",
+      "type": "national",
+      "reason": "Why they compete",
+      "instagram": "@handle"
+    },
+    {
+      "name": "Global Leader 1 (aspirational)",
+      "type": "global",
+      "reason": "Why they're aspirational",
+      "instagram": "@handle"
+    },
+    {
+      "name": "Global Leader 2 (aspirational)",
       "type": "global",
       "reason": "Why they're aspirational",
       "instagram": "@handle"
@@ -619,10 +636,12 @@ Find competitors who do THE SAME THING, not just same industry.
   "confidence": 0.9
 }
 
-⚠️ FINAL CHECK BEFORE RESPONDING:
-- Are competitors doing THE SAME THING as this business? (not just same industry)
-- Did you include regional + national + global mix?
-- Are all competitors REAL companies that exist?
+🚨 VALIDATION RULES:
+1. You MUST return EXACTLY 8 competitors (2 regional + 4 national + 2 global)
+2. All competitors MUST be REAL companies that CURRENTLY EXIST
+3. Competitors MUST do the SAME THING as this business (same business model)
+4. Instagram handles MUST be real verified handles
+5. Do NOT include upGrad/Unacademy/BYJU'S for startup accelerators!
 - Do competitors have active social media presence?
 
 Return ONLY valid JSON, no other text.`;
