@@ -242,17 +242,31 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
     const response = await callGemini(prompt, { temperature: 0.8, maxTokens: 4096 });
     const parsed = parseGeminiJSON(response);
     
-    // Enhance campaigns with AI-generated images based on campaign content
+    // Build rich brand context for image generation
+    const brandContext = {
+      companyName,
+      industry,
+      niche,
+      products: keyProducts,
+      services: services || keyProducts,
+      usps: usps,
+      targetAudience,
+      brandVoice,
+      description
+    };
+    
+    // Enhance campaigns with AI-generated images based on campaign content AND brand context
     if (parsed.campaigns && parsed.campaigns.length > 0) {
       parsed.campaigns = await Promise.all(parsed.campaigns.map(async (campaign, index) => {
-        // Generate contextually relevant AI image based on campaign details
-        const imageQuery = campaign.description || campaign.caption || campaign.imageSearchQuery || `${industry} ${campaign.objective} marketing`;
+        // Generate contextually relevant AI image based on campaign details AND brand
+        const imageQuery = campaign.imageSearchQuery || campaign.description || campaign.caption || `${niche} ${campaign.objective} marketing`;
         const imageUrl = await getRelevantImage(
           imageQuery, 
           industry, 
           campaign.objective,
           campaign.title || campaign.name,
-          campaign.platform || 'instagram'
+          campaign.platform || 'instagram',
+          brandContext // Pass full brand context for personalized images
         );
         
         return {
@@ -306,9 +320,22 @@ async function generateSingleCampaign(businessProfile, index, total) {
   ];
   const hookIndex = (Date.now() + index) % varietyHooks.length;
   
+  // Get additional business context
+  const products = businessProfile.products?.map(p => p.name || p).join(', ') || '';
+  const services = businessProfile.services?.map(s => s.name || s).join(', ') || '';
+  const keyProducts = businessProfile.keyProducts?.join(', ') || products || services || '';
+  const usps = businessProfile.uniqueSellingPoints?.join(', ') || '';
+  const description = businessProfile.description || '';
+  
   const prompt = `${varietyHooks[hookIndex]} ${objective}-focused social media campaign for "${companyName}" (${industry}/${niche}).
 
-IMPORTANT: Generate COMPLETELY NEW and DIFFERENT content from any previous campaigns. Be creative and original.
+BUSINESS DETAILS:
+- Company: ${companyName}
+- Products/Services: ${keyProducts || 'Various offerings'}
+- Unique Selling Points: ${usps || 'Quality and excellence'}
+- Description: ${description || 'A leading company in ' + industry}
+
+IMPORTANT: Generate content SPECIFICALLY about these products/services. Make it relevant to what ${companyName} actually sells.
 
 Target: ${targetAudience}
 Voice: ${brandVoice}
@@ -319,27 +346,41 @@ Timestamp: ${Date.now()}
 Return ONLY valid JSON (no markdown):
 {
   "id": "campaign_${Date.now()}_${index}",
-  "name": "Unique creative campaign title",
+  "name": "Unique campaign title about ${companyName}'s products/services",
   "objective": "${objective}",
   "platforms": ["${platform}"],
-  "caption": "FRESH ready-to-post caption with emojis, in ${brandVoice} voice. Include compelling call-to-action. Make it unique!",
-  "hashtags": ["#BrandHashtag", "#Industry", "#Relevant", "#Trending"],
+  "caption": "SPECIFIC caption about ${companyName}'s actual products/services. Use ${brandVoice} voice. Include emojis and compelling call-to-action.",
+  "hashtags": ["#${companyName.replace(/\s+/g, '')}", "#Industry", "#ProductRelevant"],
   "bestPostTime": "Choose optimal time like 9:00 AM, 12:00 PM, 3:00 PM, 6:00 PM, or 8:00 PM",
-  "estimatedReach": "10K - 25K"
+  "estimatedReach": "10K - 25K",
+  "imageDescription": "Describe the perfect image for this campaign featuring ${companyName}'s brand"
 }`;
 
   try {
     const response = await callGemini(prompt, { temperature: 0.95, maxTokens: 1024, skipCache: true });
     const campaign = parseGeminiJSON(response);
     
-    // Generate AI image for this campaign with unique seed
+    // Build rich brand context for image generation
+    const brandContext = {
+      companyName,
+      industry,
+      niche,
+      products: keyProducts,
+      services: services || keyProducts,
+      usps,
+      targetAudience,
+      brandVoice,
+      description
+    };
+    
+    // Generate AI image for this campaign with brand context
     const imageUrl = await getRelevantImage(
-      campaign.caption || campaign.name || `${industry} ${objective} marketing`,
+      campaign.imageDescription || campaign.caption || campaign.name || `${niche} ${objective} marketing`,
       industry,
       objective,
       campaign.name,
       platform,
-      { timestamp: Date.now() } // Add timestamp for variety
+      brandContext // Pass full brand context
     );
     
     return {
@@ -358,7 +399,7 @@ Return ONLY valid JSON (no markdown):
       platforms: [platform],
       caption: `✨ Discover what makes ${companyName} special! We're here to serve ${targetAudience} with the best in ${industry}. \n\n💬 What would you like to see from us? Let us know below! \n\n#${companyName.replace(/\s+/g, '')} #${industry}`,
       hashtags: [`#${companyName.replace(/\s+/g, '')}`, `#${industry}`, '#Marketing', '#Growth'],
-      imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(`${industry} ${objective} marketing professional photo`)}?width=800&height=600&seed=${Date.now()}`,
+      imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(`${niche} ${objective} marketing professional photo`)}?width=800&height=600&seed=${Date.now()}`,
       bestPostTime: '10:00 AM',
       estimatedReach: '10K - 20K'
     };
@@ -373,26 +414,55 @@ async function generateAIImage(campaignTitle, campaignDescription, objective, pl
   // Create a detailed, campaign-specific prompt for relevant images with brand context
   const campaignContext = campaignDescription || campaignTitle || '';
   
-  // Build rich brand-aware prompt
+  // Build rich brand-aware prompt with specific details
   const brandDetails = [];
   if (brandContext.companyName) brandDetails.push(`Brand: ${brandContext.companyName}`);
-  if (brandContext.products) brandDetails.push(`Products: ${brandContext.products}`);
-  if (brandContext.services) brandDetails.push(`Services: ${brandContext.services}`);
-  if (brandContext.usps) brandDetails.push(`Key features: ${brandContext.usps}`);
-  if (brandContext.niche) brandDetails.push(`Niche: ${brandContext.niche}`);
+  if (brandContext.products) brandDetails.push(`Products/Services: ${brandContext.products}`);
+  if (brandContext.niche) brandDetails.push(`Business type: ${brandContext.niche}`);
+  if (brandContext.description) brandDetails.push(`About: ${brandContext.description.substring(0, 100)}`);
   
   const brandInfo = brandDetails.length > 0 ? brandDetails.join('. ') + '.' : '';
   
+  // Create a very specific image prompt based on the niche
+  let nicheSpecificStyle = '';
+  const niche = (brandContext.niche || industry || '').toLowerCase();
+  
+  if (niche.includes('startup') || niche.includes('accelerator') || niche.includes('incubator')) {
+    nicheSpecificStyle = 'Show entrepreneurs working in a modern coworking space, startup pitch meeting, or innovation hub atmosphere. Young professionals collaborating, whiteboards with ideas, laptops and tech setup.';
+  } else if (niche.includes('education') || niche.includes('training') || niche.includes('bootcamp')) {
+    nicheSpecificStyle = 'Show students learning, classroom or workshop setting, mentorship session, or graduation moment. Include books, laptops, engaged learners.';
+  } else if (niche.includes('tech') || niche.includes('software') || niche.includes('saas')) {
+    nicheSpecificStyle = 'Show modern technology workspace, code on screens, team collaboration, or product demo. Sleek tech aesthetic.';
+  } else if (niche.includes('fashion') || niche.includes('apparel') || niche.includes('clothing')) {
+    nicheSpecificStyle = 'Show stylish clothing, fashion photoshoot, models wearing products, or curated outfit display.';
+  } else if (niche.includes('food') || niche.includes('restaurant')) {
+    nicheSpecificStyle = 'Show delicious food photography, restaurant ambiance, cooking process, or happy diners.';
+  }
+  
   // Extract key themes from the campaign
-  const prompt = `Create a professional, high-quality social media marketing image for: "${campaignTitle}". 
-${brandInfo}
-Context: ${campaignContext.substring(0, 300)}. 
-Industry: ${industry}. 
-Target audience: ${brandContext.targetAudience || 'general consumers'}.
-Style: Modern, clean, high-quality ${platform} post ready, vibrant colors matching brand identity, professional photography or sleek graphics, no text or words in image, commercial quality, suitable for ${objective} marketing campaign.
-The image should clearly represent the brand's products/services and appeal to the target market.`;
+  const prompt = `Create a professional, high-quality social media marketing image.
 
-  console.log('Generating image for campaign:', campaignTitle);
+BRAND CONTEXT:
+${brandInfo}
+
+CAMPAIGN: "${campaignTitle}"
+${campaignContext.substring(0, 200)}
+
+VISUAL STYLE:
+${nicheSpecificStyle || `Professional ${industry} imagery that represents the brand's core offering.`}
+
+REQUIREMENTS:
+- Industry: ${industry}
+- Target audience: ${brandContext.targetAudience || 'professionals and consumers'}
+- Platform: ${platform} (optimized aspect ratio)
+- Objective: ${objective} campaign
+- Style: Modern, clean, vibrant colors, professional photography
+- NO text or words in image
+- Commercial quality suitable for marketing
+
+Make the image specific to ${brandContext.companyName || 'the brand'}'s actual business and products.`;
+
+  console.log('Generating brand-specific image for:', campaignTitle);
   
   try {
     // Try Gemini Imagen 3 first
@@ -1189,29 +1259,34 @@ async function generateCompetitorActivity(competitorNames, businessProfile) {
     return [];
   }
 
+  // Ensure we use at least 5 competitors (or all if less)
+  const competitorsToUse = competitorNames.slice(0, Math.max(5, competitorNames.length));
+
   const prompt = `You are a social media analyst. Generate realistic recent social media posts for competitors in the ${businessProfile?.industry || 'business'} industry.
 
-Competitors to generate posts for: ${competitorNames.join(', ')}
+🚨 CRITICAL: Generate posts for EACH of these ${competitorsToUse.length} competitors:
+${competitorsToUse.map((name, i) => `${i + 1}. ${name}`).join('\n')}
 
 Business Context:
 - Our Industry: ${businessProfile?.industry || 'General Business'}
 - Our Niche: ${businessProfile?.niche || 'General'}
 - Our Target Audience: ${businessProfile?.targetAudience || 'General consumers'}
+- Our Location: ${businessProfile?.location || 'India'}
 
-Generate 2-3 realistic social media posts PER COMPETITOR that would appear on their profiles.
-Make posts industry-specific, authentic, and varied (promotional, educational, engagement-focused).
+🎯 REQUIREMENT: Generate EXACTLY 2 posts for EACH competitor above. 
+That means you MUST return ${competitorsToUse.length * 2} total posts (2 per competitor).
 
-**CRITICAL RULE - VERY IMPORTANT:**
-- ALL posts MUST be from the LAST 3 MONTHS ONLY (last 90 days maximum)
-- hoursAgo value MUST be between 1 and 2160 (which is 90 days = 3 months)
-- NEVER generate posts older than 3 months
-- Each post should have a DIFFERENT posting time - vary the hoursAgo value
+⚠️ IMPORTANT RULES:
+- EVERY competitor must have posts - do not skip any competitor
+- ALL posts MUST be from the LAST 3 MONTHS ONLY (hoursAgo: 1-2160)
+- Mix different platforms (instagram, twitter, linkedin) across competitors
+- Make posts authentic to each competitor's brand and voice
 
 Return ONLY valid JSON in this EXACT format:
 {
   "posts": [
     {
-      "competitorName": "Exact competitor name",
+      "competitorName": "Exact competitor name from list above",
       "platform": "instagram",
       "content": "The actual post text content (50-150 words, realistic marketing post)",
       "likes": 1234,
@@ -1223,14 +1298,10 @@ Return ONLY valid JSON in this EXACT format:
   ]
 }
 
-Important:
-- Use platforms: instagram, twitter, linkedin, facebook
-- Likes should be 100-50000 (realistic ranges)
-- Comments should be 5-500 
-- hoursAgo: MUST be between 1-2160 hours (last 3 months only). Example: 2, 8, 24, 72, 168, 336, 720
-- Make content authentic and industry-specific
-- Include hashtags for Instagram/Twitter posts
-- LinkedIn posts should be more professional`;
+🔥 VERIFICATION: Before responding, count your posts:
+- Did you include ${competitorsToUse.length} different competitors? 
+- Does each competitor have 2 posts?
+- Total posts should be ${competitorsToUse.length * 2}`;
 
   try {
     const response = await callGemini(prompt, { maxTokens: 2000 });

@@ -176,13 +176,51 @@ const Campaigns: React.FC = () => {
     });
   };
 
+  // Load cached campaigns from localStorage on mount
+  useEffect(() => {
+    const cachedCampaigns = localStorage.getItem('nebula_suggested_campaigns');
+    if (cachedCampaigns) {
+      try {
+        const parsed = JSON.parse(cachedCampaigns);
+        if (parsed.campaigns && parsed.campaigns.length > 0) {
+          // Check if cache is less than 1 hour old
+          const cacheAge = Date.now() - (parsed.timestamp || 0);
+          if (cacheAge < 60 * 60 * 1000) { // 1 hour
+            setSuggestedCampaigns(parsed.campaigns);
+            setLoadingSuggestions(false);
+            setIsCached(true);
+            console.log('✅ Loaded campaigns from cache');
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('Could not parse cached campaigns');
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'suggestions') {
-      generateSuggestions();
+      // Only generate if no campaigns exist in state
+      if (suggestedCampaigns.length === 0) {
+        generateSuggestions();
+      } else {
+        setLoadingSuggestions(false);
+      }
     } else {
       loadCampaigns();
     }
   }, [activeTab]);
+
+  // Save campaigns to localStorage whenever they change
+  useEffect(() => {
+    if (suggestedCampaigns.length > 0) {
+      localStorage.setItem('nebula_suggested_campaigns', JSON.stringify({
+        campaigns: suggestedCampaigns,
+        timestamp: Date.now()
+      }));
+    }
+  }, [suggestedCampaigns]);
 
   // Generate personalized fallback suggestions based on business profile
   const generatePersonalizedFallback = (profile: any, seed: number = 0): SuggestedCampaign[] => {
@@ -485,8 +523,10 @@ const Campaigns: React.FC = () => {
     generateSuggestionsStreaming(false);
   };
   
-  // Handle regenerate - forces new generation
+  // Handle regenerate - forces new generation and clears cache
   const handleRegenerate = () => {
+    // Clear localStorage cache to force fresh generation
+    localStorage.removeItem('nebula_suggested_campaigns');
     setRegenerationCount(prev => prev + 1);
     generateSuggestionsStreaming(true);
   };
