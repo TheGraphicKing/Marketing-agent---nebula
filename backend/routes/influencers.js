@@ -206,16 +206,41 @@ router.post('/discover', protect, async (req, res) => {
     const brandProfile = await BrandProfile.findOne({ userId });
     const bp = user?.businessProfile || {};
     
+    // Parse businessLocation to extract city, state, country
+    const rawLocation = bp.businessLocation || onboardingContext?.geography?.businessLocation || 'India';
+    const locationParts = rawLocation.split(',').map(p => p.trim());
+    let parsedCity = '';
+    let parsedState = '';
+    let parsedCountry = 'India';
+    
+    if (locationParts.length >= 3) {
+      parsedCity = locationParts[0];
+      parsedState = locationParts[1];
+      parsedCountry = locationParts[2];
+    } else if (locationParts.length === 2) {
+      parsedState = locationParts[0];
+      parsedCountry = locationParts[1];
+    } else if (locationParts.length === 1) {
+      // Try to detect Indian states
+      const indianStates = ['Tamil Nadu', 'Karnataka', 'Maharashtra', 'Delhi', 'Gujarat', 'Rajasthan', 'Kerala', 'Telangana', 'Andhra Pradesh', 'West Bengal', 'Punjab', 'Haryana', 'Uttar Pradesh', 'Madhya Pradesh', 'Bihar'];
+      if (indianStates.some(s => rawLocation.toLowerCase().includes(s.toLowerCase()))) {
+        parsedState = rawLocation;
+        parsedCountry = 'India';
+      } else {
+        parsedCountry = rawLocation;
+      }
+    }
+    
     // Build comprehensive business context with LOCATION PRIORITY
     const businessContext = {
       companyName: onboardingContext?.company?.name || bp.name || user?.firstName + "'s Business",
-      industry: onboardingContext?.company?.industry || bp.industry || 'General Business',
-      description: onboardingContext?.company?.description || bp.niche || '',
+      industry: onboardingContext?.company?.industry || bp.industry || bp.niche || 'General Business',
+      description: onboardingContext?.company?.description || bp.niche || bp.description || '',
       targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || '',
-      businessLocation: onboardingContext?.geography?.businessLocation || bp.businessLocation || 'India',
-      businessCity: onboardingContext?.geography?.city || bp.city || '',
-      businessState: onboardingContext?.geography?.state || bp.state || '',
-      businessCountry: onboardingContext?.geography?.country || bp.country || 'India',
+      businessLocation: rawLocation,
+      businessCity: onboardingContext?.geography?.city || parsedCity || '',
+      businessState: onboardingContext?.geography?.state || parsedState || '',
+      businessCountry: onboardingContext?.geography?.country || parsedCountry || 'India',
       regions: onboardingContext?.geography?.regions || [],
       countries: onboardingContext?.geography?.countries || [],
       targetLanguages: onboardingContext?.geography?.languages || ['English', 'Hindi'],
@@ -434,62 +459,125 @@ async function discoverMultiPlatformInfluencers(businessContext) {
   if (state) locationContext = `${state}, ${country}`;
   if (city) locationContext = `${city}, ${state || country}`;
 
-  const prompt = `You are an expert influencer marketing consultant. Find 15 REAL influencers for this business.
+  // Determine niche-specific influencer types
+  const industry = (businessContext.industry || '').toLowerCase();
+  const description = (businessContext.description || '').toLowerCase();
+  
+  // Identify the exact niche for better influencer matching
+  let nicheSpecificGuidance = '';
+  let excludeNiches = [];
+  
+  if (industry.includes('startup') || industry.includes('accelerator') || industry.includes('incubator') || 
+      description.includes('startup') || description.includes('entrepreneur')) {
+    nicheSpecificGuidance = `
+🎯 NICHE: STARTUP & ENTREPRENEURSHIP
+Find influencers who talk about:
+- Startups, entrepreneurship, business building
+- Venture capital, funding, investor relations
+- Business strategy, growth hacking
+- Founder stories, startup journeys
+
+EXAMPLE RELEVANT INFLUENCERS (use as reference):
+- Startup founders who share their journey
+- VC partners who give business advice
+- Business coaches and mentors
+- Tech entrepreneurs, solopreneurs
+- LinkedIn thought leaders on startups`;
+    excludeNiches = ['Comedy', 'Fashion', 'Beauty', 'Food', 'Travel', 'Gaming', 'Music', 'Dance', 'Lifestyle', 'Entertainment', 'Movies', 'TV Shows', 'Cooking', 'Fitness', 'Sports'];
+  } else if (industry.includes('education') || industry.includes('edtech') || industry.includes('learning')) {
+    nicheSpecificGuidance = `
+🎯 NICHE: EDUCATION & LEARNING
+Find influencers who talk about:
+- Education, teaching, learning methods
+- Online courses, skill development
+- Career guidance, exam preparation
+- Study tips, educational content`;
+    excludeNiches = ['Comedy', 'Fashion', 'Beauty', 'Food', 'Travel', 'Gaming', 'Music', 'Dance'];
+  } else if (industry.includes('tech') || industry.includes('software') || industry.includes('saas')) {
+    nicheSpecificGuidance = `
+🎯 NICHE: TECHNOLOGY & SOFTWARE
+Find influencers who talk about:
+- Technology, software, coding
+- SaaS, product reviews, tech news
+- Developer content, programming tutorials
+- AI, machine learning, data science`;
+    excludeNiches = ['Fashion', 'Beauty', 'Food', 'Cooking', 'Dance', 'Movies'];
+  }
+
+  const prompt = `You are an expert influencer marketing consultant specializing in ${businessContext.industry}. 
+
+🚨🚨🚨 CRITICAL: READ THIS CAREFULLY 🚨🚨🚨
 
 ═══════════════════════════════════════════════════════════════
-📋 BUSINESS DETAILS (USE THIS TO FIND RELEVANT INFLUENCERS):
+📋 BUSINESS DETAILS:
 ═══════════════════════════════════════════════════════════════
-• Company Name: ${businessContext.companyName}
+• Company: ${businessContext.companyName}
 • Industry/Niche: ${businessContext.industry}
-• Business Description: ${businessContext.description || 'Not provided'}
+• Description: ${businessContext.description || 'Not provided'}
 • Target Customer: ${businessContext.targetCustomer || 'General consumers'}
-• Value Proposition: ${businessContext.valueProposition || 'Quality products/services'}
 • Marketing Goal: ${businessContext.primaryGoal || 'Brand awareness'}
-• Key Benefits: ${(businessContext.keyBenefits || []).join(', ') || 'Not specified'}
+${nicheSpecificGuidance}
 
 ═══════════════════════════════════════════════════════════════
-📍 LOCATION (CRITICAL - INFLUENCERS MUST BE FROM THIS REGION):
+📍 LOCATION - PRIORITIZE REGIONAL INFLUENCERS:
 ═══════════════════════════════════════════════════════════════
 • Business Location: ${locationContext}
 • City: ${city || 'Not specified'}
 • State/Region: ${state || 'Not specified'}
 • Country: ${country}
 
-🔴 MANDATORY: All 15 influencers MUST be based in or primarily create content for audiences in ${locationContext}. 
-${city ? `Prioritize influencers from ${city} or nearby areas.` : ''}
-${state ? `Include influencers popular in ${state}.` : ''}
+REGIONAL DISTRIBUTION (MANDATORY):
+- 5 influencers: REGIONAL (from ${state || city || locationContext} specifically)
+- 5 influencers: NATIONAL (famous across ${country} but relevant to niche)
+- 5 influencers: LOCAL MICRO (10K-100K followers, high engagement, hyper-local)
+
+${city || state ? `🔴 PRIORITY: At least 5 influencers MUST be from ${city || state} or create content for ${city || state} audience.` : ''}
 
 ═══════════════════════════════════════════════════════════════
-🎯 INFLUENCER REQUIREMENTS:
+🚫 STRICT NICHE REQUIREMENTS - DO NOT IGNORE:
 ═══════════════════════════════════════════════════════════════
 
-TIER BREAKDOWN (exactly 15 total):
-1. MEGA (5 influencers): 1M+ followers - National celebrities in ${country}
-2. MACRO (5 influencers): 100K-1M followers - Established niche creators
-3. MICRO (5 influencers): 10K-100K followers - High-engagement local creators
+✅ ONLY include influencers whose PRIMARY content is about: ${businessContext.industry}
+❌ DO NOT include influencers from these niches: ${excludeNiches.join(', ')}
 
-RELEVANCE CRITERIA:
-✅ Content MUST relate to: ${businessContext.industry}
-✅ Audience MUST match: ${businessContext.targetCustomer || 'general consumers'}
-✅ All must be REAL, active influencers (posted in last 30 days)
-✅ Mix of platforms: Instagram, YouTube, Twitter, LinkedIn, Facebook
+${excludeNiches.length > 0 ? `
+🚫 BANNED CATEGORIES (NEVER include these):
+${excludeNiches.map(n => `- NO ${n} influencers`).join('\n')}
 
-PLATFORM DISTRIBUTION:
-- Instagram: 5-6 influencers (visual content)
-- YouTube: 4-5 influencers (video content)
-- Twitter/X: 2-3 influencers (thought leaders)
-- LinkedIn: 1-2 influencers (B2B/professional)
-- Facebook: 1-2 influencers (community)
+For example, if business is "Startup Accelerator":
+❌ DO NOT include: Prajakta Koli (Comedy), Neha Kakkar (Music), Bhuvan Bam (Comedy), CarryMinati (Gaming)
+✅ DO include: Ankur Warikoo (Business), Varun Mayya (Startups), Raj Shamani (Entrepreneurship), Nithin Kamath (FinTech)
+` : ''}
 
 ═══════════════════════════════════════════════════════════════
-🚫 CRITICAL: ABSOLUTELY NO DUPLICATES
+🎯 INFLUENCER TIERS (exactly 15 total):
 ═══════════════════════════════════════════════════════════════
-• Each of the 15 influencers must be a DIFFERENT PERSON
-• DO NOT include the same person twice (even on different platforms)
-• If "Ranveer Allahbadia" is included once, do NOT include him again
-• If "Bhuvan Bam" is included once, do NOT include him again
-• Each NAME must be unique across all 15 entries
-• VERIFY before returning: Are all 15 names different people?
+
+1. REGIONAL NICHE EXPERTS (5 influencers):
+   - Based in ${state || city || locationContext}
+   - 50K-500K followers
+   - MUST be in ${businessContext.industry} niche
+   - High local influence
+
+2. NATIONAL THOUGHT LEADERS (5 influencers):
+   - Famous across ${country}
+   - 500K-5M followers  
+   - MUST talk about ${businessContext.industry} topics
+   - Respected in the industry
+
+3. MICRO INFLUENCERS (5 influencers):
+   - 10K-100K followers
+   - Very high engagement (4%+)
+   - Hyper-focused on ${businessContext.industry}
+   - Often reply to comments, authentic
+
+═══════════════════════════════════════════════════════════════
+📱 PLATFORM MIX:
+═══════════════════════════════════════════════════════════════
+- Instagram: 4-5 (visual content creators)
+- YouTube: 4-5 (long-form educators)
+- LinkedIn: 3-4 (professional thought leaders)
+- Twitter/X: 2-3 (industry voices)
 
 ═══════════════════════════════════════════════════════════════
 📊 RETURN FORMAT (JSON):
@@ -497,32 +585,32 @@ PLATFORM DISTRIBUTION:
 {
   "influencers": [
     {
-      "name": "Full Real Name (UNIQUE - no duplicates)",
-      "handle": "exact_platform_username",
-      "platform": "instagram|youtube|twitter|facebook|linkedin",
-      "bio": "What they do and why relevant to ${businessContext.industry}",
-      "niche": ["${businessContext.industry}", "related_niche"],
-      "location": "${locationContext}",
-      "tier": "mega|macro|micro",
-      "followerCount": 1500000,
-      "reach": 500000,
+      "name": "Full Real Name",
+      "handle": "exact_username",
+      "platform": "instagram|youtube|twitter|linkedin|facebook",
+      "bio": "What they do - must be relevant to ${businessContext.industry}",
+      "niche": ["${businessContext.industry}", "related_subniche"],
+      "location": "City, State",
+      "tier": "regional|national|micro",
+      "followerCount": 150000,
+      "reach": 50000,
       "engagementRate": 4.2,
       "isVerified": true,
-      "contentType": "Content type they create",
-      "audienceType": "Demographics of their audience",
-      "relevanceScore": 85,
-      "relevanceReason": "Specific reason why they match ${businessContext.companyName}",
-      "estimatedCost": "₹50,000 - ₹1,00,000 per post"
+      "contentType": "Type of content they create",
+      "audienceType": "Who follows them",
+      "relevanceScore": 90,
+      "relevanceReason": "Why they're perfect for ${businessContext.companyName}",
+      "estimatedCost": "₹25,000 - ₹75,000 per post"
     }
   ]
 }
 
-FINAL CHECK BEFORE RESPONDING:
-□ All 15 influencers have DIFFERENT names? 
-□ All are from ${locationContext} or ${country}?
-□ All create content relevant to ${businessContext.industry}?
-□ Follower counts are realistic and accurate?
-□ Mix of platforms (not all Instagram)?`;
+🔴 FINAL VALIDATION BEFORE RESPONDING:
+□ All 15 are in ${businessContext.industry} niche? (NOT comedy, lifestyle, entertainment)
+□ At least 5 are from ${state || city || locationContext}?
+□ No duplicate names?
+□ Mix of platforms (not all Instagram)?
+□ All are REAL, currently active influencers?`;
 
   try {
     const response = await callGemini(prompt, { maxTokens: 4000, skipCache: true });
