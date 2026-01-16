@@ -58,7 +58,9 @@ try {
 
 /**
  * POST /api/competitors/auto-discover
- * Automatically discover competitors based on business location and industry using Gemini AI
+ * Automatically discover competitors using DUAL-AGENT ARCHITECTURE:
+ * 1. MAKER AGENT: Deep research to find 10+ competitors
+ * 2. CHECKER AGENT: Validates each competitor is real and relevant
  */
 router.post('/auto-discover', protect, async (req, res) => {
   try {
@@ -67,21 +69,40 @@ router.post('/auto-discover', protect, async (req, res) => {
     const { location, forceRefresh = false } = req.body;
 
     console.log('🔍 Auto-discovering competitors for user:', userId);
+    console.log('🏗️ Using DUAL-AGENT architecture: Maker + Checker');
 
     // Get business context from OnboardingContext
     const onboardingContext = await OnboardingContext.findOne({ userId });
     const bp = user?.businessProfile || {};
 
-    // Build business context
+    // STEP 1: If we have a website, scrape it to get ACCURATE business details
+    let scrapedBusinessInfo = null;
+    const websiteUrl = onboardingContext?.company?.website || bp.website;
+    
+    if (websiteUrl) {
+      console.log('🌐 Scraping website for accurate business info:', websiteUrl);
+      try {
+        scrapedBusinessInfo = await scrapeBusinessFromWebsite(websiteUrl);
+        console.log('📋 Scraped business info:', JSON.stringify(scrapedBusinessInfo, null, 2));
+      } catch (scrapeError) {
+        console.error('Website scrape failed:', scrapeError.message);
+      }
+    }
+
+    // Build business context - PREFER scraped data over user-entered data
     const businessContext = {
-      companyName: onboardingContext?.company?.name || bp.name || 'Your Business',
-      industry: onboardingContext?.company?.industry || bp.industry || 'General',
-      description: onboardingContext?.company?.description || bp.niche || '',
-      targetCustomer: onboardingContext?.targetCustomer?.description || bp.targetAudience || '',
-      location: location || onboardingContext?.geography?.businessLocation || onboardingContext?.geography?.regions?.[0] || onboardingContext?.geography?.countries?.[0] || 'India'
+      companyName: scrapedBusinessInfo?.name || onboardingContext?.company?.name || bp.name || 'Your Business',
+      industry: scrapedBusinessInfo?.industry || onboardingContext?.company?.industry || bp.industry || 'General',
+      description: scrapedBusinessInfo?.description || onboardingContext?.company?.description || bp.niche || '',
+      targetCustomer: scrapedBusinessInfo?.targetCustomer || onboardingContext?.targetCustomer?.description || bp.targetAudience || '',
+      // Location: PREFER scraped location, then use provided location, then onboarding
+      location: scrapedBusinessInfo?.location || location || onboardingContext?.geography?.businessLocation || onboardingContext?.geography?.regions?.[0] || onboardingContext?.geography?.countries?.[0] || 'India',
+      website: websiteUrl || '',
+      products: scrapedBusinessInfo?.products || [],
+      keywords: scrapedBusinessInfo?.keywords || []
     };
 
-    console.log('📋 Business context for competitor discovery:', businessContext);
+    console.log('📋 Business context for competitor discovery:', JSON.stringify(businessContext, null, 2));
 
     if (!businessContext.industry || businessContext.industry === 'General') {
       return res.status(400).json({
@@ -98,7 +119,7 @@ router.post('/auto-discover', protect, async (req, res) => {
         createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
       });
 
-      if (existingCompetitors.length >= 3) {
+      if (existingCompetitors.length >= 8) {
         console.log('📦 Returning cached auto-discovered competitors');
         const posts = await getCompetitorPosts(existingCompetitors);
         return res.json({
@@ -111,18 +132,34 @@ router.post('/auto-discover', protect, async (req, res) => {
       }
     }
 
-    // Use Gemini AI to find real competitors
-    console.log('🤖 Asking Gemini AI to find competitors...');
-    let competitors = await discoverCompetitorsWithGemini(businessContext);
+    // ============================================
+    // DUAL-AGENT ARCHITECTURE
+    // ============================================
+    
+    // AGENT 1: MAKER - Deep research to find competitors
+    console.log('🤖 AGENT 1 (MAKER): Deep research for competitors...');
+    const makerResults = await makerAgentDiscoverCompetitors(businessContext);
+    console.log(`📊 Maker Agent found ${makerResults.length} potential competitors`);
 
-    // Fallback competitors if Gemini returns empty or too few
-    if (!competitors || competitors.length < 5) {
-      console.log('⚠️ Gemini returned few results, adding fallback competitors...');
+    // AGENT 2: CHECKER - Validate each competitor
+    console.log('🔍 AGENT 2 (CHECKER): Validating competitors...');
+    const validatedCompetitors = await checkerAgentValidateCompetitors(makerResults, businessContext);
+    console.log(`✅ Checker Agent validated ${validatedCompetitors.length} competitors`);
+
+    // Fallback if we still don't have enough
+    let competitors = validatedCompetitors;
+    if (competitors.length < 10) {
+      console.log('⚠️ Not enough validated competitors, adding industry fallbacks...');
       const fallbackCompetitors = getFallbackCompetitors(businessContext.industry, businessContext.location);
-      competitors = [...(competitors || []), ...fallbackCompetitors].slice(0, 12);
+      
+      // Only add fallbacks that aren't already in our list
+      const existingNames = new Set(competitors.map(c => c.name.toLowerCase()));
+      const newFallbacks = fallbackCompetitors.filter(fc => !existingNames.has(fc.name.toLowerCase()));
+      
+      competitors = [...competitors, ...newFallbacks].slice(0, 12);
     }
 
-    console.log(`✅ Found ${competitors.length} competitors`);
+    console.log(`🎯 Final competitor count: ${competitors.length}`);
 
     // Delete old auto-discovered competitors
     await Competitor.deleteMany({ userId, isAutoDiscovered: true });
@@ -143,11 +180,333 @@ router.post('/auto-discover', protect, async (req, res) => {
             facebook: comp.facebook || '',
             linkedin: comp.linkedin || ''
           },
-          location: businessContext.location,
+          location: comp.location || businessContext.location,
           isActive: true,
           isAutoDiscovered: true,
           posts: [],
           metrics: {
+            followers: comp.estimatedFollowers || 0,
+            lastFetched: new Date()
+          },
+          validatedByChecker: comp.validated || false,
+          competitorType: comp.competitorType || 'direct'
+        });
+        await competitor.save();
+        savedCompetitors.push(competitor);
+      } catch (saveError) {
+        console.error('Error saving competitor:', comp.name, saveError.message);
+      }
+    }
+
+    // Fetch posts for the new competitors
+    console.log('📥 Fetching posts for discovered competitors...');
+    const posts = await fetchPostsForCompetitors(savedCompetitors);
+
+    res.json({
+      success: true,
+      competitors: savedCompetitors,
+      posts,
+      discovered: savedCompetitors.length,
+      validated: validatedCompetitors.length,
+      message: `Discovered ${savedCompetitors.length} competitors in ${businessContext.location}`,
+      agentStats: {
+        makerFound: makerResults.length,
+        checkerValidated: validatedCompetitors.length,
+        finalCount: savedCompetitors.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Competitor auto-discovery error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to discover competitors',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Scrape a website to extract accurate business information
+ * This helps get the CORRECT location and industry
+ */
+async function scrapeBusinessFromWebsite(websiteUrl) {
+  try {
+    const scrapedData = await scrapeWebsite(websiteUrl);
+    if (!scrapedData || !scrapedData.content) {
+      return null;
+    }
+
+    // Use Gemini to analyze the scraped content
+    const prompt = `Analyze this website content and extract business information.
+
+WEBSITE CONTENT:
+${scrapedData.content.substring(0, 8000)}
+
+Extract and return ONLY this JSON (no other text):
+{
+  "name": "Company name",
+  "industry": "Specific industry (e.g., 'Social Media Management SaaS', 'E-commerce', 'FinTech')",
+  "description": "What the company does in 2-3 sentences",
+  "location": "Where the company is headquartered (City, Country)",
+  "targetCustomer": "Who they sell to",
+  "products": ["List of main products/services"],
+  "keywords": ["Relevant industry keywords for competitor search"]
+}
+
+Be SPECIFIC about the industry and location. If it's a SaaS company, mention "SaaS". 
+If location is not clear, return "Global" or the most likely location based on context.`;
+
+    const response = await callGemini(prompt, { maxTokens: 1000, skipCache: true });
+    const result = parseGeminiJSON(response);
+    
+    console.log('🌐 Extracted business info from website:', result);
+    return result;
+  } catch (error) {
+    console.error('Error scraping website for business info:', error.message);
+    return null;
+  }
+}
+
+/**
+ * MAKER AGENT: Deep research to find 10+ competitors
+ * Does comprehensive market research to identify ALL potential competitors
+ */
+async function makerAgentDiscoverCompetitors(businessContext) {
+  const prompt = `You are a SENIOR MARKET RESEARCH ANALYST at McKinsey & Company.
+Your task is to conduct DEEP MARKET RESEARCH to find ALL competitors for a business.
+
+═══════════════════════════════════════════════════════════════
+📋 BUSINESS TO ANALYZE:
+═══════════════════════════════════════════════════════════════
+• Company Name: ${businessContext.companyName}
+• Website: ${businessContext.website || 'Not provided'}
+• Industry: ${businessContext.industry}
+• Description: ${businessContext.description || 'Not provided'}
+• Target Customer: ${businessContext.targetCustomer || 'Not specified'}
+• Location: ${businessContext.location}
+• Products/Services: ${(businessContext.products || []).join(', ') || 'Not specified'}
+• Keywords: ${(businessContext.keywords || []).join(', ') || 'Not specified'}
+
+═══════════════════════════════════════════════════════════════
+🔍 DEEP RESEARCH INSTRUCTIONS:
+═══════════════════════════════════════════════════════════════
+
+Think step by step:
+
+1. **UNDERSTAND THE BUSINESS**: What exactly does ${businessContext.companyName} do? 
+   - What problem do they solve?
+   - Who are their customers?
+   - What is their business model?
+
+2. **IDENTIFY COMPETITOR CATEGORIES**:
+   - Direct competitors (same product, same market)
+   - Indirect competitors (different product, same need)
+   - Substitute products/services
+   - Global players with local presence
+   - Local/regional players
+
+3. **RESEARCH EACH CATEGORY**: For ${businessContext.industry} in ${businessContext.location}:
+   - Who are the market leaders?
+   - Who are the well-funded startups?
+   - Who are the established players?
+   - Who are the emerging disruptors?
+
+4. **FIND 12-15 COMPETITORS**: You MUST find at least 12 different competitors.
+
+═══════════════════════════════════════════════════════════════
+📊 COMPETITOR REQUIREMENTS:
+═══════════════════════════════════════════════════════════════
+
+MUST INCLUDE (at least 12 total):
+- 3-4 Market Leaders (everyone knows them)
+- 3-4 Direct Competitors (same space)
+- 2-3 Indirect Competitors (adjacent space)
+- 2-3 Well-funded Startups (Series A+)
+- 2 Global Players (if applicable)
+
+EACH COMPETITOR MUST HAVE:
+- Real company that exists
+- Active social media presence
+- Verifiable website
+- Clear relevance to ${businessContext.companyName}
+
+═══════════════════════════════════════════════════════════════
+📱 SOCIAL MEDIA REQUIREMENTS:
+═══════════════════════════════════════════════════════════════
+
+For EACH competitor, provide their REAL social handles:
+- Instagram: @handle (must be real, verified if possible)
+- Twitter/X: @handle (must be real)
+- LinkedIn: company page URL
+- Website: https://... (official website)
+
+DO NOT make up handles. Only include handles you're confident exist.
+
+═══════════════════════════════════════════════════════════════
+📋 RETURN FORMAT (JSON only):
+═══════════════════════════════════════════════════════════════
+{
+  "analysis": {
+    "businessType": "What type of business ${businessContext.companyName} is",
+    "mainProducts": ["List of their products/services"],
+    "targetMarket": "Who they target",
+    "competitorCategories": ["Categories of competitors identified"]
+  },
+  "competitors": [
+    {
+      "name": "Competitor Name",
+      "website": "https://competitor.com",
+      "instagram": "@handle",
+      "twitter": "@handle",
+      "linkedin": "https://linkedin.com/company/...",
+      "description": "What they do and why they compete with ${businessContext.companyName}",
+      "location": "Headquarters location",
+      "estimatedFollowers": 50000,
+      "competitorType": "market_leader|direct|indirect|startup|global",
+      "whyCompetitor": "Specific reason why they're a competitor",
+      "strength": "Their main competitive advantage"
+    }
+  ]
+}
+
+Remember: Find AT LEAST 12 competitors. More is better. Be thorough!`;
+
+  try {
+    const response = await callGemini(prompt, { maxTokens: 5000, skipCache: true });
+    const result = parseGeminiJSON(response);
+
+    if (result && result.competitors && Array.isArray(result.competitors)) {
+      console.log(`🤖 MAKER AGENT: Found ${result.competitors.length} competitors`);
+      if (result.analysis) {
+        console.log('📊 Business Analysis:', JSON.stringify(result.analysis, null, 2));
+      }
+      return result.competitors;
+    }
+
+    console.error('MAKER AGENT: Invalid response format');
+    return [];
+  } catch (error) {
+    console.error('MAKER AGENT error:', error.message);
+    return [];
+  }
+}
+
+/**
+ * CHECKER AGENT: Validates each competitor found by Maker Agent
+ * Ensures competitors are real, relevant, and have accurate data
+ */
+async function checkerAgentValidateCompetitors(competitors, businessContext) {
+  if (!competitors || competitors.length === 0) {
+    return [];
+  }
+
+  // Format competitors for validation
+  const competitorList = competitors.map((c, i) => 
+    `${i + 1}. ${c.name} - ${c.description || 'No description'} - Website: ${c.website || 'None'} - Instagram: ${c.instagram || 'None'}`
+  ).join('\n');
+
+  const prompt = `You are a QUALITY ASSURANCE ANALYST verifying competitor research.
+
+═══════════════════════════════════════════════════════════════
+📋 ORIGINAL BUSINESS:
+═══════════════════════════════════════════════════════════════
+• Company: ${businessContext.companyName}
+• Industry: ${businessContext.industry}
+• Description: ${businessContext.description || 'Not provided'}
+• Location: ${businessContext.location}
+
+═══════════════════════════════════════════════════════════════
+📊 COMPETITORS TO VALIDATE:
+═══════════════════════════════════════════════════════════════
+${competitorList}
+
+═══════════════════════════════════════════════════════════════
+🔍 VALIDATION CRITERIA:
+═══════════════════════════════════════════════════════════════
+
+For EACH competitor, check:
+
+✅ VALID if ALL of these are true:
+1. It's a REAL company that exists (not made up)
+2. It's genuinely a competitor to ${businessContext.companyName}
+3. It operates in the same or adjacent market
+4. The social handles appear correct
+5. It makes business sense as a competitor
+
+❌ INVALID if ANY of these are true:
+1. Company doesn't seem to exist
+2. Not actually a competitor (different industry)
+3. Wrong social handles
+4. Duplicate of another entry
+5. Too generic (like "Local Business")
+
+═══════════════════════════════════════════════════════════════
+📋 RETURN FORMAT (JSON only):
+═══════════════════════════════════════════════════════════════
+{
+  "validatedCompetitors": [
+    {
+      "name": "Competitor Name",
+      "valid": true,
+      "confidence": 95,
+      "validationNote": "Why this is a valid competitor",
+      "correctedInstagram": "@correct_handle",
+      "correctedTwitter": "@correct_handle",
+      "website": "https://...",
+      "description": "Updated description if needed",
+      "location": "Corrected location",
+      "competitorType": "market_leader|direct|indirect|startup|global"
+    }
+  ],
+  "rejectedCompetitors": [
+    {
+      "name": "Rejected Company",
+      "reason": "Why it was rejected"
+    }
+  ]
+}
+
+Be strict! Only approve competitors you're confident are real and relevant.
+But also be comprehensive - we need at least 10 validated competitors.`;
+
+  try {
+    const response = await callGemini(prompt, { maxTokens: 4000, skipCache: true });
+    const result = parseGeminiJSON(response);
+
+    if (result && result.validatedCompetitors && Array.isArray(result.validatedCompetitors)) {
+      console.log(`🔍 CHECKER AGENT: Validated ${result.validatedCompetitors.length} competitors`);
+      
+      if (result.rejectedCompetitors && result.rejectedCompetitors.length > 0) {
+        console.log(`❌ CHECKER AGENT: Rejected ${result.rejectedCompetitors.length} competitors:`);
+        result.rejectedCompetitors.forEach(r => console.log(`   - ${r.name}: ${r.reason}`));
+      }
+
+      // Map validated competitors back to the expected format
+      return result.validatedCompetitors
+        .filter(c => c.valid !== false && c.confidence >= 70)
+        .map(c => ({
+          name: c.name,
+          website: c.website || '',
+          instagram: c.correctedInstagram || c.instagram || '',
+          twitter: c.correctedTwitter || c.twitter || '',
+          description: c.description || '',
+          location: c.location || businessContext.location,
+          competitorType: c.competitorType || 'direct',
+          validated: true,
+          confidence: c.confidence
+        }));
+    }
+
+    // If validation fails, return original with basic filtering
+    console.warn('CHECKER AGENT: Could not parse validation response, using basic filter');
+    return competitors.filter(c => c.name && c.name.length > 2);
+  } catch (error) {
+    console.error('CHECKER AGENT error:', error.message);
+    // Return original competitors if checker fails
+    return competitors;
+  }
+}
             followers: comp.estimatedFollowers || 0,
             lastFetched: new Date()
           }
@@ -1489,18 +1848,87 @@ function getFallbackCompetitors(industry, location) {
       { name: 'Kotak Mahindra Bank', instagram: '@kotak_mahindra_bank', twitter: '@KotakBankLtd', website: 'https://www.kotak.com', description: 'Private sector bank', estimatedFollowers: 400000, competitorType: 'direct' },
       { name: 'Axis Bank', instagram: '@axisbank', twitter: '@AxisBank', website: 'https://www.axisbank.com', description: 'Private sector bank', estimatedFollowers: 350000, competitorType: 'direct' },
       { name: 'Bajaj Finserv', instagram: '@bajajfinserv', twitter: '@BajajFinserv', website: 'https://www.bajajfinserv.in', description: 'Financial services company', estimatedFollowers: 300000, competitorType: 'direct' },
-      { name: 'Zerodha', instagram: '@zerodha', twitter: '@zeaborrodha', website: 'https://zerodha.com', description: 'Discount stock broker', estimatedFollowers: 500000, competitorType: 'direct' },
+      { name: 'Zerodha', instagram: '@zerodha', twitter: '@zerodha', website: 'https://zerodha.com', description: 'Discount stock broker', estimatedFollowers: 500000, competitorType: 'direct' },
       { name: 'Groww', instagram: '@groww', twitter: '@GrowwApp', website: 'https://groww.in', description: 'Investment platform', estimatedFollowers: 600000, competitorType: 'direct' },
       { name: 'CRED', instagram: '@cred_club', twitter: '@CRED_club', website: 'https://cred.club', description: 'Credit card bill payment app', estimatedFollowers: 400000, competitorType: 'indirect' },
       { name: 'Policybazaar', instagram: '@policybazaar', twitter: '@PolicybazaarIn', website: 'https://www.policybazaar.com', description: 'Insurance comparison platform', estimatedFollowers: 250000, competitorType: 'indirect' },
       { name: 'Paytm Money', instagram: '@paytmmoney', twitter: '@PaytmMoney', website: 'https://www.paytmmoney.com', description: 'Investment and trading platform', estimatedFollowers: 200000, competitorType: 'direct' }
+    ],
+    // SaaS and Social Media Management Tools
+    'saas': [
+      { name: 'Hootsuite', instagram: '@hootsuite', twitter: '@hootsuite', website: 'https://www.hootsuite.com', description: 'Social media management platform', estimatedFollowers: 400000, competitorType: 'market_leader' },
+      { name: 'Buffer', instagram: '@buffer', twitter: '@buffer', website: 'https://buffer.com', description: 'Social media scheduling and analytics', estimatedFollowers: 200000, competitorType: 'direct' },
+      { name: 'Sprout Social', instagram: '@spraboroutsocial', twitter: '@SproutSocial', website: 'https://sproutsocial.com', description: 'Social media management suite', estimatedFollowers: 150000, competitorType: 'direct' },
+      { name: 'Later', instagram: '@latermedia', twitter: '@latermedia', website: 'https://later.com', description: 'Visual social media planner', estimatedFollowers: 300000, competitorType: 'direct' },
+      { name: 'Sprinklr', instagram: '@sprinklr', twitter: '@Sprinklr', website: 'https://www.sprinklr.com', description: 'Enterprise social media management', estimatedFollowers: 80000, competitorType: 'market_leader' },
+      { name: 'HubSpot', instagram: '@hubspot', twitter: '@HubSpot', website: 'https://www.hubspot.com', description: 'Marketing and CRM platform', estimatedFollowers: 500000, competitorType: 'market_leader' },
+      { name: 'Zoho Social', instagram: '@zoho', twitter: '@Zoho', website: 'https://www.zoho.com/social', description: 'Social media management tool', estimatedFollowers: 200000, competitorType: 'direct' },
+      { name: 'Agorapulse', instagram: '@agorapulse', twitter: '@Agorapulse', website: 'https://www.agorapulse.com', description: 'Social media management tool', estimatedFollowers: 50000, competitorType: 'direct' },
+      { name: 'Sendible', instagram: '@sendible', twitter: '@Sendible', website: 'https://www.sendible.com', description: 'Social media management for agencies', estimatedFollowers: 30000, competitorType: 'direct' },
+      { name: 'Loomly', instagram: '@loomly', twitter: '@laboroomly', website: 'https://www.loomly.com', description: 'Brand success platform', estimatedFollowers: 20000, competitorType: 'direct' },
+      { name: 'CoSchedule', instagram: '@coschedule', twitter: '@CoSchedule', website: 'https://coschedule.com', description: 'Marketing calendar and scheduling', estimatedFollowers: 40000, competitorType: 'direct' },
+      { name: 'SocialBee', instagram: '@socialbee', twitter: '@SocialBeeHQ', website: 'https://socialbee.com', description: 'Social media management tool', estimatedFollowers: 25000, competitorType: 'direct' }
+    ],
+    'social media': [
+      { name: 'Hootsuite', instagram: '@hootsuite', twitter: '@hootsuite', website: 'https://www.hootsuite.com', description: 'Social media management platform', estimatedFollowers: 400000, competitorType: 'market_leader' },
+      { name: 'Buffer', instagram: '@buffer', twitter: '@buffer', website: 'https://buffer.com', description: 'Social media scheduling and analytics', estimatedFollowers: 200000, competitorType: 'direct' },
+      { name: 'Sprout Social', instagram: '@sproutsocial', twitter: '@SproutSocial', website: 'https://sproutsocial.com', description: 'Social media management suite', estimatedFollowers: 150000, competitorType: 'direct' },
+      { name: 'Later', instagram: '@latermedia', twitter: '@latermedia', website: 'https://later.com', description: 'Visual social media planner', estimatedFollowers: 300000, competitorType: 'direct' },
+      { name: 'Sprinklr', instagram: '@sprinklr', twitter: '@Sprinklr', website: 'https://www.sprinklr.com', description: 'Enterprise social media management', estimatedFollowers: 80000, competitorType: 'market_leader' },
+      { name: 'HubSpot', instagram: '@hubspot', twitter: '@HubSpot', website: 'https://www.hubspot.com', description: 'Marketing and CRM platform', estimatedFollowers: 500000, competitorType: 'market_leader' },
+      { name: 'Zoho Social', instagram: '@zoho', twitter: '@Zoho', website: 'https://www.zoho.com/social', description: 'Social media management tool', estimatedFollowers: 200000, competitorType: 'direct' },
+      { name: 'Canva', instagram: '@canva', twitter: '@canva', website: 'https://www.canva.com', description: 'Design and content creation platform', estimatedFollowers: 2000000, competitorType: 'indirect' },
+      { name: 'Adobe Express', instagram: '@adobe', twitter: '@Adobe', website: 'https://www.adobe.com/express', description: 'Quick content creation tool', estimatedFollowers: 1500000, competitorType: 'indirect' },
+      { name: 'Notion', instagram: '@notionhq', twitter: '@NotionHQ', website: 'https://www.notion.so', description: 'Workspace and collaboration tool', estimatedFollowers: 500000, competitorType: 'indirect' },
+      { name: 'Monday.com', instagram: '@mondaydotcom', twitter: '@mondaydotcom', website: 'https://monday.com', description: 'Work management platform', estimatedFollowers: 300000, competitorType: 'indirect' },
+      { name: 'Asana', instagram: '@asana', twitter: '@asana', website: 'https://asana.com', description: 'Project management tool', estimatedFollowers: 200000, competitorType: 'indirect' }
+    ],
+    'marketing': [
+      { name: 'HubSpot', instagram: '@hubspot', twitter: '@HubSpot', website: 'https://www.hubspot.com', description: 'Inbound marketing and CRM', estimatedFollowers: 500000, competitorType: 'market_leader' },
+      { name: 'Mailchimp', instagram: '@mailchimp', twitter: '@Mailchimp', website: 'https://mailchimp.com', description: 'Email marketing platform', estimatedFollowers: 400000, competitorType: 'market_leader' },
+      { name: 'Hootsuite', instagram: '@hootsuite', twitter: '@hootsuite', website: 'https://www.hootsuite.com', description: 'Social media management platform', estimatedFollowers: 400000, competitorType: 'direct' },
+      { name: 'Semrush', instagram: '@semrush', twitter: '@semrush', website: 'https://www.semrush.com', description: 'SEO and marketing analytics', estimatedFollowers: 200000, competitorType: 'direct' },
+      { name: 'Ahrefs', instagram: '@aaborhrefs', twitter: '@ahrefs', website: 'https://ahrefs.com', description: 'SEO tools and analytics', estimatedFollowers: 100000, competitorType: 'direct' },
+      { name: 'Moz', instagram: '@maboroz', twitter: '@Moz', website: 'https://moz.com', description: 'SEO software and tools', estimatedFollowers: 80000, competitorType: 'direct' },
+      { name: 'Canva', instagram: '@canva', twitter: '@canva', website: 'https://www.canva.com', description: 'Design platform for marketers', estimatedFollowers: 2000000, competitorType: 'indirect' },
+      { name: 'Salesforce Marketing Cloud', instagram: '@salesforce', twitter: '@salesforce', website: 'https://www.salesforce.com/products/marketing-cloud', description: 'Enterprise marketing automation', estimatedFollowers: 800000, competitorType: 'market_leader' },
+      { name: 'ActiveCampaign', instagram: '@activecampaign', twitter: '@ActiveCampaign', website: 'https://www.activecampaign.com', description: 'Marketing automation platform', estimatedFollowers: 100000, competitorType: 'direct' },
+      { name: 'Klaviyo', instagram: '@klaviyo', twitter: '@klaviyo', website: 'https://www.klaviyo.com', description: 'Email marketing for e-commerce', estimatedFollowers: 80000, competitorType: 'direct' },
+      { name: 'Intercom', instagram: '@intercom', twitter: '@intercom', website: 'https://www.intercom.com', description: 'Customer messaging platform', estimatedFollowers: 100000, competitorType: 'indirect' },
+      { name: 'Drift', instagram: '@drift', twitter: '@drift', website: 'https://www.drift.com', description: 'Conversational marketing platform', estimatedFollowers: 50000, competitorType: 'indirect' }
+    ],
+    'startup': [
+      { name: 'Y Combinator Companies', instagram: '@ycombinator', twitter: '@ycombinator', website: 'https://www.ycombinator.com', description: 'Top startup accelerator', estimatedFollowers: 800000, competitorType: 'market_leader' },
+      { name: 'Techstars', instagram: '@techstars', twitter: '@techstars', website: 'https://www.techstars.com', description: 'Global startup accelerator', estimatedFollowers: 300000, competitorType: 'direct' },
+      { name: '500 Startups', instagram: '@500global', twitter: '@500Global', website: 'https://500.co', description: 'Venture capital and accelerator', estimatedFollowers: 200000, competitorType: 'direct' },
+      { name: 'AngelList', instagram: '@angellist', twitter: '@angellist', website: 'https://angel.co', description: 'Startup funding platform', estimatedFollowers: 150000, competitorType: 'indirect' },
+      { name: 'Product Hunt', instagram: '@productaborhunt', twitter: '@ProductHunt', website: 'https://www.producthunt.com', description: 'Product discovery platform', estimatedFollowers: 200000, competitorType: 'indirect' },
+      { name: 'Crunchbase', instagram: '@crunchbase', twitter: '@crunchbase', website: 'https://www.crunchbase.com', description: 'Startup and funding database', estimatedFollowers: 100000, competitorType: 'indirect' },
+      { name: 'TiE', instagram: '@tie_global', twitter: '@TiEGlobal', website: 'https://tie.org', description: 'Global entrepreneur network', estimatedFollowers: 50000, competitorType: 'direct' },
+      { name: 'Nasscom', instagram: '@nasscom', twitter: '@nassaborcom', website: 'https://nasscom.in', description: 'Indian IT industry association', estimatedFollowers: 80000, competitorType: 'direct' },
+      { name: 'Indian Angel Network', instagram: '@indianangelnetwork', twitter: '@IAN_network', website: 'https://www.indianangelnetwork.com', description: 'Angel investor network', estimatedFollowers: 30000, competitorType: 'direct' },
+      { name: 'Sequoia India', instagram: '@sequoiaindiaaborsa', twitter: '@sequoia_india', website: 'https://www.sequoiacap.com', description: 'Venture capital firm', estimatedFollowers: 50000, competitorType: 'indirect' }
     ]
   };
 
-  // Find matching industry
-  const industryKey = Object.keys(industryFallbacks).find(key => 
+  // Find matching industry - check multiple keywords
+  let industryKey = Object.keys(industryFallbacks).find(key => 
     industry.toLowerCase().includes(key)
   );
+  
+  // Additional keyword matching for SaaS/Social Media tools
+  if (!industryKey) {
+    const industryLower = industry.toLowerCase();
+    if (industryLower.includes('social') || industryLower.includes('management') || industryLower.includes('scheduling')) {
+      industryKey = 'social media';
+    } else if (industryLower.includes('saas') || industryLower.includes('software') || industryLower.includes('platform')) {
+      industryKey = 'saas';
+    } else if (industryLower.includes('market') || industryLower.includes('advertis') || industryLower.includes('agency')) {
+      industryKey = 'marketing';
+    } else if (industryLower.includes('startup') || industryLower.includes('accelerator') || industryLower.includes('incubator')) {
+      industryKey = 'startup';
+    }
+  }
 
   let fallbacks = industryKey ? industryFallbacks[industryKey] : getGenericCompetitors();
   
