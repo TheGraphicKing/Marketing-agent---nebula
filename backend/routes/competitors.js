@@ -507,38 +507,6 @@ But also be comprehensive - we need at least 10 validated competitors.`;
     return competitors;
   }
 }
-            followers: comp.estimatedFollowers || 0,
-            lastFetched: new Date()
-          }
-        });
-        await competitor.save();
-        savedCompetitors.push(competitor);
-      } catch (saveError) {
-        console.error('Error saving competitor:', comp.name, saveError.message);
-      }
-    }
-
-    // Fetch posts for the new competitors
-    console.log('📥 Fetching posts for discovered competitors...');
-    const posts = await fetchPostsForCompetitors(savedCompetitors);
-
-    res.json({
-      success: true,
-      competitors: savedCompetitors,
-      posts,
-      discovered: savedCompetitors.length,
-      message: `Discovered ${savedCompetitors.length} competitors in ${businessContext.location}`
-    });
-
-  } catch (error) {
-    console.error('Competitor auto-discovery error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to discover competitors',
-      error: error.message
-    });
-  }
-});
 
 /**
  * Use Gemini AI to discover real competitors based on business context
