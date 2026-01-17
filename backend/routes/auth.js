@@ -5,22 +5,14 @@ const { generateToken, protect } = require('../middleware/auth');
 const Competitor = require('../models/Competitor');
 const { generateWithLLM } = require('../services/llmRouter');
 
-// Import REAL Instagram post fetching via Apify
-let scrapeInstagramProfile, generateCompetitorPosts;
+// Import REAL Instagram post fetching via Apify - NO AI FALLBACK
+let scrapeInstagramProfile;
 try {
   const socialAPI = require('../services/socialMediaAPI');
   scrapeInstagramProfile = socialAPI.scrapeInstagramProfile;
 } catch (e) {
   console.warn('socialMediaAPI not available');
   scrapeInstagramProfile = async () => ({ success: false });
-}
-
-// Fallback to AI-generated posts if Apify fails
-try {
-  const fetcher = require('../services/socialMediaFetcher');
-  generateCompetitorPosts = fetcher.generateCompetitorPosts;
-} catch (e) {
-  generateCompetitorPosts = async () => [];
 }
 
 const router = express.Router();
@@ -178,6 +170,7 @@ All 15 competitors must be REAL companies. Return only valid JSON.`;
     console.log(`🎯 Saved ${savedCount} competitors for user ${userId}`);
     
     // Fetch REAL Instagram posts for all saved competitors using Apify
+    // NO AI FALLBACK - Only real data from Instagram
     console.log('📸 Fetching REAL Instagram posts for all competitors via Apify...');
     
     // Process in batches of 3 to avoid API rate limits (Apify has limits)
@@ -189,62 +182,44 @@ All 15 competitors must be REAL companies. Return only valid JSON.`;
         try {
           const instagramHandle = competitor.socialHandles?.instagram;
           
-          let posts = [];
+          // Only fetch if we have an Instagram handle
+          if (!instagramHandle) {
+            console.log(`⚠️ No Instagram handle for ${competitor.name}, skipping...`);
+            return;
+          }
           
-          // Fetch REAL Instagram posts via Apify
-          if (instagramHandle) {
-            console.log(`📸 Fetching real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
-            const realData = await scrapeInstagramProfile(instagramHandle);
+          console.log(`📸 Fetching real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
+          const realData = await scrapeInstagramProfile(instagramHandle);
+          
+          if (realData && realData.success !== false && realData.recentPosts && realData.recentPosts.length > 0) {
+            const posts = realData.recentPosts.map(post => ({
+              platform: 'instagram',
+              content: post.caption || post.text || '',
+              likes: post.likes || post.likesCount || 0,
+              comments: post.comments || post.commentsCount || 0,
+              shares: post.shares || 0,
+              imageUrl: post.imageUrl || post.displayUrl || post.thumbnailUrl || null,
+              postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
+              postedAt: new Date(post.timestamp * 1000 || post.takenAtTimestamp * 1000 || Date.now()),
+              fetchedAt: new Date(),
+              isRealData: true
+            }));
             
-            if (realData && realData.success !== false && realData.recentPosts) {
-              posts = realData.recentPosts.map(post => ({
-                platform: 'instagram',
-                content: post.caption || post.text || '',
-                likes: post.likes || post.likesCount || 0,
-                comments: post.comments || post.commentsCount || 0,
-                shares: post.shares || 0,
-                imageUrl: post.imageUrl || post.displayUrl || post.thumbnailUrl || null,
-                postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
-                postedAt: new Date(post.timestamp * 1000 || post.takenAtTimestamp * 1000 || Date.now()),
-                fetchedAt: new Date(),
-                isRealData: true
-              }));
-              
-              // Update follower count if available
-              if (realData.followersCount) {
-                competitor.metrics.followers = realData.followersCount;
-              }
-              
-              console.log(`✅ Fetched ${posts.length} REAL Instagram posts for ${competitor.name}`);
-            } else {
-              console.log(`⚠️ No Instagram data returned for ${competitor.name}`);
+            // Update follower count if available
+            if (realData.followersCount) {
+              competitor.metrics.followers = realData.followersCount;
             }
-          } else {
-            console.log(`⚠️ No Instagram handle for ${competitor.name}`);
-          }
-          
-          // Fallback to AI-generated posts if no real Instagram data
-          if (posts.length === 0) {
-            console.log(`⚠️ Using AI fallback for ${competitor.name}...`);
-            posts = await generateCompetitorPosts(competitor, { industry: businessContext.industry });
-          }
-          
-          if (posts && posts.length > 0) {
+            
             competitor.posts = posts;
             competitor.metrics.lastFetched = new Date();
             await competitor.save();
-            console.log(`📝 Saved ${posts.length} posts for ${competitor.name}`);
+            console.log(`✅ Saved ${posts.length} REAL Instagram posts for ${competitor.name}`);
+          } else {
+            console.log(`⚠️ No Instagram data returned for ${competitor.name} - will have no posts`);
           }
         } catch (postError) {
-          console.error(`Failed to fetch posts for ${competitor.name}:`, postError.message);
-          // Try AI fallback on error
-          try {
-            const aiPosts = await generateCompetitorPosts(competitor, { industry: businessContext.industry });
-            if (aiPosts && aiPosts.length > 0) {
-              competitor.posts = aiPosts;
-              await competitor.save();
-            }
-          } catch (e) {}
+          console.error(`Failed to fetch Instagram posts for ${competitor.name}:`, postError.message);
+          // NO AI FALLBACK - just log the error and continue
         }
       }));
       
@@ -256,7 +231,7 @@ All 15 competitors must be REAL companies. Return only valid JSON.`;
     
     console.log('🔍 ===========================================');
     console.log('🔍 BACKGROUND COMPETITOR DISCOVERY COMPLETE');
-    console.log(`🔍 ${savedCount} competitors with REAL posts fetched`);
+    console.log(`🔍 ${savedCount} competitors - REAL Instagram posts only`);
     console.log('🔍 ===========================================');
   } catch (error) {
     console.error('❌ Background competitor discovery error:', error.message);

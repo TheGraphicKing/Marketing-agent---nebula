@@ -1059,32 +1059,65 @@ Provide analysis in JSON format:
 
 /**
  * POST /api/competitors/:id/refresh-posts
- * Refresh/fetch new posts for a specific competitor using AI
+ * Refresh/fetch new REAL posts for a specific competitor using Instagram Apify
  */
 router.post('/:id/refresh-posts', protect, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id;
-    const user = await User.findById(userId);
     const competitor = await Competitor.findOne({ _id: req.params.id, userId });
     
     if (!competitor) {
       return res.status(404).json({ success: false, message: 'Competitor not found' });
     }
     
-    // Generate new posts using AI
-    const newPosts = await generateCompetitorPosts(competitor, user?.businessProfile);
+    const instagramHandle = competitor.socialHandles?.instagram;
     
-    if (newPosts.length > 0) {
-      // Add new posts to competitor (keep last 10)
-      competitor.posts = [...newPosts, ...(competitor.posts || [])].slice(0, 10);
-      await competitor.save();
+    if (!instagramHandle) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No Instagram handle found for this competitor' 
+      });
     }
     
-    res.json({
-      success: true,
-      message: `Refreshed ${newPosts.length} posts`,
-      posts: newPosts
-    });
+    // Fetch REAL Instagram posts via Apify
+    console.log(`📸 Refreshing real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
+    const realData = await scrapeInstagramProfile(instagramHandle);
+    
+    if (realData && realData.success !== false && realData.recentPosts && realData.recentPosts.length > 0) {
+      const newPosts = realData.recentPosts.map(post => ({
+        platform: 'instagram',
+        content: post.caption || post.text || '',
+        likes: post.likes || post.likesCount || 0,
+        comments: post.comments || post.commentsCount || 0,
+        shares: post.shares || 0,
+        imageUrl: post.imageUrl || post.displayUrl || post.thumbnailUrl || null,
+        postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
+        postedAt: new Date(post.timestamp * 1000 || post.takenAtTimestamp * 1000 || Date.now()),
+        fetchedAt: new Date(),
+        isRealData: true
+      }));
+      
+      // Update follower count if available
+      if (realData.followersCount) {
+        competitor.metrics.followers = realData.followersCount;
+      }
+      
+      competitor.posts = newPosts;
+      competitor.metrics.lastFetched = new Date();
+      await competitor.save();
+      
+      res.json({
+        success: true,
+        message: `Fetched ${newPosts.length} real Instagram posts`,
+        posts: newPosts
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'Could not fetch Instagram posts - check if handle is correct',
+        posts: []
+      });
+    }
   } catch (error) {
     console.error('Refresh posts error:', error);
     res.status(500).json({ success: false, message: 'Failed to refresh posts', error: error.message });
