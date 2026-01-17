@@ -73,18 +73,45 @@ RETURN THIS JSON:
 
 All 15 competitors must be REAL companies. Return only valid JSON.`;
 
-    const result = await generateWithLLM({ provider: 'gemini', prompt, taskType: 'analysis' });
+    const result = await generateWithLLM({ 
+      provider: 'gemini', 
+      prompt, 
+      taskType: 'analysis',
+      maxTokens: 8192  // Increased for 15 competitors
+    });
     const responseText = typeof result === 'string' ? result : (result?.text || result?.content || '');
     
-    // Parse JSON from response
+    // Parse JSON from response with repair logic
     let parsed;
     try {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
+        let jsonStr = jsonMatch[0];
+        try {
+          parsed = JSON.parse(jsonStr);
+        } catch (parseErr) {
+          // Try to repair truncated JSON
+          if (parseErr.message.includes('Unterminated') || parseErr.message.includes('Unexpected end')) {
+            console.log('Attempting to repair truncated JSON...');
+            const lastComplete = jsonStr.lastIndexOf('},');
+            if (lastComplete > 0) {
+              let repaired = jsonStr.substring(0, lastComplete + 1);
+              const openBrackets = (repaired.match(/\[/g) || []).length;
+              const closeBrackets = (repaired.match(/]/g) || []).length;
+              const openBraces = (repaired.match(/{/g) || []).length;
+              const closeBraces = (repaired.match(/}/g) || []).length;
+              for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']';
+              for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}';
+              parsed = JSON.parse(repaired);
+              console.log('✅ Successfully repaired truncated JSON');
+            }
+          }
+          if (!parsed) throw parseErr;
+        }
       }
     } catch (e) {
       console.error('Failed to parse Gemini response:', e.message);
+      console.log('Response preview:', responseText?.substring(0, 300));
       return;
     }
 
