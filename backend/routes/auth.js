@@ -5,16 +5,14 @@ const { generateToken, protect } = require('../middleware/auth');
 const Competitor = require('../models/Competitor');
 const { generateWithLLM } = require('../services/llmRouter');
 
-// Import REAL post fetching functions from Apify
-let scrapeInstagramProfile, scrapeTwitterProfile, generateCompetitorPosts;
+// Import REAL Instagram post fetching via Apify
+let scrapeInstagramProfile, generateCompetitorPosts;
 try {
   const socialAPI = require('../services/socialMediaAPI');
   scrapeInstagramProfile = socialAPI.scrapeInstagramProfile;
-  scrapeTwitterProfile = socialAPI.scrapeTwitterProfile;
 } catch (e) {
   console.warn('socialMediaAPI not available');
   scrapeInstagramProfile = async () => ({ success: false });
-  scrapeTwitterProfile = async () => ({ success: false });
 }
 
 // Fallback to AI-generated posts if Apify fails
@@ -179,8 +177,8 @@ All 15 competitors must be REAL companies. Return only valid JSON.`;
 
     console.log(`🎯 Saved ${savedCount} competitors for user ${userId}`);
     
-    // Fetch REAL posts for all saved competitors using Apify
-    console.log('📸 Fetching REAL posts for all competitors via Apify...');
+    // Fetch REAL Instagram posts for all saved competitors using Apify
+    console.log('📸 Fetching REAL Instagram posts for all competitors via Apify...');
     
     // Process in batches of 3 to avoid API rate limits (Apify has limits)
     const batchSize = 3;
@@ -190,11 +188,10 @@ All 15 competitors must be REAL companies. Return only valid JSON.`;
       await Promise.all(batch.map(async (competitor) => {
         try {
           const instagramHandle = competitor.socialHandles?.instagram;
-          const twitterHandle = competitor.socialHandles?.twitter;
           
           let posts = [];
           
-          // Try to fetch REAL Instagram posts first
+          // Fetch REAL Instagram posts via Apify
           if (instagramHandle) {
             console.log(`📸 Fetching real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
             const realData = await scrapeInstagramProfile(instagramHandle);
@@ -218,34 +215,17 @@ All 15 competitors must be REAL companies. Return only valid JSON.`;
                 competitor.metrics.followers = realData.followersCount;
               }
               
-              console.log(`✅ Fetched ${posts.length} REAL posts for ${competitor.name}`);
+              console.log(`✅ Fetched ${posts.length} REAL Instagram posts for ${competitor.name}`);
+            } else {
+              console.log(`⚠️ No Instagram data returned for ${competitor.name}`);
             }
+          } else {
+            console.log(`⚠️ No Instagram handle for ${competitor.name}`);
           }
           
-          // Try Twitter if no Instagram posts
-          if (posts.length === 0 && twitterHandle) {
-            console.log(`🐦 Fetching real Twitter posts for ${competitor.name} (@${twitterHandle})...`);
-            const twitterData = await scrapeTwitterProfile(twitterHandle);
-            
-            if (twitterData && twitterData.success !== false && twitterData.tweets) {
-              posts = twitterData.tweets.slice(0, 10).map(tweet => ({
-                platform: 'twitter',
-                content: tweet.text || tweet.full_text || '',
-                likes: tweet.likes || tweet.favorite_count || 0,
-                comments: tweet.replies || tweet.reply_count || 0,
-                shares: tweet.retweets || tweet.retweet_count || 0,
-                postUrl: tweet.url || `https://twitter.com/${twitterHandle}/status/${tweet.id}`,
-                postedAt: new Date(tweet.created_at || Date.now()),
-                fetchedAt: new Date(),
-                isRealData: true
-              }));
-              console.log(`✅ Fetched ${posts.length} REAL tweets for ${competitor.name}`);
-            }
-          }
-          
-          // Fallback to AI-generated posts if real scraping fails
+          // Fallback to AI-generated posts if no real Instagram data
           if (posts.length === 0) {
-            console.log(`⚠️ No real data for ${competitor.name}, using AI fallback...`);
+            console.log(`⚠️ Using AI fallback for ${competitor.name}...`);
             posts = await generateCompetitorPosts(competitor, { industry: businessContext.industry });
           }
           

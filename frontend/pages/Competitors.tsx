@@ -240,43 +240,40 @@ const Competitors: React.FC = () => {
       // Load competitors list
       if (res.competitors && res.competitors.length > 0) {
         setCompetitors(res.competitors);
+        
+        // Check if competitors have posts
+        const competitorsWithPosts = res.competitors.filter((c: any) => c.posts && c.posts.length > 0);
+        if (competitorsWithPosts.length > 0) {
+          // Collect all posts from all competitors
+          const allPosts = res.competitors.flatMap((c: any) => 
+            (c.posts || []).map((p: any) => ({
+              ...p,
+              competitorName: c.name,
+              competitorId: c._id
+            }))
+          );
+          setPosts(allPosts);
+        }
       }
       
+      // If posts came from API response directly
       if (res.posts && res.posts.length > 0) {
         setPosts(res.posts);
-      } else {
-        // Try to auto-discover competitors using saved business location
+      }
+      
+      // If no competitors at all, show message - but DON'T auto-trigger discovery
+      // Discovery should only happen during onboarding
+      if (!res.competitors || res.competitors.length === 0) {
         try {
           const contextRes = await apiService.getBusinessContext();
           if (contextRes.success && contextRes.businessLocation) {
             setLocation(contextRes.businessLocation);
-            setDiscovering(true);
-            setDiscoveryMessage(`🔍 AI is discovering competitors in ${contextRes.businessLocation}...`);
-            
-            const discoverRes = await apiService.autoDiscoverCompetitors({ 
-              location: contextRes.businessLocation, 
-              forceRefresh: false // Don't force refresh if we have recent data
-            });
-            
-            if (discoverRes.success && discoverRes.posts && discoverRes.posts.length > 0) {
-              setPosts(discoverRes.posts);
-              if (discoverRes.competitors) setCompetitors(discoverRes.competitors);
-              setDiscoveryMessage(`✅ Found ${discoverRes.discovered || discoverRes.competitors?.length || 0} competitors with ${discoverRes.posts.length} posts!`);
-            } else if (discoverRes.success && discoverRes.competitors && discoverRes.competitors.length > 0) {
-              setCompetitors(discoverRes.competitors);
-              setDiscoveryMessage(`✅ Found ${discoverRes.competitors.length} competitors. Fetching their posts...`);
-            } else {
-              setDiscoveryMessage('No competitors found yet. Click "Discover Competitors" to search.');
-            }
-            
-            setDiscovering(false);
-            setTimeout(() => setDiscoveryMessage(''), 5000);
+            setDiscoveryMessage('Competitors are being discovered in the background. Please wait or click "Auto-Discover".');
           } else {
             setDiscoveryMessage('Complete onboarding with your business location to auto-discover competitors.');
           }
-        } catch (discoverError) {
-          console.error('Auto-discover failed:', discoverError);
-          setDiscoveryMessage('Could not auto-discover. Click "Discover Competitors" to try manually.');
+        } catch (contextError) {
+          console.error('Could not load business context:', contextError);
         }
       }
     } catch (e) {
