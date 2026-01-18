@@ -459,8 +459,8 @@ async function runApifyActor(actorId, input, options = {}) {
     }
 
     // Wait for the run to complete (with timeout)
-    const maxWait = options.maxWait || 60000; // 1 minute (reduced for faster processing)
-    const pollInterval = 2000; // 2 seconds (faster polling)
+    const maxWait = options.maxWait || 120000; // 2 minutes for reliable scraping
+    const pollInterval = 3000; // 3 seconds
     let elapsed = 0;
 
     while (elapsed < maxWait) {

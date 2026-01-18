@@ -179,67 +179,63 @@ All 15 competitors must be REAL companies with VERIFIED Instagram handles. Retur
     console.log('📸 Fetching REAL Instagram posts for all competitors via Apify...');
     console.log(`📸 Total competitors to scrape: ${savedCompetitors.length}`);
     
-    // Process in batches of 5 for faster scraping
-    const batchSize = 5;
-    for (let i = 0; i < savedCompetitors.length; i += batchSize) {
-      const batch = savedCompetitors.slice(i, i + batchSize);
-      
-      await Promise.all(batch.map(async (competitor) => {
-        try {
-          const instagramHandle = competitor.socialHandles?.instagram;
-          
-          // Only fetch if we have an Instagram handle
-          if (!instagramHandle) {
-            console.log(`⚠️ No Instagram handle for ${competitor.name}, skipping...`);
-            return;
-          }
-          
-          console.log(`📸 Fetching real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
-          const result = await scrapeInstagramProfile(instagramHandle);
-          
-          // Apify returns { success: true, data: [profile] } where profile has latestPosts
-          if (result && result.success && result.data && result.data.length > 0) {
-            const profile = result.data[0];
-            const latestPosts = profile.latestPosts || profile.posts || [];
-            
-            if (latestPosts.length > 0) {
-              const posts = latestPosts.slice(0, 10).map(post => ({
-                platform: 'instagram',
-                content: post.caption || post.text || post.description || '',
-                likes: post.likesCount || post.likes || 0,
-                comments: post.commentsCount || post.comments || 0,
-                shares: post.shares || 0,
-                imageUrl: post.displayUrl || post.imageUrl || post.thumbnailUrl || null,
-                postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
-                postedAt: new Date(post.timestamp * 1000 || post.takenAtTimestamp * 1000 || Date.now()),
-                fetchedAt: new Date(),
-                isRealData: true
-              }));
-              
-              // Update follower count if available
-              if (profile.followersCount || profile.followers) {
-                competitor.metrics.followers = profile.followersCount || profile.followers;
-              }
-              
-              competitor.posts = posts;
-              competitor.metrics.lastFetched = new Date();
-              await competitor.save();
-              console.log(`✅ Saved ${posts.length} REAL Instagram posts for ${competitor.name}`);
-            } else {
-              console.log(`⚠️ Profile found but no posts for ${competitor.name} (@${instagramHandle})`);
-            }
-          } else {
-            console.log(`⚠️ Apify returned no data for ${competitor.name} (@${instagramHandle}) - error: ${result?.error || 'unknown'}`);
-          }
-        } catch (postError) {
-          console.error(`❌ Failed to fetch Instagram posts for ${competitor.name}:`, postError.message);
-          // NO AI FALLBACK - just log the error and continue
+    // Process ONE AT A TIME sequentially for maximum reliability
+    for (let i = 0; i < savedCompetitors.length; i++) {
+      const competitor = savedCompetitors[i];
+      console.log(`📸 Processing competitor ${i + 1}/${savedCompetitors.length}...`);
+      try {
+        const instagramHandle = competitor.socialHandles?.instagram;
+        
+        // Only fetch if we have an Instagram handle
+        if (!instagramHandle) {
+          console.log(`⚠️ No Instagram handle for ${competitor.name}, skipping...`);
+          continue;
         }
-      }));
+        
+        console.log(`📸 Fetching real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
+        const result = await scrapeInstagramProfile(instagramHandle);
+        
+        // Apify returns { success: true, data: [profile] } where profile has latestPosts
+        if (result && result.success && result.data && result.data.length > 0) {
+          const profile = result.data[0];
+          const latestPosts = profile.latestPosts || profile.posts || [];
+          
+          if (latestPosts.length > 0) {
+            const posts = latestPosts.slice(0, 10).map(post => ({
+              platform: 'instagram',
+              content: post.caption || post.text || post.description || '',
+              likes: post.likesCount || post.likes || 0,
+              comments: post.commentsCount || post.comments || 0,
+              shares: post.shares || 0,
+              imageUrl: post.displayUrl || post.imageUrl || post.thumbnailUrl || null,
+              postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
+              postedAt: new Date(post.timestamp * 1000 || post.takenAtTimestamp * 1000 || Date.now()),
+              fetchedAt: new Date(),
+              isRealData: true
+            }));
+            
+            // Update follower count if available
+            if (profile.followersCount || profile.followers) {
+              competitor.metrics.followers = profile.followersCount || profile.followers;
+            }
+            
+            competitor.posts = posts;
+            competitor.metrics.lastFetched = new Date();
+            await competitor.save();
+            console.log(`✅ Saved ${posts.length} REAL Instagram posts for ${competitor.name}`);
+          } else {
+            console.log(`⚠️ Profile found but no posts for ${competitor.name} (@${instagramHandle})`);
+          }
+        } else {
+          console.log(`⚠️ Apify returned no data for ${competitor.name} (@${instagramHandle}) - error: ${result?.error || 'unknown'}`);
+        }
+      } catch (postError) {
+        console.error(`❌ Failed to fetch Instagram posts for ${competitor.name}:`, postError.message);
+        // NO AI FALLBACK - just log the error and continue
+      }
       
-      // Brief delay between batches
-      if (i + batchSize < savedCompetitors.length) {
-        console.log(`📸 Completed batch ${Math.floor(i / batchSize) + 1}, moving to next...`);
+      // Brief delay between requests to avoid rate limiting
+      if (i < savedCompetitors.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
@@ -616,11 +612,15 @@ router.put('/complete-onboarding', protect, async (req, res) => {
       
       console.log('✅ OnboardingContext saved for AI outreach');
       
-      // TRIGGER COMPETITOR DISCOVERY after onboarding
-      console.log('🚀 Triggering competitor discovery after onboarding...');
-      triggerCompetitorDiscovery(req.user._id, contextData).catch(err => 
-        console.error('Background competitor discovery error:', err.message)
-      );
+      // WAIT FOR COMPETITOR DISCOVERY to complete before showing dashboard
+      console.log('🚀 Starting competitor discovery (user will wait)...');
+      try {
+        await triggerCompetitorDiscovery(req.user._id, contextData);
+        console.log('✅ Competitor discovery completed!');
+      } catch (err) {
+        console.error('Competitor discovery error:', err.message);
+        // Continue anyway - don't block user if discovery fails
+      }
       
     } catch (contextError) {
       console.error('Failed to save OnboardingContext:', contextError);
