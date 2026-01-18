@@ -42,13 +42,10 @@ class NotificationScheduler {
 
     // Then run every 30 seconds
     this.intervalId = setInterval(() => {
-      console.log('🔄 Scheduler tick...');
-      
       // Reset processing flag if it's been stuck for more than 20 seconds
       if (this.isProcessing && this.lastProcessingStart) {
         const elapsed = Date.now() - this.lastProcessingStart;
         if (elapsed > 20000) {
-          console.log('⚠️ Processing stuck for 20s, resetting...');
           this.isProcessing = false;
         }
       }
@@ -84,31 +81,23 @@ class NotificationScheduler {
 
     try {
       const now = new Date();
-      const localTimeStr = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-      console.log(`⏰ Checking at ${now.toISOString()} (Local: ${localTimeStr})`);
       
       // Find all scheduled campaigns - ULTRA SIMPLE query, no populate
       let campaigns = [];
       try {
-        console.log('   🔍 Querying campaigns (simple)...');
         // Simple query without populate - just get status=scheduled
         campaigns = await Campaign.find({ status: 'scheduled' })
           .select('_id name userId scheduling platforms')
           .lean()
           .maxTimeMS(8000);
-        console.log(`📋 Found ${campaigns.length} scheduled campaign(s)`);
       } catch (dbError) {
-        console.log('⚠️  DB query failed:', dbError.message);
         // Try a simpler query
         try {
-          console.log('   🔄 Retrying with simple query...');
           campaigns = await Campaign.find({
             status: 'scheduled'
           }).maxTimeMS(10000).lean();
-          console.log(`📋 Retry found ${campaigns.length} scheduled campaign(s)`);
           // Continue processing - don't return!
         } catch (retryError) {
-          console.log('❌ Retry also failed:', retryError.message);
           this.isProcessing = false;
           return;
         }
@@ -118,8 +107,6 @@ class NotificationScheduler {
         for (const campaign of campaigns) {
           await this.checkCampaignNotifications(campaign, now);
         }
-      } else {
-        console.log('   ℹ️  No scheduled campaigns in database');
       }
 
     } catch (error) {
@@ -143,23 +130,20 @@ class NotificationScheduler {
       const timeDiff = scheduledTime.getTime() - now.getTime();
       const minutesUntilLive = Math.round(timeDiff / (1000 * 60));
 
-      // Skip campaigns that already happened (silently - no log spam)
-      if (minutesUntilLive < 0) {
+      // Skip campaigns that already happened or are too far away
+      if (minutesUntilLive < 0 || minutesUntilLive > 35) {
         return;
       }
 
-      // Only log upcoming campaigns
-      console.log(`📊 Campaign "${campaign.name}": scheduled for ${scheduledTime.toISOString()}, ${minutesUntilLive} minutes until live`);
-
       // Check for 30-minute notification (send when 25-35 minutes left)
       if (minutesUntilLive >= 25 && minutesUntilLive <= 35) {
-        console.log(`   🔔 Triggering 30-min notification...`);
+        console.log(`🔔 30-min reminder: "${campaign.name}" goes live in ${minutesUntilLive} mins`);
         await this.sendNotificationIfNotSent(campaign, 'campaign_reminder_30', 30, scheduledTime);
       }
 
       // Check for 15-minute notification (send when 10-20 minutes left)
       if (minutesUntilLive >= 10 && minutesUntilLive <= 20) {
-        console.log(`   🔔 Triggering 15-min notification...`);
+        console.log(`🔔 15-min reminder: "${campaign.name}" goes live in ${minutesUntilLive} mins`);
         await this.sendNotificationIfNotSent(campaign, 'campaign_reminder_15', 15, scheduledTime);
       }
 
@@ -198,8 +182,6 @@ class NotificationScheduler {
       
       // Set hours and minutes in local time
       startDate.setHours(hours || 10, minutes || 0, 0, 0);
-      
-      console.log(`   📅 Parsed: date=${campaign.scheduling.startDate}, time=${postTime} => ${startDate.toISOString()}`);
       
       return startDate;
     } catch (error) {
