@@ -198,14 +198,28 @@ All 15 competitors must be REAL companies with VERIFIED Instagram handles. Retur
         // Apify returns { success: true, data: [profile] } where profile has latestPosts
         if (result && result.success && result.data && result.data.length > 0) {
           const profile = result.data[0];
-          const latestPosts = profile.latestPosts || profile.posts || [];
+          
+          // Debug: Log available fields to understand Apify response structure
+          const availableFields = Object.keys(profile).filter(k => 
+            Array.isArray(profile[k]) || (profile[k] && typeof profile[k] === 'object')
+          );
+          console.log(`📋 ${competitor.name} profile fields: ${availableFields.join(', ')}`);
+          
+          // Apify returns posts in various field names depending on scraper version
+          const latestPosts = profile.latestPosts 
+            || profile.posts 
+            || profile.edge_owner_to_timeline_media?.edges?.map(e => e.node)
+            || profile.recentPosts
+            || [];
+          
+          console.log(`📋 ${competitor.name} found ${latestPosts.length} posts`);
           
           if (latestPosts.length > 0) {
             const posts = latestPosts.slice(0, 10).map(post => ({
               platform: 'instagram',
-              content: post.caption || post.text || post.description || '',
-              likes: post.likesCount || post.likes || 0,
-              comments: post.commentsCount || post.comments || 0,
+              content: post.caption || post.text || post.description || post.edge_media_to_caption?.edges?.[0]?.node?.text || '',
+              likes: post.likesCount || post.likes || post.edge_liked_by?.count || 0,
+              comments: post.commentsCount || post.comments || post.edge_media_to_comment?.count || 0,
               shares: post.shares || 0,
               imageUrl: post.displayUrl || post.imageUrl || post.thumbnailUrl || null,
               postUrl: post.url || `https://instagram.com/p/${post.shortCode || post.id || ''}`,

@@ -143,14 +143,13 @@ class NotificationScheduler {
       const timeDiff = scheduledTime.getTime() - now.getTime();
       const minutesUntilLive = Math.round(timeDiff / (1000 * 60));
 
-      // Always log campaign info for debugging
-      console.log(`📊 Campaign "${campaign.name}": scheduled for ${scheduledTime.toISOString()}, ${minutesUntilLive} minutes until live`);
-
-      // Skip campaigns that already happened
+      // Skip campaigns that already happened (silently - no log spam)
       if (minutesUntilLive < 0) {
-        console.log(`   ⏭️ Campaign already passed`);
         return;
       }
+
+      // Only log upcoming campaigns
+      console.log(`📊 Campaign "${campaign.name}": scheduled for ${scheduledTime.toISOString()}, ${minutesUntilLive} minutes until live`);
 
       // Check for 30-minute notification (send when 25-35 minutes left)
       if (minutesUntilLive >= 25 && minutesUntilLive <= 35) {
