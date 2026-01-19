@@ -65,10 +65,13 @@ Include this mix:
 - 3 GLOBAL competitors (international leaders)
 - 3 STARTUPS (emerging players)
 
-CRITICAL: For Instagram handles, provide the EXACT official Instagram username that exists. 
-- Do NOT guess handles - only include handles you are certain exist
-- Common patterns: companyname, company_name, company.official, getcompanyname
-- If unsure about Instagram handle, leave it as empty string ""
+CRITICAL INSTAGRAM HANDLE RULES:
+1. For Indian companies, ALWAYS include country suffix like _india, _in, or _official
+   Examples: @actfibernet_india (NOT @actfibernet), @reliancejio (correct), @vi_official
+2. For global companies, use their main handle: @verizon, @att, @vanta
+3. VERIFY the handle pattern - most brands use: brandname_india, brandname_official, brandnamehq
+4. If you're not 100% certain of the exact handle, leave it as empty string ""
+5. NEVER guess - wrong handles waste API calls
 
 RETURN THIS JSON:
 {
@@ -76,7 +79,7 @@ RETURN THIS JSON:
     {
       "name": "Company Name",
       "website": "https://company.com",
-      "instagram": "exacthandle",
+      "instagram": "exacthandle_india",
       "twitter": "exacthandle",
       "description": "What they do",
       "location": "City, Country",
@@ -179,6 +182,55 @@ All 15 competitors must be REAL companies with VERIFIED Instagram handles. Retur
     console.log('📸 Fetching REAL Instagram posts for all competitors via Apify...');
     console.log(`📸 Total competitors to scrape: ${savedCompetitors.length}`);
     
+    // Common Instagram handle suffixes to try as fallbacks
+    const handleVariations = ['_india', '_official', '_in', '_hq', 'india', 'official', '_global'];
+    
+    // Helper function to try scraping with handle variations
+    async function scrapeWithVariations(baseHandle, competitorName) {
+      // First try the original handle
+      let result = await scrapeInstagramProfile(baseHandle);
+      
+      if (result && result.success && result.data && result.data.length > 0) {
+        const profile = result.data[0];
+        const posts = profile.latestPosts || profile.posts || [];
+        if (posts.length > 0) {
+          return { result, usedHandle: baseHandle };
+        }
+      }
+      
+      // If original failed or has no posts, try variations
+      console.log(`🔄 Trying handle variations for ${competitorName}...`);
+      
+      // Clean the base handle (remove common suffixes to get root)
+      let rootHandle = baseHandle
+        .replace(/_india$/, '')
+        .replace(/_official$/, '')
+        .replace(/_in$/, '')
+        .replace(/_hq$/, '')
+        .replace(/india$/, '')
+        .replace(/official$/, '');
+      
+      for (const suffix of handleVariations) {
+        const variantHandle = rootHandle + suffix;
+        if (variantHandle === baseHandle) continue; // Skip if same as original
+        
+        console.log(`   🔍 Trying @${variantHandle}...`);
+        result = await scrapeInstagramProfile(variantHandle);
+        
+        if (result && result.success && result.data && result.data.length > 0) {
+          const profile = result.data[0];
+          const posts = profile.latestPosts || profile.posts || [];
+          if (posts.length > 0) {
+            console.log(`   ✅ Found posts with @${variantHandle}!`);
+            return { result, usedHandle: variantHandle };
+          }
+        }
+      }
+      
+      // Return original result if no variations worked
+      return { result: null, usedHandle: baseHandle };
+    }
+    
     // Process ONE AT A TIME sequentially for maximum reliability
     for (let i = 0; i < savedCompetitors.length; i++) {
       const competitor = savedCompetitors[i];
@@ -193,7 +245,15 @@ All 15 competitors must be REAL companies with VERIFIED Instagram handles. Retur
         }
         
         console.log(`📸 Fetching real Instagram posts for ${competitor.name} (@${instagramHandle})...`);
-        const result = await scrapeInstagramProfile(instagramHandle);
+        
+        // Try with variations if original fails
+        const { result, usedHandle } = await scrapeWithVariations(instagramHandle, competitor.name);
+        
+        // Update the handle if we found a working variation
+        if (usedHandle !== instagramHandle && result) {
+          competitor.socialHandles.instagram = usedHandle;
+          console.log(`📝 Updated handle to @${usedHandle}`);
+        }
         
         // Apify returns { success: true, data: [profile] } where profile has latestPosts
         if (result && result.success && result.data && result.data.length > 0) {
@@ -238,10 +298,10 @@ All 15 competitors must be REAL companies with VERIFIED Instagram handles. Retur
             await competitor.save();
             console.log(`✅ Saved ${posts.length} REAL Instagram posts for ${competitor.name}`);
           } else {
-            console.log(`⚠️ Profile found but no posts for ${competitor.name} (@${instagramHandle})`);
+            console.log(`⚠️ Profile found but no posts for ${competitor.name} (@${usedHandle}) - tried variations`);
           }
         } else {
-          console.log(`⚠️ Apify returned no data for ${competitor.name} (@${instagramHandle}) - error: ${result?.error || 'unknown'}`);
+          console.log(`⚠️ No Instagram data for ${competitor.name} - tried @${instagramHandle} and variations`);
         }
       } catch (postError) {
         console.error(`❌ Failed to fetch Instagram posts for ${competitor.name}:`, postError.message);
