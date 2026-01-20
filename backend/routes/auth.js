@@ -4,6 +4,10 @@ const User = require('../models/User');
 const { generateToken, protect } = require('../middleware/auth');
 const Competitor = require('../models/Competitor');
 const { generateWithLLM } = require('../services/llmRouter');
+const axios = require('axios');
+
+// ScrapingDog API for LinkedIn fallback
+const SCRAPINGDOG_API_KEY = process.env.SCRAPINGDOG_API_KEY || '';
 
 // Import REAL Instagram post fetching via Apify - NO AI FALLBACK
 let scrapeInstagramProfile;
@@ -13,6 +17,73 @@ try {
 } catch (e) {
   console.warn('socialMediaAPI not available');
   scrapeInstagramProfile = async () => ({ success: false });
+}
+
+/**
+ * Scrape LinkedIn company posts using ScrapingDog
+ * Fallback when Instagram has no posts
+ */
+async function scrapeLinkedInPosts(linkedinUrl) {
+  if (!SCRAPINGDOG_API_KEY) {
+    console.log('⚠️ ScrapingDog API key not configured');
+    return { success: false, posts: [] };
+  }
+  
+  if (!linkedinUrl) {
+    return { success: false, posts: [] };
+  }
+  
+  try {
+    console.log(`🔗 Fetching LinkedIn posts from: ${linkedinUrl}`);
+    
+    // Extract company name/id from URL
+    // URL format: https://linkedin.com/company/actfibernet or linkedin.com/company/actfibernet/
+    const companyMatch = linkedinUrl.match(/linkedin\.com\/company\/([^\/\?]+)/i);
+    if (!companyMatch) {
+      console.log('⚠️ Invalid LinkedIn company URL format');
+      return { success: false, posts: [] };
+    }
+    
+    const companyId = companyMatch[1];
+    
+    const response = await axios.get('https://api.scrapingdog.com/linkedin/company/posts', {
+      params: {
+        api_key: SCRAPINGDOG_API_KEY,
+        company_id: companyId,
+        count: 10
+      },
+      timeout: 60000
+    });
+    
+    if (response.status === 200 && response.data) {
+      const posts = response.data.posts || response.data || [];
+      
+      if (Array.isArray(posts) && posts.length > 0) {
+        console.log(`✅ Got ${posts.length} LinkedIn posts`);
+        return {
+          success: true,
+          posts: posts.map(post => ({
+            platform: 'linkedin',
+            content: post.text || post.content || post.commentary || '',
+            likes: post.likes || post.numLikes || post.likeCount || 0,
+            comments: post.comments || post.numComments || post.commentCount || 0,
+            shares: post.shares || post.numShares || post.repostCount || 0,
+            imageUrl: post.image || post.imageUrl || post.media?.[0]?.url || null,
+            postUrl: post.url || post.postUrl || linkedinUrl,
+            postedAt: post.postedAt || post.date || new Date(),
+            fetchedAt: new Date(),
+            isRealData: true
+          }))
+        };
+      }
+    }
+    
+    console.log('⚠️ No LinkedIn posts found');
+    return { success: false, posts: [] };
+  } catch (error) {
+    console.error('LinkedIn scrape error:', error.message);
+    return { success: false, posts: [], error: error.message };
+  }
 }
 
 const router = express.Router();
@@ -73,6 +144,9 @@ CRITICAL INSTAGRAM HANDLE RULES:
 4. If you're not 100% certain of the exact handle, leave it as empty string ""
 5. NEVER guess - wrong handles waste API calls
 
+ALSO INCLUDE LinkedIn company URL for each competitor (used as fallback if Instagram fails).
+Format: https://linkedin.com/company/companyname
+
 RETURN THIS JSON:
 {
   "competitors": [
@@ -80,6 +154,7 @@ RETURN THIS JSON:
       "name": "Company Name",
       "website": "https://company.com",
       "instagram": "exacthandle_india",
+      "linkedin": "https://linkedin.com/company/companyname",
       "twitter": "exacthandle",
       "description": "What they do",
       "location": "City, Country",
@@ -89,7 +164,7 @@ RETURN THIS JSON:
   ]
 }
 
-All 15 competitors must be REAL companies with VERIFIED Instagram handles. Return only valid JSON.`;
+All 15 competitors must be REAL companies with VERIFIED handles. Return only valid JSON.`;
 
     const result = await generateWithLLM({ 
       provider: 'gemini', 
@@ -298,14 +373,45 @@ All 15 competitors must be REAL companies with VERIFIED Instagram handles. Retur
             await competitor.save();
             console.log(`✅ Saved ${posts.length} REAL Instagram posts for ${competitor.name}`);
           } else {
-            console.log(`⚠️ Profile found but no posts for ${competitor.name} (@${usedHandle}) - tried variations`);
+            console.log(`⚠️ Profile found but no Instagram posts for ${competitor.name} (@${usedHandle}) - trying LinkedIn fallback...`);
+            
+            // LinkedIn fallback
+            const linkedinUrl = competitor.socialHandles?.linkedin;
+            if (linkedinUrl) {
+              const linkedinResult = await scrapeLinkedInPosts(linkedinUrl);
+              if (linkedinResult.success && linkedinResult.posts.length > 0) {
+                competitor.posts = linkedinResult.posts;
+                competitor.metrics.lastFetched = new Date();
+                await competitor.save();
+                console.log(`✅ Saved ${linkedinResult.posts.length} LinkedIn posts for ${competitor.name} (fallback)`);
+              } else {
+                console.log(`⚠️ No posts found on Instagram or LinkedIn for ${competitor.name}`);
+              }
+            } else {
+              console.log(`⚠️ No LinkedIn URL for ${competitor.name}, skipping fallback`);
+            }
           }
         } else {
-          console.log(`⚠️ No Instagram data for ${competitor.name} - tried @${instagramHandle} and variations`);
+          console.log(`⚠️ No Instagram data for ${competitor.name} - trying LinkedIn fallback...`);
+          
+          // LinkedIn fallback when Instagram completely fails
+          const linkedinUrl = competitor.socialHandles?.linkedin;
+          if (linkedinUrl) {
+            const linkedinResult = await scrapeLinkedInPosts(linkedinUrl);
+            if (linkedinResult.success && linkedinResult.posts.length > 0) {
+              competitor.posts = linkedinResult.posts;
+              competitor.metrics.lastFetched = new Date();
+              await competitor.save();
+              console.log(`✅ Saved ${linkedinResult.posts.length} LinkedIn posts for ${competitor.name} (fallback)`);
+            } else {
+              console.log(`⚠️ No posts found on Instagram or LinkedIn for ${competitor.name}`);
+            }
+          } else {
+            console.log(`⚠️ No LinkedIn URL for ${competitor.name}, no fallback available`);
+          }
         }
       } catch (postError) {
-        console.error(`❌ Failed to fetch Instagram posts for ${competitor.name}:`, postError.message);
-        // NO AI FALLBACK - just log the error and continue
+        console.error(`❌ Failed to fetch posts for ${competitor.name}:`, postError.message);
       }
       
       // Brief delay between requests to avoid rate limiting
