@@ -721,8 +721,18 @@ Return ONLY valid JSON (no markdown, no code blocks):
       brandVoice: bp.brandVoice || content?.tone || 'professional'
     };
 
-    // Generate images for each post and add schedule
-    const postsWithImagesPromises = parsed.posts.slice(0, totalPosts).map(async (post, index) => {
+    // Helper function for delay (rate limiting for Imagen API - 5 RPM limit)
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Generate images for each post SEQUENTIALLY with delay to avoid rate limiting
+    // Imagen 4 Ultra has 5 RPM limit, so we wait 15 seconds between requests
+    console.log(`🎨 Generating ${Math.min(parsed.posts.length, totalPosts)} images (with rate limiting)...`);
+    
+    const postsWithImages = [];
+    const postsToProcess = parsed.posts.slice(0, totalPosts);
+    
+    for (let index = 0; index < postsToProcess.length; index++) {
+      const post = postsToProcess[index];
       const schedule = scheduleDates[index] || { date: startDate, time: '10:00' };
       
       // Generate image based on the description + brand context
@@ -730,6 +740,8 @@ Return ONLY valid JSON (no markdown, no code blocks):
       try {
         // Enhanced image description with brand context
         const enhancedImageDesc = `${post.imageDescription || post.caption.substring(0, 100)}. Brand: ${brandContext.companyName}, Industry: ${brandContext.industry}. ${brandContext.products ? 'Products: ' + brandContext.products + '.' : ''} ${brandContext.usps ? 'Focus on: ' + brandContext.usps : ''}`;
+        
+        console.log(`🎨 Generating image ${index + 1}/${postsToProcess.length}...`);
         
         imageUrl = await getRelevantImage(
           enhancedImageDesc,
@@ -739,13 +751,15 @@ Return ONLY valid JSON (no markdown, no code blocks):
           post.platform,
           brandContext
         );
+        
+        console.log(`✅ Image ${index + 1}/${postsToProcess.length} generated`);
       } catch (imgError) {
         console.error(`Error generating image for post ${index}:`, imgError);
         // Fallback image
         imageUrl = `https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop&seed=${Date.now() + index}`;
       }
 
-      return {
+      postsWithImages.push({
         id: `post-${index + 1}`,
         platform: post.platform?.toLowerCase() || platforms[index % platforms.length],
         caption: post.caption,
@@ -757,10 +771,15 @@ Return ONLY valid JSON (no markdown, no code blocks):
         suggestedTime: schedule.time,
         contentTheme: post.contentTheme || 'promotional',
         callToAction: post.callToAction || content?.callToAction || 'Learn more'
-      };
-    });
-
-    const postsWithImages = await Promise.all(postsWithImagesPromises);
+      });
+      
+      // Wait 15 seconds before next image request to stay under 5 RPM limit
+      // (except for the last image)
+      if (index < postsToProcess.length - 1) {
+        console.log(`⏳ Waiting 15s before next image (rate limiting)...`);
+        await delay(15000);
+      }
+    }
 
     console.log(`✅ Generated ${postsWithImages.length} posts with images for campaign: ${campaignName}`);
 
