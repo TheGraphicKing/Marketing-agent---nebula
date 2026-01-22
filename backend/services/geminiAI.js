@@ -596,7 +596,17 @@ async function generateAIImage(campaignTitle, campaignDescription, objective, pl
     nicheSpecificStyle = 'Show stylish clothing, fashion photoshoot, models wearing products, or curated outfit display.';
   } else if (niche.includes('food') || niche.includes('restaurant')) {
     nicheSpecificStyle = 'Show delicious food photography, restaurant ambiance, cooking process, or happy diners.';
+  } else if (niche.includes('baby') || niche.includes('infant') || niche.includes('kids') || niche.includes('children') || niche.includes('parenting')) {
+    nicheSpecificStyle = 'Show ONLY the products (toys, accessories, grooming tools, clothing) arranged beautifully on a soft pastel background. Product-focused flat lay photography. DO NOT show any people, babies, children, or faces. Focus purely on the product aesthetics with soft lighting and gentle colors.';
   }
+  
+  // Safety: Check if campaign relates to babies/children and adjust prompt
+  const campaignLower = (campaignTitle + ' ' + campaignContext).toLowerCase();
+  const isBabyRelated = campaignLower.includes('baby') || campaignLower.includes('infant') || campaignLower.includes('newborn') || campaignLower.includes('toddler') || campaignLower.includes('kid') || campaignLower.includes('child') || campaignLower.includes('mom') || campaignLower.includes('parent');
+  
+  const safetyNote = isBabyRelated 
+    ? 'IMPORTANT: Do NOT generate images of babies, children, infants, or minors. Show ONLY products, adult hands holding products, or artistic product arrangements. Focus on the product itself, not people.'
+    : '';
   
   // Extract key themes from the campaign
   const prompt = `Create a professional, high-quality social media marketing image.
@@ -608,6 +618,8 @@ ${colorGuidance}
 CAMPAIGN: "${campaignTitle}"
 ${campaignContext.substring(0, 200)}
 
+${safetyNote}
+
 VISUAL STYLE:
 ${nicheSpecificStyle || `Professional ${industry} imagery that represents the brand's core offering.`}
 
@@ -618,6 +630,8 @@ REQUIREMENTS:
 - Objective: ${objective} campaign
 - Style: Modern, clean, vibrant colors, professional photography
 - NO text or words in image
+- NO babies, children, infants, or minors in the image
+- Focus on PRODUCTS and aesthetics only
 - Commercial quality suitable for marketing
 
 Make the image specific to ${brandContext.companyName || 'the brand'}'s actual business and products.`;
@@ -851,8 +865,16 @@ function getRelevantStockImage(campaignTitle, industry, objective, platform) {
 async function generateImageFromCustomPrompt(customPrompt, platform = 'instagram') {
   console.log(`🎨 Generating image from custom prompt: "${customPrompt.substring(0, 100)}..."`);
   
+  // Check if prompt relates to babies/children and add safety guidance
+  const promptLower = customPrompt.toLowerCase();
+  const isBabyRelated = promptLower.includes('baby') || promptLower.includes('infant') || promptLower.includes('newborn') || promptLower.includes('toddler') || promptLower.includes('kid') || promptLower.includes('child');
+  
+  const safetyGuidance = isBabyRelated 
+    ? ' IMPORTANT: Do NOT include babies, children, or minors in the image. Show only products, adult hands, or artistic arrangements. Focus on product aesthetics.'
+    : '';
+  
   // Enhance the prompt for better image generation while keeping user's intent
-  const enhancedPrompt = `Create a high-quality, professional image based on this description: ${customPrompt}. 
+  const enhancedPrompt = `Create a high-quality, professional image based on this description: ${customPrompt}.${safetyGuidance}
 Style requirements: High resolution, suitable for ${platform} social media, professional photography or digital art quality, visually appealing, no text or watermarks in the image.`;
 
   try {
