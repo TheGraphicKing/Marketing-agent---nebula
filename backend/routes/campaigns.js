@@ -14,6 +14,9 @@ const notificationScheduler = require('../services/notificationScheduler');
 // Import Ayrshare for social media posting
 const { postToSocialMedia, getAyrshareAnalytics } = require('../services/socialMediaAPI');
 
+// Import image uploader for converting base64 to hosted URLs
+const { ensurePublicUrl, isBase64DataUrl } = require('../services/imageUploader');
+
 /**
  * GET /api/campaigns
  * Get all campaigns for the user with optional filters
@@ -225,7 +228,7 @@ router.post('/:id/publish', protect, async (req, res) => {
     // Build the post content
     const postContent = campaign.creative?.textContent || campaign.creative?.caption || campaign.content || campaign.name;
     const mediaUrls = campaign.creative?.imageUrls || [];
-    const mediaUrl = mediaUrls[0] || campaign.creative?.mediaUrl || null;
+    let mediaUrl = mediaUrls[0] || campaign.creative?.mediaUrl || null;
     const hashtags = campaign.creative?.captions?.split(' ').filter(h => h.startsWith('#')) || [];
     
     // Format the full post with hashtags
@@ -236,6 +239,19 @@ router.post('/:id/publish', protect, async (req, res) => {
     console.log('Publishing to platforms:', platforms);
     console.log('Post content:', fullPost.substring(0, 100) + '...');
     console.log('Media URL:', mediaUrl ? 'yes' : 'no');
+    
+    // If the image is a base64 data URL, upload to Cloudinary first
+    if (mediaUrl && isBase64DataUrl(mediaUrl)) {
+      console.log('📤 Uploading base64 image to Cloudinary...');
+      const publicUrl = await ensurePublicUrl(mediaUrl);
+      if (publicUrl) {
+        console.log('✅ Image uploaded, public URL:', publicUrl);
+        mediaUrl = publicUrl;
+      } else {
+        console.warn('⚠️ Failed to upload image, posting without media');
+        mediaUrl = null;
+      }
+    }
     
     // Post to social media via Ayrshare
     const result = await postToSocialMedia(
