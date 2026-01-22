@@ -110,6 +110,12 @@ async function postToSocialMedia(platforms, content, options = {}) {
     });
 
     console.log('Ayrshare post response:', response.status);
+    
+    // Log full error details if there's an error
+    if (response.data?.errors) {
+      console.log('Ayrshare errors (full):', JSON.stringify(response.data.errors, null, 2));
+    }
+    
     return { success: response.status === 200, data: response.data };
   } catch (error) {
     console.error('Ayrshare post error:', error);
