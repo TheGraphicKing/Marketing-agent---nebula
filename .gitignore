@@ -21,3 +21,6 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+backend/vertex-ai-key.json
+*.json.bak

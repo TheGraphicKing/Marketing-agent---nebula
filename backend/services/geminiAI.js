@@ -1,13 +1,59 @@
 /**
  * Gemini AI Service
- * Uses Google Gemini API for all AI-related tasks
+ * Uses Google Gemini API for text tasks and Vertex AI for image generation
  */
+
+const { GoogleAuth } = require('google-auth-library');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // Using Gemini 3 Pro Preview for all text generation
 const GEMINI_MODELS = [
   'gemini-3-pro-preview',  // Gemini 3 Pro - Best quality
 ];
+
+// Vertex AI Configuration for Image Generation (no daily rate limits!)
+const VERTEX_PROJECT_ID = process.env.VERTEX_PROJECT_ID || 'gen-lang-client-0148757433';
+const VERTEX_LOCATION = process.env.VERTEX_LOCATION || 'us-central1';
+
+// Initialize Google Auth for Vertex AI using environment variables
+let vertexAuth = null;
+let vertexAccessToken = null;
+let tokenExpiry = 0;
+
+async function getVertexAccessToken() {
+  const now = Date.now();
+  // Return cached token if still valid (with 5 min buffer)
+  if (vertexAccessToken && tokenExpiry > now + 300000) {
+    return vertexAccessToken;
+  }
+  
+  try {
+    if (!vertexAuth) {
+      // Use credentials from environment variables
+      const credentials = {
+        type: 'service_account',
+        project_id: VERTEX_PROJECT_ID,
+        client_email: process.env.VERTEX_CLIENT_EMAIL,
+        private_key: process.env.VERTEX_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      };
+      
+      vertexAuth = new GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/cloud-platform']
+      });
+    }
+    
+    const client = await vertexAuth.getClient();
+    const tokenResponse = await client.getAccessToken();
+    vertexAccessToken = tokenResponse.token;
+    tokenExpiry = now + 3600000; // Token valid for 1 hour
+    console.log('✅ Vertex AI access token refreshed');
+    return vertexAccessToken;
+  } catch (error) {
+    console.error('❌ Failed to get Vertex AI access token:', error.message);
+    throw error;
+  }
+}
 
 // Simple in-memory cache for API responses
 const responseCache = new Map();
@@ -579,82 +625,85 @@ Make the image specific to ${brandContext.companyName || 'the brand'}'s actual b
   console.log('Generating brand-specific image for:', campaignTitle);
   
   try {
-    // Use Imagen 4 Ultra (best quality)
-    console.log('🎨 Generating with Imagen 4 Ultra...');
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-ultra-generate-001:predict?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
-            safetyFilterLevel: 'block_few',
-            personGeneration: 'allow_adult'
-          }
-        })
-      }
-    );
+    // Use Vertex AI Imagen 4 Ultra (no daily rate limits!)
+    console.log('🎨 Generating with Vertex AI Imagen 4 Ultra...');
+    const accessToken = await getVertexAccessToken();
+    const vertexUrl = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-4.0-ultra-generate-001:predict`;
+    
+    const response = await fetch(vertexUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_adult'
+        }
+      })
+    });
 
     const data = await response.json();
     
     if (data.predictions && data.predictions[0]?.bytesBase64Encoded) {
-      console.log('✅ Imagen 4 Ultra generated image successfully');
+      console.log('✅ Vertex AI Imagen 4 Ultra generated image successfully');
       return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
     }
     
     // Log the error for debugging
     if (data.error) {
-      console.error('Imagen 4 Ultra API error:', data.error.message || JSON.stringify(data.error));
+      console.error('Vertex AI Imagen 4 Ultra error:', data.error.message || JSON.stringify(data.error));
     } else {
-      console.log('Imagen 4 Ultra response (no predictions):', JSON.stringify(data).substring(0, 300));
+      console.log('Vertex AI Imagen 4 Ultra response (no predictions):', JSON.stringify(data).substring(0, 300));
     }
     
-    // Try Gemini 2.0 Flash Image Generation as fallback
-    console.log('🎨 Trying Gemini 2.0 Flash Image Generation...');
-    const flashImageResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Generate an image: ${prompt}` }] }],
-          generationConfig: {
-            responseModalities: ['image', 'text'],
-            responseMimeType: 'image/png'
-          }
-        })
-      }
-    );
-
-    const flashData = await flashImageResponse.json();
+    // Try Vertex AI Imagen 3 as fallback
+    console.log('🎨 Trying Vertex AI Imagen 3 Fast...');
+    const imagen3Url = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-3.0-fast-generate-001:predict`;
     
-    if (flashData.candidates?.[0]?.content?.parts) {
-      for (const part of flashData.candidates[0].content.parts) {
-        if (part.inlineData?.mimeType?.startsWith('image/')) {
-          console.log('✅ Gemini 2.0 Flash generated image successfully');
-          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+    const imagen3Response = await fetch(imagen3Url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_adult'
         }
-      }
+      })
+    });
+
+    const imagen3Data = await imagen3Response.json();
+    
+    if (imagen3Data.predictions?.[0]?.bytesBase64Encoded) {
+      console.log('✅ Vertex AI Imagen 3 generated image successfully');
+      return `data:image/png;base64,${imagen3Data.predictions[0].bytesBase64Encoded}`;
     }
     
-    console.log('Gemini Flash Image response:', JSON.stringify(flashData).substring(0, 200));
+    console.log('Vertex AI Imagen 3 response:', JSON.stringify(imagen3Data).substring(0, 200));
     
     // Fallback to stock image
     return getRelevantStockImage(campaignTitle, industry, objective, platform);
     
   } catch (error) {
-    console.error('Gemini Imagen error:', error.message);
-    return await generateImageWithGeminiFlash(campaignTitle, campaignDescription, industry, objective, platform, brandContext);
+    console.error('Vertex AI Imagen error:', error.message);
+    return await generateImageWithVertexAIFallback(campaignTitle, campaignDescription, industry, objective, platform, brandContext);
   }
 }
 
 /**
  * Generate image using Imagen 4 Ultra (fallback function)
  */
-async function generateImageWithGeminiFlash(campaignTitle, campaignDescription, industry, objective, platform, brandContext = {}) {
+async function generateImageWithVertexAIFallback(campaignTitle, campaignDescription, industry, objective, platform, brandContext = {}) {
   // Build brand-aware prompt
   const brandInfo = brandContext.companyName ? `for ${brandContext.companyName} (${brandContext.products || brandContext.services || industry})` : `for a ${industry} brand`;
   const targetInfo = brandContext.targetAudience ? `, appealing to ${brandContext.targetAudience}` : '';
@@ -662,34 +711,37 @@ async function generateImageWithGeminiFlash(campaignTitle, campaignDescription, 
   const prompt = `Generate a stunning, professional social media image ${brandInfo} campaign called "${campaignTitle}". The image should be perfect for ${platform}, with modern design, vibrant and eye-catching visuals that represent the brand's products/services${targetInfo}. No text in the image. High-quality commercial photography style.`;
   
   try {
-    console.log('🎨 Generating with Imagen 4 Ultra (fallback)...');
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-ultra-generate-001:predict?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt: prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: platform === 'instagram' ? '1:1' : '16:9',
-            safetyFilterLevel: 'block_few',
-            personGeneration: 'allow_adult'
-          }
-        })
-      }
-    );
+    console.log('🎨 Generating with Vertex AI Imagen 3 (fallback)...');
+    const accessToken = await getVertexAccessToken();
+    const vertexUrl = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-3.0-generate-001:predict`;
+    
+    const response = await fetch(vertexUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: platform === 'instagram' ? '1:1' : '16:9',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_adult'
+        }
+      })
+    });
 
     const data = await response.json();
     
     if (data.predictions?.[0]?.bytesBase64Encoded) {
-      console.log('✅ Imagen 4 Ultra generated image successfully');
+      console.log('✅ Vertex AI Imagen 3 generated image successfully (fallback)');
       return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
     }
     
-    console.log('Imagen 4 Ultra response:', JSON.stringify(data).substring(0, 200));
+    console.log('Vertex AI Imagen 3 response:', JSON.stringify(data).substring(0, 200));
   } catch (error) {
-    console.log('Imagen 4 Ultra failed:', error.message);
+    console.log('Vertex AI Imagen fallback failed:', error.message);
   }
   
   // Fallback to stock image
@@ -804,36 +856,67 @@ async function generateImageFromCustomPrompt(customPrompt, platform = 'instagram
 Style requirements: High resolution, suitable for ${platform} social media, professional photography or digital art quality, visually appealing, no text or watermarks in the image.`;
 
   try {
-    // Use Imagen 4 Ultra for best quality image generation
-    console.log('🎨 Generating with Imagen 4 Ultra...');
-    const imagenResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-ultra-generate-001:predict?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt: enhancedPrompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
-            safetyFilterLevel: 'block_few',
-            personGeneration: 'allow_adult'
-          }
-        })
-      }
-    );
+    // Use Vertex AI Imagen 4 Ultra for best quality image generation (no daily limits!)
+    console.log('🎨 Generating with Vertex AI Imagen 4 Ultra...');
+    const accessToken = await getVertexAccessToken();
+    const vertexUrl = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-4.0-ultra-generate-001:predict`;
+    
+    const imagenResponse = await fetch(vertexUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: enhancedPrompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_adult'
+        }
+      })
+    });
 
     const imagenData = await imagenResponse.json();
     
     if (imagenData.predictions && imagenData.predictions[0]?.bytesBase64Encoded) {
-      console.log('✅ Imagen 4 Ultra generated image from custom prompt successfully');
+      console.log('✅ Vertex AI Imagen 4 Ultra generated image from custom prompt successfully');
       return `data:image/png;base64,${imagenData.predictions[0].bytesBase64Encoded}`;
     }
     
-    console.log('Imagen 4 Ultra did not return image:', JSON.stringify(imagenData).substring(0, 200));
+    console.log('Vertex AI Imagen 4 Ultra did not return image:', JSON.stringify(imagenData).substring(0, 200));
+    
+    // Try Imagen 3 as fallback
+    console.log('🎨 Trying Vertex AI Imagen 3...');
+    const imagen3Url = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-3.0-generate-001:predict`;
+    
+    const imagen3Response = await fetch(imagen3Url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: enhancedPrompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: platform === 'youtube' ? '16:9' : '1:1',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_adult'
+        }
+      })
+    });
+
+    const imagen3Data = await imagen3Response.json();
+    
+    if (imagen3Data.predictions?.[0]?.bytesBase64Encoded) {
+      console.log('✅ Vertex AI Imagen 3 generated image from custom prompt successfully');
+      return `data:image/png;base64,${imagen3Data.predictions[0].bytesBase64Encoded}`;
+    }
     
   } catch (error) {
-    console.error('Imagen 4 Ultra error:', error.message);
+    console.error('Vertex AI Imagen error:', error.message);
   }
 
   // Last resort: Use Unsplash API with search based on prompt keywords
