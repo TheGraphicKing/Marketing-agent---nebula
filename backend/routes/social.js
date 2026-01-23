@@ -917,7 +917,7 @@ router.get('/status', protect, async (req, res) => {
     const user = await User.findById(req.user._id);
     
     // Build status for all platforms (removed TikTok and Snapchat, renamed Twitter to X)
-    const platforms = ['Instagram', 'Facebook', 'X', 'LinkedIn', 'YouTube', 'Pinterest', 'Reddit'];
+    const platforms = ['Instagram', 'Facebook', 'X', 'LinkedIn'];
     
     // Get user's Ayrshare connected accounts using their profile key
     let ayrshareAccounts = [];

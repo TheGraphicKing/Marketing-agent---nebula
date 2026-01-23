@@ -38,7 +38,7 @@ const ConnectSocials: React.FC = () => {
     const account = searchParams.get('account');
     
     // Check for successful connections for each platform
-    const platforms = ['youtube', 'instagram', 'facebook', 'x', 'linkedin', 'pinterest', 'reddit'];
+    const platforms = ['instagram', 'facebook', 'x', 'linkedin'];
     for (const platform of platforms) {
       const status = searchParams.get(platform);
       if (status === 'connected') {
