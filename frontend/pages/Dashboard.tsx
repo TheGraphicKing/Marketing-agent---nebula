@@ -1191,98 +1191,41 @@ const Dashboard: React.FC = () => {
               );
             }
             
-            // Show connected profiles with stats - ONLY REAL DATA
-            const totalFollowers = profiles.reduce((sum: number, p: any) => sum + (p.followers || 0), 0);
-            // Only count profiles with real engagement data
-            const profilesWithEngagement = profiles.filter((p: any) => p.engagementRate !== null && p.engagementRate !== undefined);
-            const avgEngagement = profilesWithEngagement.length > 0 
-              ? profilesWithEngagement.reduce((sum: number, p: any) => sum + (p.engagementRate || 0), 0) / profilesWithEngagement.length
-              : null;
-            
+            // Show connected profiles - simplified view
             return (
               <>
-                {/* Summary Stats Row - ONLY REAL DATA */}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
-                    <p className={`text-xs ${theme.textMuted} mb-1`}>Total Followers</p>
-                    <p className={`text-2xl font-bold ${theme.text}`}>
-                      {totalFollowers >= 1000000 ? `${(totalFollowers / 1000000).toFixed(1)}M` : 
-                       totalFollowers >= 1000 ? `${(totalFollowers / 1000).toFixed(1)}K` : totalFollowers}
-                    </p>
-                  </div>
-                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
-                    <p className={`text-xs ${theme.textMuted} mb-1`}>Avg Engagement</p>
-                    <p className={`text-2xl font-bold ${theme.text}`}>
-                      {avgEngagement !== null ? `${avgEngagement.toFixed(1)}%` : 'N/A'}
-                    </p>
-                  </div>
-                  <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
-                    <p className={`text-xs ${theme.textMuted} mb-1`}>Connected Platforms</p>
-                    <p className={`text-2xl font-bold ${theme.text}`}>{profiles.length}</p>
-                  </div>
-                </div>
-                
-                {/* Profiles Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                {/* Profiles Grid - Simple cards showing connected status */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {profiles.map((profile: any, idx: number) => {
                     const platformInfo = platformLogos[profile.platform?.toLowerCase()] || platformLogos.instagram;
                     return (
                       <div 
                         key={idx}
+                        onClick={() => { window.location.hash = '/connect-socials'; }}
                         className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#161b22] border-[#30363d] hover:border-slate-600' : 'bg-white border-slate-200 hover:border-slate-300'} transition-all duration-200 hover:shadow-lg cursor-pointer`}
                       >
                         {/* Platform Header */}
-                        <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center gap-3 mb-3">
                           <div className={`w-10 h-10 rounded-xl ${platformInfo.bgColor} p-2 flex items-center justify-center`}>
                             <img 
                               src={platformInfo.logo} 
                               alt={profile.platform}
                               className="w-6 h-6 object-contain"
-                              style={{ filter: profile.platform === 'instagram' ? 'brightness(0) invert(1)' : 'none' }}
+                              style={{ filter: profile.platform?.toLowerCase() === 'instagram' ? 'brightness(0) invert(1)' : 'none' }}
                             />
                           </div>
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <p className={`text-sm font-semibold ${theme.text} capitalize`}>{profile.platform}</p>
-                            <p className={`text-xs ${theme.textMuted} truncate max-w-[100px]`}>{profile.accountName}</p>
+                            <p className={`text-xs ${theme.textMuted} truncate`}>{profile.accountName}</p>
                           </div>
-                        </div>
-                        
-                        {/* Stats - ONLY REAL DATA */}
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className={`text-xs ${theme.textMuted}`}>Followers</span>
-                            <span className={`text-sm font-semibold ${theme.text}`}>
-                              {profile.followers >= 1000 ? `${(profile.followers / 1000).toFixed(1)}K` : profile.followers}
-                            </span>
-                          </div>
-                          {profile.engagementRate !== null && profile.engagementRate !== undefined && (
-                            <div className="flex justify-between items-center">
-                              <span className={`text-xs ${theme.textMuted}`}>Engagement</span>
-                              <span className={`text-sm font-semibold ${theme.text}`}>{profile.engagementRate.toFixed(1)}%</span>
-                            </div>
-                          )}
-                          {profile.posts > 0 && (
-                            <div className="flex justify-between items-center">
-                              <span className={`text-xs ${theme.textMuted}`}>Posts</span>
-                              <span className={`text-sm font-semibold ${theme.text}`}>{profile.posts}</span>
-                            </div>
-                          )}
-                          {profile.following > 0 && (
-                            <div className="flex justify-between items-center">
-                              <span className={`text-xs ${theme.textMuted}`}>Following</span>
-                              <span className={`text-sm font-semibold ${theme.text}`}>{profile.following}</span>
-                            </div>
-                          )}
                         </div>
                         
                         {/* Status Indicator */}
-                        <div className={`mt-4 pt-3 border-t ${isDarkMode ? 'border-[#30363d]' : 'border-slate-100'}`}>
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span className={`text-xs ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                              Connected
-                            </span>
-                          </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                          <span className={`text-xs ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                            Connected
+                          </span>
                         </div>
                       </div>
                     );
@@ -1291,12 +1234,12 @@ const Dashboard: React.FC = () => {
                   {/* Add More Account Card */}
                   <button
                     onClick={() => { window.location.hash = '/connect-socials'; }}
-                    className={`p-4 rounded-xl border-2 border-dashed ${isDarkMode ? 'border-[#30363d] hover:border-[#ffcc29]/50 bg-transparent' : 'border-slate-200 hover:border-[#ffcc29] bg-transparent'} transition-all duration-200 flex flex-col items-center justify-center min-h-[200px] group`}
+                    className={`p-4 rounded-xl border-2 border-dashed ${isDarkMode ? 'border-[#30363d] hover:border-[#ffcc29]/50 bg-transparent' : 'border-slate-200 hover:border-[#ffcc29] bg-transparent'} transition-all duration-200 flex flex-col items-center justify-center min-h-[100px] group`}
                   >
-                    <div className={`w-12 h-12 rounded-full ${isDarkMode ? 'bg-slate-800 group-hover:bg-[#ffcc29]/20' : 'bg-slate-100 group-hover:bg-[#ffcc29]/20'} flex items-center justify-center mb-3 transition-colors`}>
-                      <Plus className={`w-6 h-6 ${isDarkMode ? 'text-slate-500 group-hover:text-[#ffcc29]' : 'text-slate-400 group-hover:text-[#ffcc29]'} transition-colors`} />
+                    <div className={`w-10 h-10 rounded-full ${isDarkMode ? 'bg-slate-800 group-hover:bg-[#ffcc29]/20' : 'bg-slate-100 group-hover:bg-[#ffcc29]/20'} flex items-center justify-center mb-2 transition-colors`}>
+                      <Plus className={`w-5 h-5 ${isDarkMode ? 'text-slate-500 group-hover:text-[#ffcc29]' : 'text-slate-400 group-hover:text-[#ffcc29]'} transition-colors`} />
                     </div>
-                    <p className={`text-sm font-medium ${theme.textMuted} group-hover:text-[#ffcc29] transition-colors`}>Add Account</p>
+                    <p className={`text-xs font-medium ${theme.textMuted} group-hover:text-[#ffcc29] transition-colors`}>Add Account</p>
                   </button>
                 </div>
               </>

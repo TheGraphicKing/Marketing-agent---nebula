@@ -688,7 +688,7 @@ router.get('/overview', protect, async (req, res) => {
     
     // Build response with REAL data
     
-    // Fetch Ayrshare connected accounts with analytics
+    // Fetch Ayrshare connected accounts - FAST (no analytics call to avoid slow loading)
     let ayrshareProfiles = [];
     if (user.ayrshare?.profileKey) {
       try {
@@ -696,17 +696,6 @@ router.get('/overview', protect, async (req, res) => {
         if (userProfile.success && userProfile.data?.activeSocialAccounts?.length > 0) {
           const ayrshareAccounts = userProfile.data.activeSocialAccounts;
           const displayNames = userProfile.data.displayNames || [];
-          
-          // Fetch analytics for connected platforms
-          let socialAnalytics = {};
-          try {
-            const analyticsResult = await getUserSocialAnalytics(user.ayrshare.profileKey, ayrshareAccounts);
-            if (analyticsResult.success && analyticsResult.data) {
-              socialAnalytics = analyticsResult.data;
-            }
-          } catch (analyticsError) {
-            console.log('Could not fetch social analytics for dashboard:', analyticsError.message);
-          }
           
           // Map Ayrshare platform names
           const platformNameMap = {
@@ -720,64 +709,11 @@ router.get('/overview', protect, async (req, res) => {
           
           ayrshareProfiles = ayrshareAccounts.map(platformKey => {
             const displayInfo = displayNames.find(d => d.platform === platformKey);
-            const platformData = socialAnalytics[platformKey] || null;
-            const analytics = platformData?.analytics || null;
-            
-            // Extract platform-specific metrics - ALL REAL DATA from Ayrshare API
-            let followers = 0, following = 0, posts = 0, engagement = null;
-            if (analytics) {
-              switch (platformKey) {
-                case 'instagram':
-                  followers = analytics.followersCount || 0;
-                  following = analytics.followsCount || 0;
-                  posts = analytics.mediaCount || 0;
-                  // Calculate real engagement: (likes + comments) / followers * 100
-                  const igLikes = analytics.likeCount || 0;
-                  const igComments = analytics.commentsCount || 0;
-                  if (followers > 0 && (igLikes + igComments) > 0) {
-                    engagement = parseFloat((((igLikes + igComments) / followers) * 100).toFixed(1));
-                  }
-                  break;
-                case 'facebook':
-                  followers = analytics.followersCount || analytics.fanCount || 0;
-                  following = analytics.pageFollows || 0;
-                  posts = 0; // FB doesn't provide post count
-                  // Real engagement from Facebook API
-                  const fbEngagements = analytics.pagePostEngagements || 0;
-                  const fbImpressions = analytics.pagePostsImpressions || 0;
-                  if (fbImpressions > 0) {
-                    engagement = parseFloat(((fbEngagements / fbImpressions) * 100).toFixed(1));
-                  }
-                  break;
-                case 'twitter':
-                  followers = analytics.followersCount || 0;
-                  following = analytics.friendsCount || 0;
-                  posts = analytics.tweetCount || 0;
-                  // Twitter doesn't provide direct engagement rate
-                  break;
-                case 'linkedin':
-                  followers = analytics.followers?.totalFollowerCount || 0;
-                  // LinkedIn provides engagement directly (as decimal like 0.06)
-                  if (analytics.engagement) {
-                    engagement = parseFloat((analytics.engagement * 100).toFixed(1));
-                  }
-                  break;
-                default:
-                  followers = analytics.followersCount || analytics.followers || 0;
-                  following = analytics.followingCount || analytics.followsCount || 0;
-                  posts = analytics.postsCount || analytics.mediaCount || 0;
-              }
-            }
             
             return {
               platform: platformNameMap[platformKey] || platformKey,
               accountName: displayInfo?.username || displayInfo?.displayName || platformKey,
               profileImage: displayInfo?.userImage || null,
-              followers,
-              following,
-              posts,
-              engagementRate: engagement, // null if not available - frontend will handle
-              followersGrowth: null, // We don't have historical data for growth
               source: 'ayrshare'
             };
           });
@@ -792,10 +728,6 @@ router.get('/overview', protect, async (req, res) => {
       platform: social.platform,
       accountName: social.accountName || social.channelData?.title || 'Connected Account',
       profileImage: social.channelData?.thumbnailUrl || null,
-      followers: social.channelData?.subscriberCount ? parseInt(social.channelData.subscriberCount) : 0,
-      posts: social.channelData?.videoCount ? parseInt(social.channelData.videoCount) : 0,
-      engagementRate: null, // No real engagement data available for OAuth
-      followersGrowth: null, // No historical data for growth
       connectedAt: social.connectedAt,
       source: 'oauth'
     }));
