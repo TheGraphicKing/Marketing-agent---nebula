@@ -2782,29 +2782,96 @@ async function generateTemplatePoster(templateImageBase64, content, options = {}
     }
   }
   
-  // Master Template Prompt - recommended by Gemini AI for best results
-  const prompt = `Act as a professional graphic designer. Using the attached image as a layout and style reference, RECONSTRUCT a new high-fidelity version.
+  // PRIMARY: Try Vertex AI Imagen 3 with style reference
+  try {
+    console.log('🎨 Generating template poster with Imagen 3 (PRIMARY)...');
+    const accessToken = await getVertexAccessToken();
+    
+    // Imagen prompt - describe the template and content
+    const imagenPrompt = `Create a professional event poster matching this exact design style:
+
+Content to display:
+${content}
+
+Requirements:
+- Match the exact layout, colors, and visual style of the reference image
+- Keep all logos and emblems in their exact positions as shown
+- Preserve any Tamil/regional language header text EXACTLY as shown in the reference
+- Use the same fonts, color scheme, and visual hierarchy
+- All text must be sharp, clear, perfectly readable
+- High quality, 4K resolution, publication-ready
+- Zero blur or noise on any text`;
+    
+    // Imagen 3 with reference image for style matching
+    const vertexUrl = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-3.0-generate-001:predict`;
+    
+    const response = await fetchWithTimeout(vertexUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        instances: [{ 
+          prompt: imagenPrompt,
+          referenceImages: [{
+            referenceImage: {
+              bytesBase64Encoded: imageData
+            },
+            referenceType: 'STYLE'
+          }]
+        }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: options.platform === 'youtube' ? '16:9' : '1:1',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_all'
+        }
+      })
+    }, 120000);
+
+    const data = await response.json();
+    
+    if (data.predictions?.[0]?.bytesBase64Encoded) {
+      const duration = Date.now() - startTime;
+      console.log(`✅ Template poster generated with Imagen 3 in ${duration}ms`);
+      return {
+        success: true,
+        imageBase64: `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`,
+        model: 'imagen-3.0-generate-001'
+      };
+    }
+    
+    if (data.error) {
+      console.error('Imagen 3 error:', data.error.message || JSON.stringify(data.error));
+      throw new Error(data.error.message || 'Imagen 3 failed');
+    }
+    
+    throw new Error('Imagen 3 returned no image');
+    
+  } catch (imagenError) {
+    console.error('Imagen 3 primary failed:', imagenError.message);
+  }
+  
+  // FALLBACK: Try Gemini 2.0 Flash image generation
+  try {
+    console.log('🎨 Falling back to Gemini 2.0 Flash...');
+    
+    const prompt = `Act as a professional graphic designer. Using the attached image as a layout and style reference, RECONSTRUCT a new high-fidelity version.
 
 1. Structural Logic: Maintain the spatial arrangement—place the logos at the top, the main title in the center, and the body text in the provided card area.
 
-2. Visual Identity: Replicate the exact color palette (the official colors shown in the template) and use clean, vector-style rendering.
+2. Visual Identity: Replicate the exact color palette and use clean, vector-style rendering.
 
-3. Text Execution: Replace all existing placeholder text with the following data:
+3. Text Execution: Replace all existing placeholder text with:
 ${content}
 
-Render this text in a sharp, bold, modern sans-serif font that matches the template's style.
+4. Quality: High resolution, perfectly sharp. All Tamil characters must be rendered with printing-grade clarity - copy them EXACTLY.
 
-4. Quality Constraints: Ensure the final output is high resolution, perfectly sharp, with zero blur or noise. All Tamil characters must be rendered with printing-grade clarity - copy them EXACTLY as shown in the template header.
+5. Preserve: All logos, emblems, seals must be reproduced pixel-perfect.`;
 
-5. Preserve Exactly: All logos, emblems, seals, and institutional branding must be reproduced pixel-perfect from the reference image.`;
-
-  // Try native image generation model
-  try {
-    console.log('🎨 Generating template poster with gemini-2.0-flash-exp-image-generation...');
-    
     const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent';
     
-    // Use Gemini's recommended generation config for image models
     const requestBody = {
       contents: [{
         parts: [
@@ -2818,44 +2885,40 @@ Render this text in a sharp, bold, modern sans-serif font that matches the templ
         ]
       }],
       generationConfig: {
-        temperature: 1.0,  // DO NOT LOWER - Image models need 1.0 for creativity
-        responseModalities: ["TEXT", "IMAGE"]  // Allows model to reason in text first
+        temperature: 1.0,
+        responseModalities: ["TEXT", "IMAGE"]
       }
     };
     
     const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
     }, 120000);
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('Gemini error:', data.error?.message || data);
-      throw new Error(data.error?.message || 'Image generation failed');
+      throw new Error(data.error?.message || 'Gemini failed');
     }
 
-    // Extract the generated image from response
+    // Extract the generated image
     const candidates = data.candidates || [];
     for (const candidate of candidates) {
       const parts = candidate.content?.parts || [];
       for (const part of parts) {
         if (part.inlineData?.data) {
           const duration = Date.now() - startTime;
-          console.log(`✅ Template poster generated in ${duration}ms`);
+          console.log(`✅ Template poster generated with Gemini in ${duration}ms`);
           return {
             success: true,
             imageBase64: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`,
             model: 'gemini-2.0-flash-exp-image-generation'
           };
         }
-        // Also check for inline_data (snake_case variant)
         if (part.inline_data?.data) {
           const duration = Date.now() - startTime;
-          console.log(`✅ Template poster generated in ${duration}ms`);
+          console.log(`✅ Template poster generated with Gemini in ${duration}ms`);
           return {
             success: true,
             imageBase64: `data:${part.inline_data.mime_type || 'image/png'};base64,${part.inline_data.data}`,
@@ -2865,31 +2928,25 @@ Render this text in a sharp, bold, modern sans-serif font that matches the templ
       }
     }
     
-    // Log if no image was generated
-    const textResponse = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
-      if (textResponse) {
-        console.log('Model returned text only:', textResponse.substring(0, 200));
-      } else {
-        console.log('Model returned no usable image content');
-      }
-      
-      throw new Error('No image generated by Gemini');
+    throw new Error('Gemini returned no image');
       
   } catch (error) {
-    console.error('Template poster generation failed:', error.message);
+    console.error('Gemini fallback failed:', error.message);
   }
   
-  // Fallback: Use Vertex AI Imagen for pure image generation based on description
+  // FINAL FALLBACK: Imagen 3 text-to-image (no template reference)
   try {
-    console.log('🎨 Falling back to Vertex AI Imagen...');
+    console.log('🎨 Final fallback: Imagen 3 text-to-image...');
     const accessToken = await getVertexAccessToken();
     
-    // Create a detailed prompt describing the desired poster
-    const imagenPrompt = `Professional social media poster with the following content: ${content.substring(0, 500)}. 
-    Style: Modern, clean design with professional typography. 
-    Colors: Blue gradient background with white and yellow text.
-    Layout: Title at top, details in middle, contact information at bottom.
-    High quality, publication ready.`;
+    const imagenPrompt = `Professional event poster with blue gradient background:
+
+${content}
+
+Style: Modern, clean corporate design. Blue and white color scheme with yellow accents.
+Layout: Header with logos at top, main title in center, details below, contact info at bottom.
+Typography: Bold, sharp, professional fonts. All text must be perfectly readable.
+Quality: 4K resolution, publication-ready, zero blur.`;
     
     const vertexUrl = `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/imagen-3.0-generate-001:predict`;
     
@@ -2903,7 +2960,7 @@ Render this text in a sharp, bold, modern sans-serif font that matches the templ
         instances: [{ prompt: imagenPrompt }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: options.platform === 'youtube' ? '16:9' : '1:1',
+          aspectRatio: '1:1',
           safetyFilterLevel: 'block_few'
         }
       })
@@ -2912,16 +2969,16 @@ Render this text in a sharp, bold, modern sans-serif font that matches the templ
     const data = await response.json();
     
     if (data.predictions?.[0]?.bytesBase64Encoded) {
-      console.log('✅ Poster generated with Vertex AI Imagen');
+      console.log('✅ Poster generated with Imagen 3 (text-to-image)');
       return {
         success: true,
         imageBase64: `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`,
         model: 'imagen-3.0-generate-001',
-        note: 'Generated based on content description (template reference not applied)'
+        note: 'Generated from description (template style not applied)'
       };
     }
   } catch (imagenError) {
-    console.error('Vertex AI Imagen fallback failed:', imagenError.message);
+    console.error('Imagen text-to-image fallback failed:', imagenError.message);
   }
   
   return {
