@@ -2786,18 +2786,36 @@ async function generateTemplatePoster(templateImageBase64, content, options = {}
   try {
     console.log('🎨 Generating template poster with Nano Banana Pro...');
     
-    const prompt = `Act as a professional graphic designer. Using the attached image as a layout and style reference, RECONSTRUCT a new high-fidelity version.
+    const prompt = `You are a professional graphic designer. Your task is to create a NEW poster using the attached image ONLY as a layout reference.
 
-1. Structural Logic: Maintain the spatial arrangement—place the logos at the top, the main title in the center, and the body text in the provided card area.
+CRITICAL INSTRUCTIONS:
 
-2. Visual Identity: Replicate the exact color palette and use clean, vector-style rendering.
+1. LOGOS & EMBLEMS - MOST IMPORTANT:
+   - The logos/emblems at the top corners are OFFICIAL GOVERNMENT/INSTITUTIONAL SEALS
+   - DO NOT attempt to redraw or recreate them - they will look blurry/smudged
+   - Instead, represent logo areas as clean circular/oval placeholder shapes with a subtle border
+   - Or simply leave those areas as solid color matching the background
+   - NEVER try to recreate intricate seal details - AI cannot render them cleanly
 
-3. Text Execution: Replace all existing placeholder text with:
+2. LAYOUT:
+   - Follow the same spatial arrangement as the reference
+   - Blue gradient background
+   - Title area in the center-top
+   - Content in the main body area
+
+3. TEXT - Replace ALL text with:
 ${content}
 
-4. Quality: High resolution, perfectly sharp. All Tamil characters must be rendered with printing-grade clarity - copy them EXACTLY.
+4. STYLING:
+   - Use clean, crisp typography
+   - Tamil text must be perfectly sharp and readable
+   - Use the same color scheme (dark blue background, yellow/gold text for titles, white text for body)
+   - Professional, print-ready quality
 
-5. Preserve: All logos, emblems, seals must be reproduced pixel-perfect.`;
+5. OUTPUT:
+   - High resolution, sharp image
+   - Clean edges and professional appearance
+   - Focus on TEXT CLARITY over logo recreation`;
 
     const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent';
     
