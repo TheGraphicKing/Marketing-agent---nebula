@@ -248,6 +248,14 @@ router.post('/:id/publish', protect, async (req, res) => {
     const mediaUrls = campaign.creative?.imageUrls || [];
     let mediaUrl = mediaUrls[0] || campaign.creative?.mediaUrl || null;
     
+    // Debug logging for template poster publish
+    console.log('📋 Campaign publish debug:');
+    console.log('   - Campaign name:', campaign.name);
+    console.log('   - textContent length:', campaign.creative?.textContent?.length || 0);
+    console.log('   - imageUrls count:', mediaUrls.length);
+    console.log('   - First imageUrl type:', mediaUrl ? (mediaUrl.startsWith('data:') ? 'base64' : mediaUrl.startsWith('http') ? 'URL' : 'unknown') : 'null');
+    console.log('   - First imageUrl preview:', mediaUrl ? mediaUrl.substring(0, 100) + '...' : 'null');
+    
     // Extract and limit hashtags for Instagram (max 5 per Ayrshare/Instagram rules)
     // First, extract all hashtags from the post content
     const hashtagRegex = /#\w+/g;
