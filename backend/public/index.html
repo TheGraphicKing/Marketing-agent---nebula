@@ -4,23 +4,41 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nebulaa AI - Marketing Agent</title>
+    <!-- Tailwind CSS via Play CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              nebula: {
-                dark: '#070A12',
-                gold: '#ffcc29',
-                silver: '#ededed',
+      // Configure tailwind when it loads
+      function configureTailwind() {
+        if (typeof tailwind !== 'undefined' && tailwind.config) {
+          tailwind.config = {
+            darkMode: 'class',
+            theme: {
+              extend: {
+                colors: {
+                  nebula: {
+                    dark: '#070A12',
+                    gold: '#ffcc29',
+                    silver: '#ededed',
+                  }
+                }
               }
             }
-          }
+          };
+          return true;
+        }
+        return false;
+      }
+      
+      // Retry configuration
+      var configRetries = 0;
+      function tryConfigureTailwind() {
+        if (!configureTailwind() && configRetries < 100) {
+          configRetries++;
+          setTimeout(tryConfigureTailwind, 50);
         }
       }
+      tryConfigureTailwind();
     </script>
     <style>
       body {
@@ -87,6 +105,7 @@
   <script type="module" crossorigin src="/assets/index-Db98KFXu.js"></script>
 </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
+
   </body>
 </html>

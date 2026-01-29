@@ -4,12 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nebulaa AI - Marketing Agent</title>
-    <script src="https://cdn.tailwindcss.com/3.4.1"></script>
+    <!-- Tailwind CSS via Play CDN - more reliable -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      // Wait for tailwind to load, retry if needed
-      (function checkTailwind() {
-        if (typeof tailwind !== 'undefined') {
+      // Configure tailwind when it loads
+      function configureTailwind() {
+        if (typeof tailwind !== 'undefined' && tailwind.config) {
           tailwind.config = {
             darkMode: 'class',
             theme: {
@@ -24,17 +25,20 @@
               }
             }
           };
-        } else {
-          // Tailwind not loaded yet, retry in 100ms (max 50 times = 5 seconds)
-          if (!window.tailwindRetries) window.tailwindRetries = 0;
-          if (window.tailwindRetries < 50) {
-            window.tailwindRetries++;
-            setTimeout(checkTailwind, 100);
-          } else {
-            console.warn('Tailwind CDN failed to load, app may have styling issues');
-          }
+          return true;
         }
-      })();
+        return false;
+      }
+      
+      // Retry configuration
+      var configRetries = 0;
+      function tryConfigureTailwind() {
+        if (!configureTailwind() && configRetries < 100) {
+          configRetries++;
+          setTimeout(tryConfigureTailwind, 50);
+        }
+      }
+      tryConfigureTailwind();
     </script>
     <style>
       body {
