@@ -3187,16 +3187,14 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
             } : undefined
           });
 
-          // If not scheduling, publish immediately
-          if (!isScheduleMode) {
-            const scheduledFor = isScheduleMode 
-              ? new Date(`${scheduleDate}T${scheduleTime}`).toISOString()
-              : undefined;
-            
-            const publishResult = await apiService.publishCampaign(campaign._id, selectedPlatforms, scheduledFor);
-            if (!publishResult.success) {
-              throw new Error(publishResult.message || 'Failed to publish');
-            }
+          // Publish or schedule the campaign
+          const scheduledFor = isScheduleMode 
+            ? new Date(`${scheduleDate}T${scheduleTime}`).toISOString()
+            : undefined;
+          
+          const publishResult = await apiService.publishCampaign(campaign._id, selectedPlatforms, scheduledFor);
+          if (!publishResult.success) {
+            throw new Error(publishResult.message || 'Failed to publish');
           }
 
           onSuccess(campaign);

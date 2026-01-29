@@ -310,22 +310,39 @@ router.post('/:id/publish', protect, async (req, res) => {
     );
     
     console.log('Ayrshare publish result:', result);
+    console.log('Ayrshare result.data:', JSON.stringify(result.data, null, 2));
     
-    // Check for Ayrshare errors more thoroughly
-    // Ayrshare returns status: "error" when posts fail, even with 200 HTTP response
-    const hasAyrshareError = result.data?.status === 'error' || 
-                              result.data?.posts?.some(p => p.code || p.errors);
+    // Check for Ayrshare errors more carefully
+    // Success: result.data has `id`, `status: "success"`, or posts with `id` 
+    // Error: result.data has `status: "error"` or posts with numeric `code` (error code)
+    let hasAyrshareError = false;
+    let errorMessage = '';
     
-    // Check individual platform errors
-    if (result.data?.posts) {
+    // Check if top-level status is error
+    if (result.data?.status === 'error') {
+      hasAyrshareError = true;
+      errorMessage = result.data?.message || 'Post failed';
+    }
+    
+    // Check individual platform posts for errors (error posts have numeric `code`)
+    if (result.data?.posts && Array.isArray(result.data.posts)) {
       for (const post of result.data.posts) {
-        if (post.code || post.errors || post.status === 'error') {
-          console.log('❌ Platform post error:', post.platform, post.message || post.errors);
+        // Error posts have a numeric `code` field (like 151, 400, etc.)
+        if (typeof post.code === 'number' || post.status === 'error') {
+          hasAyrshareError = true;
+          console.log('❌ Platform post error:', post.platform, post.code, post.message);
+          errorMessage = `${post.platform || 'Unknown'}: ${post.message || 'Error ' + post.code}`;
+        } else if (post.id || post.postId) {
+          // Successful post has id
+          console.log('✅ Platform post success:', post.platform, post.id || post.postId);
         }
       }
     }
     
-    if ((result.success || result.data?.id || result.id) && !hasAyrshareError) {
+    // If we have an ID at the top level, it's likely successful
+    const hasSuccessId = result.data?.id || result.id || result.data?.postIds?.length > 0;
+    
+    if ((result.success || hasSuccessId) && !hasAyrshareError) {
       // Update campaign with post result
       const updateData = {
         status: isScheduled ? 'scheduled' : 'posted',
@@ -353,22 +370,15 @@ router.post('/:id/publish', protect, async (req, res) => {
         result
       });
     } else {
-      // Extract detailed error message from Ayrshare response
-      let errorMessage = 'Failed to publish to social media';
-      if (result.data?.posts) {
-        const postErrors = result.data.posts
-          .filter(p => p.code || p.errors || p.message)
-          .map(p => `${p.platform || 'Unknown'}: ${p.message || p.errors?.[0]?.message || 'Error'}`)
-          .join('; ');
-        if (postErrors) {
-          errorMessage = postErrors;
-        }
-      }
+      // Use the error message collected during post checking
+      const finalErrorMessage = errorMessage || 'Failed to publish to social media';
+      
+      console.log('❌ Publish failed:', finalErrorMessage);
       
       res.status(400).json({
         success: false,
-        message: errorMessage,
-        error: result.error || result.message || result.data?.errors?.[0]?.message,
+        message: finalErrorMessage,
+        error: result.error || result.message || result.data?.message,
         details: result.data?.posts
       });
     }
