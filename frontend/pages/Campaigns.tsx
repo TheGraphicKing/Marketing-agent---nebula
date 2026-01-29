@@ -2935,6 +2935,7 @@ interface PosterItem {
   status: 'pending' | 'generating' | 'generated' | 'editing' | 'error';
   error?: string;
   editHistory: Array<{ instruction: string; image: string }>;
+  useAsReference?: boolean; // If true, use image as style reference instead of exact template
 }
 
 const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSuccess, isDarkMode, theme, connectedPlatforms }) => {
@@ -2946,11 +2947,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
     const [isEditing, setIsEditing] = useState(false);
     const [fullPreviewImage, setFullPreviewImage] = useState<string | null>(null);
     const [useAIGeneration, setUseAIGeneration] = useState(false); // Canvas by default, AI optional
-    
-    // Reference Mode - use a reference poster for style inspiration
-    const [useReferenceMode, setUseReferenceMode] = useState(false);
-    const [referenceImage, setReferenceImage] = useState<string | null>(null);
-    const [referenceContent, setReferenceContent] = useState('');
     
     // Schedule state
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(connectedPlatforms.slice(0, 1));
@@ -3010,72 +3006,11 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
       }
     };
 
-    // Handle reference image upload
-    const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = () => {
-        setReferenceImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    };
-
-    // Generate poster from reference
-    const handleGenerateFromReference = async () => {
-      if (!referenceImage || !referenceContent.trim()) {
-        alert('Please upload a reference image and enter your content');
-        return;
-      }
-      
-      setIsGenerating(true);
-      setStep('preview');
-      
-      // Create a poster item for the reference generation
-      const newPoster: PosterItem = {
-        id: `poster-ref-${Date.now()}`,
-        templateImage: referenceImage,
-        content: referenceContent,
-        generatedImage: null,
-        imageUrl: null,
-        status: 'generating',
-        editHistory: []
-      };
-      
-      setPosters([newPoster]);
-      setCurrentPosterIndex(0);
-      
-      try {
-        const result = await apiService.generatePosterFromReference(
-          referenceImage,
-          referenceContent,
-          selectedPlatforms[0] || 'instagram'
-        );
-        
-        if (result.success) {
-          setPosters([{
-            ...newPoster,
-            status: 'generated',
-            generatedImage: result.imageBase64 || null,
-            imageUrl: result.imageUrl || null
-          }]);
-        } else {
-          setPosters([{
-            ...newPoster,
-            status: 'error',
-            error: result.error || result.message || 'Failed to generate poster'
-          }]);
-        }
-      } catch (error: any) {
-        setPosters([{
-          ...newPoster,
-          status: 'error',
-          error: error.message || 'Failed to generate poster from reference'
-        }]);
-      }
-      
-      setIsGenerating(false);
+    // Toggle "Use as Reference" mode for a poster
+    const toggleUseAsReference = (id: string) => {
+      setPosters(prev => prev.map(p => 
+        p.id === id ? { ...p, useAsReference: !p.useAsReference } : p
+      ));
     };
 
     // Generate posters
@@ -3099,14 +3034,26 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
         setCurrentPosterIndex(i);
 
         try {
-          const result = await apiService.generateTemplatePoster(
-            poster.templateImage,
-            poster.content,
-            { 
-              platform: selectedPlatforms[0] || 'instagram',
-              useAI: useAIGeneration 
-            }
-          );
+          let result;
+          
+          // If "Use as Reference" is enabled, generate a new poster inspired by the reference
+          if (poster.useAsReference) {
+            result = await apiService.generatePosterFromReference(
+              poster.templateImage,
+              poster.content,
+              selectedPlatforms[0] || 'instagram'
+            );
+          } else {
+            // Normal template generation
+            result = await apiService.generateTemplatePoster(
+              poster.templateImage,
+              poster.content,
+              { 
+                platform: selectedPlatforms[0] || 'instagram',
+                useAI: useAIGeneration 
+              }
+            );
+          }
 
           if (result.success) {
             setPosters(prev => prev.map((p, idx) => 
@@ -3323,162 +3270,30 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
             {/* STEP 1: Upload Templates */}
             {step === 'upload' && (
               <div className="space-y-6">
-                {/* Mode Selector - Template vs Reference */}
-                <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                  <p className={`text-sm font-medium mb-3 ${theme.text}`}>Choose Mode:</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setUseReferenceMode(false)}
-                      className={`p-4 rounded-xl border-2 transition-all text-left ${
-                        !useReferenceMode
-                          ? 'border-[#ffcc29] bg-[#ffcc29]/10'
-                          : isDarkMode 
-                            ? 'border-slate-700 hover:border-slate-600' 
-                            : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <ImageIcon className={`w-5 h-5 ${!useReferenceMode ? 'text-[#ffcc29]' : theme.textSecondary}`} />
-                        <span className={`font-medium ${!useReferenceMode ? 'text-[#ffcc29]' : theme.text}`}>
-                          Template Mode
-                        </span>
+                {/* Upload Area */}
+                <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                  isDarkMode ? 'border-slate-700 hover:border-[#ffcc29]/50' : 'border-slate-300 hover:border-[#ffcc29]'
+                }`}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="template-upload"
+                  />
+                  <label htmlFor="template-upload" className="cursor-pointer">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="p-4 bg-[#ffcc29]/10 rounded-full">
+                        <ImageIcon className="w-8 h-8 text-[#ffcc29]" />
                       </div>
-                      <p className={`text-xs ${theme.textSecondary}`}>
-                        Upload your template and add text content. AI overlays your text on the exact design.
-                      </p>
-                    </button>
-                    
-                    <button
-                      onClick={() => setUseReferenceMode(true)}
-                      className={`p-4 rounded-xl border-2 transition-all text-left ${
-                        useReferenceMode
-                          ? 'border-purple-500 bg-purple-500/10'
-                          : isDarkMode 
-                            ? 'border-slate-700 hover:border-slate-600' 
-                            : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Sparkles className={`w-5 h-5 ${useReferenceMode ? 'text-purple-500' : theme.textSecondary}`} />
-                        <span className={`font-medium ${useReferenceMode ? 'text-purple-500' : theme.text}`}>
-                          Reference Mode
-                        </span>
+                      <div>
+                        <p className={`font-medium ${theme.text}`}>Drop template images here</p>
+                        <p className={`text-sm ${theme.textSecondary}`}>or click to browse (PNG, JPG)</p>
                       </div>
-                      <p className={`text-xs ${theme.textSecondary}`}>
-                        Upload a design for inspiration. AI creates a NEW poster with that STYLE but YOUR content.
-                      </p>
-                    </button>
-                  </div>
+                    </div>
+                  </label>
                 </div>
-
-                {/* Reference Mode UI */}
-                {useReferenceMode ? (
-                  <div className="space-y-4">
-                    {/* Reference Image Upload */}
-                    <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-                      referenceImage 
-                        ? 'border-purple-500/50' 
-                        : isDarkMode ? 'border-slate-700 hover:border-purple-500/50' : 'border-slate-300 hover:border-purple-500'
-                    }`}>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleReferenceUpload}
-                        className="hidden"
-                        id="reference-upload"
-                      />
-                      {referenceImage ? (
-                        <div className="flex flex-col items-center gap-4">
-                          <img 
-                            src={referenceImage} 
-                            alt="Reference" 
-                            className="max-h-48 rounded-lg shadow-lg"
-                          />
-                          <label htmlFor="reference-upload" className="cursor-pointer text-purple-500 hover:text-purple-400 text-sm font-medium">
-                            Change Reference Image
-                          </label>
-                        </div>
-                      ) : (
-                        <label htmlFor="reference-upload" className="cursor-pointer">
-                          <div className="flex flex-col items-center gap-3">
-                            <div className="p-4 bg-purple-500/10 rounded-full">
-                              <Sparkles className="w-8 h-8 text-purple-500" />
-                            </div>
-                            <div>
-                              <p className={`font-medium ${theme.text}`}>Upload Reference Design</p>
-                              <p className={`text-sm ${theme.textSecondary}`}>AI will copy this style for your new poster</p>
-                            </div>
-                          </div>
-                        </label>
-                      )}
-                    </div>
-
-                    {/* Content Input for Reference Mode */}
-                    <div className={`rounded-xl border p-4 ${isDarkMode ? 'border-slate-700 bg-[#0d1117]' : 'border-slate-200 bg-white'}`}>
-                      <label className={`block text-sm font-medium mb-2 ${theme.text}`}>
-                        Your Poster Content
-                      </label>
-                      <textarea
-                        value={referenceContent}
-                        onChange={(e) => setReferenceContent(e.target.value)}
-                        placeholder="Enter your content here...&#10;&#10;Example:&#10;EVENT: Tech Summit 2025&#10;DATE: March 15, 2025&#10;TIME: 9:00 AM&#10;VENUE: Innovation Center"
-                        rows={6}
-                        className={inputClasses}
-                      />
-                      <p className={`text-xs mt-2 ${theme.textSecondary}`}>
-                        Tip: Use the same structure as your reference for best results
-                      </p>
-                    </div>
-
-                    {/* Generate Button */}
-                    <button
-                      onClick={handleGenerateFromReference}
-                      disabled={!referenceImage || !referenceContent.trim() || isGenerating}
-                      className={`w-full py-3 px-6 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
-                        referenceImage && referenceContent.trim() && !isGenerating
-                          ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:shadow-lg'
-                          : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {isGenerating ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-5 h-5" />
-                          Generate from Reference
-                        </>
-                      )}
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/* Template Mode - Original Upload Area */}
-                    <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-                      isDarkMode ? 'border-slate-700 hover:border-[#ffcc29]/50' : 'border-slate-300 hover:border-[#ffcc29]'
-                    }`}>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        id="template-upload"
-                      />
-                      <label htmlFor="template-upload" className="cursor-pointer">
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="p-4 bg-[#ffcc29]/10 rounded-full">
-                            <ImageIcon className="w-8 h-8 text-[#ffcc29]" />
-                          </div>
-                          <div>
-                            <p className={`font-medium ${theme.text}`}>Drop template images here</p>
-                            <p className={`text-sm ${theme.textSecondary}`}>or click to browse (PNG, JPG)</p>
-                          </div>
-                        </div>
-                      </label>
-                    </div>
 
                 {/* Generation Mode Toggle */}
                 <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-blue-50'}`}>
@@ -3525,23 +3340,32 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                         <div 
                           key={poster.id} 
                           className={`rounded-xl border overflow-hidden ${
-                            isDarkMode ? 'border-slate-700 bg-[#0d1117]' : 'border-slate-200 bg-white'
+                            poster.useAsReference 
+                              ? 'border-purple-500/50 bg-purple-500/5' 
+                              : isDarkMode ? 'border-slate-700 bg-[#0d1117]' : 'border-slate-200 bg-white'
                           }`}
                         >
                           <div className="flex gap-3 p-3">
                             {/* Thumbnail */}
-                            <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0">
+                            <div className="w-24 h-24 rounded-lg overflow-hidden shrink-0 relative">
                               <img 
                                 src={poster.templateImage} 
                                 alt={`Template ${index + 1}`}
                                 className="w-full h-full object-cover"
                               />
+                              {poster.useAsReference && (
+                                <div className="absolute inset-0 bg-purple-500/20 flex items-center justify-center">
+                                  <Sparkles className="w-6 h-6 text-purple-500" />
+                                </div>
+                              )}
                             </div>
                             
                             {/* Content Input */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-2">
-                                <span className={`text-xs font-medium ${theme.textSecondary}`}>Template {index + 1}</span>
+                                <span className={`text-xs font-medium ${poster.useAsReference ? 'text-purple-500' : theme.textSecondary}`}>
+                                  {poster.useAsReference ? '✨ Reference' : `Template ${index + 1}`}
+                                </span>
                                 <button 
                                   onClick={() => removePoster(poster.id)}
                                   className="p-1 rounded hover:bg-red-500/20 text-red-500"
@@ -3552,18 +3376,33 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                               <textarea
                                 value={poster.content}
                                 onChange={(e) => updatePosterContent(poster.id, e.target.value)}
-                                placeholder="Enter poster content here...&#10;&#10;Example:&#10;Program: Workshop on AI&#10;Date: 31.01.2026&#10;Time: 10:00 AM"
-                                rows={4}
+                                placeholder={poster.useAsReference 
+                                  ? "Enter YOUR content for the new poster...&#10;&#10;AI will create a new poster with this content using the reference's style"
+                                  : "Enter poster content here...&#10;&#10;Example:&#10;Program: Workshop on AI&#10;Date: 31.01.2026&#10;Time: 10:00 AM"
+                                }
+                                rows={3}
                                 className={`${inputClasses} text-sm resize-none`}
                               />
+                              {/* Use as Reference Toggle */}
+                              <button
+                                onClick={() => toggleUseAsReference(poster.id)}
+                                className={`mt-2 w-full py-1.5 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
+                                  poster.useAsReference
+                                    ? 'bg-purple-500 text-white'
+                                    : isDarkMode 
+                                      ? 'bg-slate-800 text-slate-400 hover:bg-purple-500/20 hover:text-purple-400'
+                                      : 'bg-slate-100 text-slate-600 hover:bg-purple-500/10 hover:text-purple-500'
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                {poster.useAsReference ? 'Using as Style Reference' : 'Use as Reference (new design)'}
+                              </button>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                )}
-                  </>
                 )}
               </div>
             )}
