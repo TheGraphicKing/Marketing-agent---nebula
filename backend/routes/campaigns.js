@@ -244,18 +244,36 @@ router.post('/:id/publish', protect, async (req, res) => {
     }
     
     // Build the post content
-    const postContent = campaign.creative?.textContent || campaign.creative?.caption || campaign.content || campaign.name;
+    let postContent = campaign.creative?.textContent || campaign.creative?.caption || campaign.content || campaign.name;
     const mediaUrls = campaign.creative?.imageUrls || [];
     let mediaUrl = mediaUrls[0] || campaign.creative?.mediaUrl || null;
-    const hashtags = campaign.creative?.captions?.split(' ').filter(h => h.startsWith('#')) || [];
     
-    // Format the full post with hashtags
-    const fullPost = hashtags.length > 0 
-      ? `${postContent}\n\n${hashtags.join(' ')}`
-      : postContent;
+    // Extract and limit hashtags for Instagram (max 5 per Ayrshare/Instagram rules)
+    // First, extract all hashtags from the post content
+    const hashtagRegex = /#\w+/g;
+    const existingHashtags = postContent.match(hashtagRegex) || [];
+    
+    // Remove hashtags from post content (we'll add limited ones back)
+    let cleanContent = postContent.replace(hashtagRegex, '').trim();
+    // Remove duplicate newlines
+    cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n');
+    
+    // Get additional hashtags from captions field
+    const captionHashtags = (campaign.creative?.captions?.match(hashtagRegex) || []);
+    
+    // Combine all hashtags, remove duplicates, and limit to 5 for Instagram
+    const allHashtags = [...new Set([...existingHashtags, ...captionHashtags])];
+    const maxHashtags = platforms.includes('instagram') ? 5 : 30; // Instagram max is 5, others allow more
+    const limitedHashtags = allHashtags.slice(0, maxHashtags);
+    
+    // Format the full post with limited hashtags
+    const fullPost = limitedHashtags.length > 0 
+      ? `${cleanContent}\n\n${limitedHashtags.join(' ')}`
+      : cleanContent;
     
     console.log('Publishing to platforms:', platforms);
     console.log('Post content:', fullPost.substring(0, 100) + '...');
+    console.log('Hashtags count:', limitedHashtags.length, '(limited from', allHashtags.length, ')');
     console.log('Media URL:', mediaUrl ? 'yes' : 'no');
     
     // If the image is a base64 data URL, upload to Cloudinary first
