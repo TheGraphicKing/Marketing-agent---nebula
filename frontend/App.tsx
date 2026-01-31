@@ -9,7 +9,6 @@ import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Campaigns from './pages/Campaigns';
 import Competitors from './pages/Competitors';
-import Influencers from './pages/Influencers';
 import ConnectSocials from './pages/ConnectSocials';
 import Settings from './pages/Settings';
 import { ThemeProvider } from './context/ThemeContext';
@@ -102,7 +101,6 @@ const App: React.FC = () => {
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/competitors" element={<Competitors />} />
-                    <Route path="/influencers" element={<Influencers />} />
                     <Route path="/connect-socials" element={<ConnectSocials />} />
                     <Route path="/settings" element={<Settings user={user} onUserUpdate={setUser} />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />

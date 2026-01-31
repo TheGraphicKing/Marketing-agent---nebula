@@ -55,7 +55,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
     { path: '/competitors', label: 'Competitors', icon: Users },
-    { path: '/influencers', label: 'Influencers', icon: Sparkles },
     { path: '/connect-socials', label: 'Connect Socials', icon: Link2 },
   ];
 
