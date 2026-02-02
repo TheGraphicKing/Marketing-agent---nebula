@@ -344,9 +344,9 @@ const Campaigns: React.FC = () => {
       try {
         const parsed = JSON.parse(cachedCampaigns);
         if (parsed.campaigns && parsed.campaigns.length > 0) {
-          // Check if cache is less than 2 hours old
+          // Check if cache is less than 24 hours old (persist campaigns for a day)
           const cacheAge = Date.now() - (parsed.timestamp || 0);
-          if (cacheAge < 2 * 60 * 60 * 1000) { // 2 hours
+          if (cacheAge < 24 * 60 * 60 * 1000) { // 24 hours
             console.log('✅ Loading campaigns from cache (age:', Math.round(cacheAge / 60000), 'minutes)');
             setSuggestedCampaigns(parsed.campaigns);
             setLoadingSuggestions(false);
@@ -354,7 +354,7 @@ const Campaigns: React.FC = () => {
             loadedFromCacheRef.current = true;
             return;
           } else {
-            console.log('⏰ Cache expired, will regenerate');
+            console.log('⏰ Cache expired after 24 hours, will regenerate');
           }
         }
       } catch (e) {
@@ -388,12 +388,24 @@ const Campaigns: React.FC = () => {
   useEffect(() => {
     if (suggestedCampaigns.length > 0) {
       try {
-        // Strip base64 images to avoid localStorage quota exceeded
-        const campaignsForCache = suggestedCampaigns.map(campaign => ({
+        // Use unique stock images per campaign based on campaign title/id to maintain variety
+        const stockImages = [
+          'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1551434678-e076c223a692?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+          'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+        ];
+        
+        const campaignsForCache = suggestedCampaigns.map((campaign, idx) => ({
           ...campaign,
-          // Replace base64 images with placeholder - they'll be regenerated on next load
+          // Replace base64 images with unique stock images per campaign
           imageUrl: campaign.imageUrl?.startsWith('data:') 
-            ? 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop' 
+            ? stockImages[idx % stockImages.length]
             : campaign.imageUrl
         }));
         localStorage.setItem('nebula_suggested_campaigns', JSON.stringify({
