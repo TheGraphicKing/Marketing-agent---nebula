@@ -18,10 +18,13 @@ const { postToSocialMedia, getAyrshareAnalytics } = require('../services/socialM
 const { ensurePublicUrl, isBase64DataUrl } = require('../services/imageUploader');
 
 // Import logo overlay service for compositing logos onto posters
-const { overlayLogoAndUpload } = require('../services/logoOverlay');
+const { overlayLogoAndUpload, replaceLogoAtBboxAndUpload } = require('../services/logoOverlay');
 
 // Import BrandAsset model for fetching user's logos
 const BrandAsset = require('../models/BrandAsset');
+
+// Import logo detection from Gemini
+const { detectLogoInImage } = require('../services/geminiAI');
 
 /**
  * GET /api/campaigns
@@ -999,9 +1002,6 @@ router.post('/template-poster', protect, async (req, res) => {
     console.log('🎨 Generating template poster...');
     console.log('📝 Content length:', content.length, 'characters');
     console.log('📱 Platform:', platform || 'general');
-    if (logoOverlay?.enabled) {
-      console.log('🏷️ Logo overlay enabled:', logoOverlay.position, logoOverlay.size);
-    }
     
     // Always use AI (Gemini) for poster generation - it produces better results
     const result = await generateTemplatePoster(templateImage, content, {
@@ -1014,34 +1014,60 @@ router.post('/template-poster', protect, async (req, res) => {
       
       let finalImageBase64 = result.imageBase64;
       let hostedUrl = null;
+      let logoReplaced = false;
       
-      // Apply logo overlay if requested
+      // Auto-detect and replace logo if user has a logo and enabled the feature
       if (logoOverlay?.enabled && logoOverlay?.logoUrl) {
         try {
-          console.log('🏷️ Applying logo overlay...');
-          const overlayResult = await overlayLogoAndUpload(
-            finalImageBase64,
-            logoOverlay.logoUrl,
-            {
-              position: logoOverlay.position || 'bottom-right',
-              size: logoOverlay.size || 'medium',
-              opacity: logoOverlay.opacity || 0.9,
-              padding: logoOverlay.padding || 20
-            }
-          );
+          console.log('🔍 Detecting logo in generated poster...');
           
-          if (overlayResult.success) {
-            hostedUrl = overlayResult.url;
-            console.log('✅ Logo overlay applied and uploaded:', hostedUrl);
+          // Use AI to detect where the logo/emblem is in the generated image
+          const detection = await detectLogoInImage(finalImageBase64);
+          
+          if (detection.success && detection.detected && detection.bbox) {
+            console.log(`✅ Logo detected at (${detection.bbox.x}%, ${detection.bbox.y}%) with ${(detection.confidence * 100).toFixed(0)}% confidence`);
+            
+            // Replace the detected logo with user's brand logo
+            const replaceResult = await replaceLogoAtBboxAndUpload(
+              finalImageBase64,
+              logoOverlay.logoUrl,
+              detection.bbox
+            );
+            
+            if (replaceResult.success) {
+              hostedUrl = replaceResult.url;
+              finalImageBase64 = replaceResult.imageBase64 || finalImageBase64;
+              logoReplaced = true;
+              console.log('✅ Logo replaced and uploaded:', hostedUrl);
+            } else {
+              console.warn('⚠️ Logo replacement failed, using original image');
+            }
           } else {
-            console.warn('⚠️ Logo overlay failed, using original image');
+            console.log('ℹ️ No logo detected in poster, applying overlay at default position');
+            // Fallback: overlay at bottom-right if no logo detected
+            const overlayResult = await overlayLogoAndUpload(
+              finalImageBase64,
+              logoOverlay.logoUrl,
+              {
+                position: 'bottom-right',
+                size: 'medium',
+                opacity: 0.9,
+                padding: 20
+              }
+            );
+            
+            if (overlayResult.success) {
+              hostedUrl = overlayResult.url;
+              logoReplaced = true;
+              console.log('✅ Logo overlay applied at default position:', hostedUrl);
+            }
           }
-        } catch (overlayError) {
-          console.warn('⚠️ Logo overlay error:', overlayError.message);
+        } catch (logoError) {
+          console.warn('⚠️ Logo processing error:', logoError.message);
         }
       }
       
-      // If no logo overlay or it failed, upload the base image
+      // If no logo processing or it failed, upload the base image
       if (!hostedUrl) {
         try {
           const uploadResult = await ensurePublicUrl(finalImageBase64);
@@ -1059,7 +1085,7 @@ router.post('/template-poster', protect, async (req, res) => {
         imageBase64: finalImageBase64,
         imageUrl: hostedUrl,
         model: result.model || result.method,
-        logoApplied: logoOverlay?.enabled && hostedUrl ? true : false,
+        logoApplied: logoReplaced,
         message: 'Poster generated successfully'
       });
     } else {

@@ -2962,12 +2962,10 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
     // Reference image for editing (like AI tools - "make it look like this")
     const [editReferenceImage, setEditReferenceImage] = useState<string | null>(null);
     
-    // Logo overlay state
+    // Logo overlay state - AI auto-detects position, no manual selection needed
     const [logoOverlayEnabled, setLogoOverlayEnabled] = useState(false);
-    const [availableLogos, setAvailableLogos] = useState<Array<{ _id: string; name: string; url: string; isPrimary: boolean; defaultPosition: string; defaultSize: string }>>([]);
+    const [availableLogos, setAvailableLogos] = useState<Array<{ _id: string; name: string; url: string; isPrimary: boolean }>>([]);
     const [selectedLogoId, setSelectedLogoId] = useState<string | null>(null);
-    const [logoPosition, setLogoPosition] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'>('bottom-right');
-    const [logoSize, setLogoSize] = useState<'small' | 'medium' | 'large'>('medium');
     const [loadingLogos, setLoadingLogos] = useState(false);
     
     // Schedule state
@@ -2997,8 +2995,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
             const primaryLogo = response.logos.find((l: any) => l.isPrimary);
             if (primaryLogo) {
               setSelectedLogoId(primaryLogo._id);
-              setLogoPosition(primaryLogo.defaultPosition || 'bottom-right');
-              setLogoSize(primaryLogo.defaultSize || 'medium');
             } else if (response.logos.length > 0) {
               setSelectedLogoId(response.logos[0]._id);
             }
@@ -3077,14 +3073,10 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
       setIsGenerating(true);
       setStep('preview');
 
-      // Prepare logo overlay config if enabled
+      // Prepare logo overlay config if enabled - AI auto-detects position
       const logoOverlayConfig = logoOverlayEnabled && selectedLogo ? {
         enabled: true,
-        logoUrl: selectedLogo.url,
-        position: logoPosition,
-        size: logoSize,
-        opacity: 0.9,
-        padding: 20
+        logoUrl: selectedLogo.url
       } : undefined;
 
       for (let i = 0; i < posters.length; i++) {
@@ -3505,8 +3497,8 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                           <ImageIcon className="w-5 h-5 text-[#ffcc29]" />
                         </div>
                         <div>
-                          <h3 className={`font-medium ${theme.text}`}>Logo Overlay</h3>
-                          <p className={`text-xs ${theme.textSecondary}`}>Add your brand logo to generated posters</p>
+                          <h3 className={`font-medium ${theme.text}`}>Auto Logo Replacement</h3>
+                          <p className={`text-xs ${theme.textSecondary}`}>AI detects & replaces logos in posters with your brand logo</p>
                         </div>
                       </div>
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -3542,11 +3534,7 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                                 {availableLogos.map((logo) => (
                                   <button
                                     key={logo._id}
-                                    onClick={() => {
-                                      setSelectedLogoId(logo._id);
-                                      setLogoPosition(logo.defaultPosition as any || 'bottom-right');
-                                      setLogoSize(logo.defaultSize as any || 'medium');
-                                    }}
+                                    onClick={() => setSelectedLogoId(logo._id)}
                                     className={`relative p-2 rounded-lg border-2 transition-all ${
                                       selectedLogoId === logo._id
                                         ? 'border-[#ffcc29] bg-[#ffcc29]/10'
@@ -3564,52 +3552,14 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                               </div>
                             </div>
 
-                            {/* Position & Size */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className={`text-xs ${theme.textSecondary} mb-1 block`}>Position</label>
-                                <select
-                                  value={logoPosition}
-                                  onChange={(e) => setLogoPosition(e.target.value as any)}
-                                  className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                                    isDarkMode 
-                                      ? 'bg-slate-800 border-slate-700 text-white' 
-                                      : 'bg-white border-slate-200 text-gray-900'
-                                  }`}
-                                >
-                                  <option value="top-left">Top Left</option>
-                                  <option value="top-right">Top Right</option>
-                                  <option value="bottom-left">Bottom Left</option>
-                                  <option value="bottom-right">Bottom Right</option>
-                                  <option value="center">Center</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className={`text-xs ${theme.textSecondary} mb-1 block`}>Size</label>
-                                <select
-                                  value={logoSize}
-                                  onChange={(e) => setLogoSize(e.target.value as any)}
-                                  className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                                    isDarkMode 
-                                      ? 'bg-slate-800 border-slate-700 text-white' 
-                                      : 'bg-white border-slate-200 text-gray-900'
-                                  }`}
-                                >
-                                  <option value="small">Small (10%)</option>
-                                  <option value="medium">Medium (15%)</option>
-                                  <option value="large">Large (20%)</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* Preview */}
+                            {/* Info about auto-detection */}
                             {selectedLogo && (
                               <div className={`flex items-center gap-3 p-3 rounded-lg ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-100'}`}>
                                 <img src={selectedLogo.url} alt="Selected logo" className="w-10 h-10 object-contain" />
                                 <div className="flex-1">
                                   <p className={`text-sm font-medium ${theme.text}`}>{selectedLogo.name}</p>
                                   <p className={`text-xs ${theme.textSecondary}`}>
-                                    {logoPosition.replace('-', ' ')} • {logoSize}
+                                    ✨ AI will auto-detect and replace logos
                                   </p>
                                 </div>
                               </div>

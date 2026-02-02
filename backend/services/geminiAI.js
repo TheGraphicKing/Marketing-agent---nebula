@@ -3196,6 +3196,118 @@ Create a poster that someone would think "this looks like it was designed by the
   }
 }
 
+/**
+ * Detect logo position and bounding box in an image using Gemini Vision
+ * @param {string} imageBase64 - Base64 encoded image (with or without data URL prefix)
+ * @returns {Promise<{success: boolean, detected: boolean, bbox?: {x: number, y: number, width: number, height: number}, confidence?: number, error?: string}>}
+ */
+async function detectLogoInImage(imageBase64) {
+  try {
+    console.log('🔍 Detecting logo in image using Gemini Vision...');
+    
+    // Extract base64 data
+    let imageData = imageBase64;
+    let mimeType = 'image/png';
+    
+    if (imageBase64.startsWith('data:')) {
+      const match = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        imageData = match[2];
+      }
+    }
+    
+    const prompt = `Analyze this image and detect if there is a logo or brand emblem present.
+
+If a logo is detected, provide the bounding box coordinates as percentages of the image dimensions.
+
+IMPORTANT: Return ONLY a valid JSON object, no markdown, no explanation:
+{
+  "detected": true/false,
+  "confidence": 0.0-1.0,
+  "bbox": {
+    "x": <left edge as percentage 0-100>,
+    "y": <top edge as percentage 0-100>,
+    "width": <width as percentage 0-100>,
+    "height": <height as percentage 0-100>
+  },
+  "description": "brief description of the logo"
+}
+
+If no logo is detected, return:
+{
+  "detected": false,
+  "confidence": 0.0
+}`;
+
+    const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    
+    const requestBody = {
+      contents: [{
+        parts: [
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: imageData
+            }
+          },
+          { text: prompt }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 500
+      }
+    };
+    
+    const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    }, 30000);
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || 'Gemini Vision failed');
+    }
+
+    // Extract text response
+    const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // Parse JSON from response
+    const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.log('⚠️ No JSON found in logo detection response');
+      return { success: true, detected: false };
+    }
+    
+    const result = JSON.parse(jsonMatch[0]);
+    
+    if (result.detected && result.bbox) {
+      console.log(`✅ Logo detected with ${(result.confidence * 100).toFixed(0)}% confidence at (${result.bbox.x}%, ${result.bbox.y}%)`);
+      return {
+        success: true,
+        detected: true,
+        bbox: result.bbox,
+        confidence: result.confidence,
+        description: result.description
+      };
+    }
+    
+    console.log('ℹ️ No logo detected in image');
+    return { success: true, detected: false };
+    
+  } catch (error) {
+    console.error('Logo detection failed:', error.message);
+    return {
+      success: false,
+      detected: false,
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   callGemini,
   parseGeminiJSON,
@@ -3226,5 +3338,7 @@ module.exports = {
   // Template Poster functions (Nano Banana Pro)
   generateTemplatePoster,
   editTemplatePoster,
-  generatePosterFromReference
+  generatePosterFromReference,
+  // Logo detection for auto-replacement
+  detectLogoInImage
 };

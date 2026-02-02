@@ -216,10 +216,111 @@ async function overlayLogoAndUpload(baseImageSource, logoSource, options = {}) {
   };
 }
 
+/**
+ * Replace logo at detected bounding box coordinates
+ * @param {string} baseImageSource - Base image URL or base64
+ * @param {string} logoSource - New logo URL or base64
+ * @param {object} bbox - Bounding box {x, y, width, height} as percentages (0-100)
+ * @returns {Promise<Buffer>} - Composited image as PNG buffer
+ */
+async function replaceLogoAtBbox(baseImageSource, logoSource, bbox) {
+  try {
+    console.log('🔄 Replacing logo at detected position...');
+    console.log(`   Bbox: x=${bbox.x}%, y=${bbox.y}%, w=${bbox.width}%, h=${bbox.height}%`);
+
+    // Get image buffers
+    const [baseBuffer, logoBuffer] = await Promise.all([
+      getImageBuffer(baseImageSource),
+      getImageBuffer(logoSource)
+    ]);
+
+    // Get base image metadata
+    const baseMetadata = await sharp(baseBuffer).metadata();
+    const baseWidth = baseMetadata.width || 1080;
+    const baseHeight = baseMetadata.height || 1080;
+
+    console.log(`   Base image: ${baseWidth}x${baseHeight}`);
+
+    // Convert percentage bbox to pixel coordinates
+    const targetX = Math.round((bbox.x / 100) * baseWidth);
+    const targetY = Math.round((bbox.y / 100) * baseHeight);
+    const targetWidth = Math.round((bbox.width / 100) * baseWidth);
+    const targetHeight = Math.round((bbox.height / 100) * baseHeight);
+
+    console.log(`   Target position: (${targetX}, ${targetY}), size: ${targetWidth}x${targetHeight}`);
+
+    // Resize logo to fit the detected bbox while maintaining aspect ratio
+    const resizedLogo = await sharp(logoBuffer)
+      .resize(targetWidth, targetHeight, { 
+        fit: 'inside',
+        withoutEnlargement: false
+      })
+      .ensureAlpha()
+      .png()
+      .toBuffer();
+
+    // Get actual resized logo dimensions
+    const logoMetadata = await sharp(resizedLogo).metadata();
+    const logoWidth = logoMetadata.width;
+    const logoHeight = logoMetadata.height;
+
+    // Center the logo within the bbox
+    const offsetX = targetX + Math.round((targetWidth - logoWidth) / 2);
+    const offsetY = targetY + Math.round((targetHeight - logoHeight) / 2);
+
+    console.log(`   Logo resized to: ${logoWidth}x${logoHeight}, placed at (${offsetX}, ${offsetY})`);
+
+    // Composite the new logo onto the image
+    const result = await sharp(baseBuffer)
+      .composite([{
+        input: resizedLogo,
+        left: Math.max(0, offsetX),
+        top: Math.max(0, offsetY)
+      }])
+      .png({ quality: 90 })
+      .toBuffer();
+
+    console.log('✅ Logo replacement complete');
+    return result;
+
+  } catch (error) {
+    console.error('❌ Logo replacement error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Replace logo at detected bbox, upload to Cloudinary, and return URL
+ */
+async function replaceLogoAtBboxAndUpload(baseImageSource, logoSource, bbox) {
+  const { uploadBase64Image } = require('./imageUploader');
+  
+  const buffer = await replaceLogoAtBbox(baseImageSource, logoSource, bbox);
+  const base64 = `data:image/png;base64,${buffer.toString('base64')}`;
+  
+  const uploadResult = await uploadBase64Image(base64, 'nebula-posters');
+  
+  if (uploadResult.success) {
+    return {
+      success: true,
+      url: uploadResult.url,
+      publicId: uploadResult.publicId,
+      imageBase64: base64
+    };
+  }
+  
+  return {
+    success: false,
+    error: uploadResult.error || 'Upload failed'
+  };
+}
+
 module.exports = {
   overlayLogo,
   overlayLogoBase64,
   overlayLogoAndUpload,
+  replaceLogoAtBbox,
+  replaceLogoAtBboxAndUpload,
   getImageBuffer,
   POSITION_MAP,
   SIZE_MAP
