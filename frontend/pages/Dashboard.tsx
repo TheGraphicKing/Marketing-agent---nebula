@@ -1100,7 +1100,7 @@ const Dashboard: React.FC = () => {
             </div>
             
             {/* Stats Summary Row */}
-            <div className={`mt-8 pt-5 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} grid grid-cols-3 gap-4`}>
+            <div className={`mt-8 pt-5 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} grid grid-cols-2 gap-4`}>
               <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
                 <p className={`text-3xl font-bold ${theme.text}`}>
                   {followerData.reduce((sum, p) => sum + p.followers, 0).toLocaleString()}
@@ -1110,12 +1110,6 @@ const Dashboard: React.FC = () => {
               <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
                 <p className={`text-3xl font-bold ${theme.text}`}>{followerData.length}</p>
                 <p className={`text-xs font-medium ${theme.textMuted} mt-1`}>Connected Platforms</p>
-              </div>
-              <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                <p className={`text-3xl font-bold text-emerald-500`}>
-                  {followerData.filter(p => p.followers > 0).length > 0 ? '✓' : '—'}
-                </p>
-                <p className={`text-xs font-medium ${theme.textMuted} mt-1`}>Analytics Active</p>
               </div>
             </div>
           </div>
