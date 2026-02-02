@@ -2879,7 +2879,7 @@ DO NOT change any colors, backgrounds, or visual style from the original image. 
  * @param {string} currentImageBase64 - The current poster image (base64)
  * @param {string} originalContent - The original content used
  * @param {string} editInstructions - User's edit instructions (e.g., "Make title bigger", "Change color to blue")
- * @param {string} templateImageBase64 - Original template for reference (optional)
+ * @param {string} templateImageBase64 - Original template for reference (optional) - NOT USED to reduce payload
  * @returns {Promise<{success: boolean, imageBase64?: string, error?: string}>}
  */
 async function editTemplatePoster(currentImageBase64, originalContent, editInstructions, templateImageBase64 = null) {
@@ -2896,20 +2896,8 @@ async function editTemplatePoster(currentImageBase64, originalContent, editInstr
     }
   }
   
-  // Extract template data if provided (for reference)
-  let templateData = null;
-  let templateMimeType = 'image/png';
-  if (templateImageBase64) {
-    if (templateImageBase64.startsWith('data:')) {
-      const matches = templateImageBase64.match(/^data:([^;]+);base64,(.+)$/);
-      if (matches) {
-        templateMimeType = matches[1];
-        templateData = matches[2];
-      }
-    } else {
-      templateData = templateImageBase64;
-    }
-  }
+  // NOTE: We no longer send template image to reduce payload size and avoid timeouts
+  // The current image already contains all the design elements needed
   
   // Simple, direct prompt for editing
   const prompt = `Act as a professional graphic designer. I'm showing you a poster that needs a specific modification.
@@ -2922,84 +2910,107 @@ Instructions:
 3. The edited poster should look identical to the original except for the specific change requested
 4. Maintain printing-grade quality and sharpness`;
 
-  // Build parts - include template if available for better reference
+  // Build parts - only send ONE image (the current poster) to reduce payload
   const parts = [
     {
       inlineData: {
         mimeType: mimeType,
         data: imageData
       }
-    }
+    },
+    { text: prompt }
   ];
+
+  // Retry logic for when model is overloaded
+  const maxRetries = 3;
+  let lastError = null;
   
-  // Add template as reference if available
-  if (templateData) {
-    parts.push({
-      inlineData: {
-        mimeType: templateMimeType,
-        data: templateData
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🎨 Editing poster with Nano Banana Pro (attempt ${attempt}/${maxRetries})...`);
+      
+      const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent';
+      
+      const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: parts
+          }],
+          generationConfig: {
+            temperature: 1.0,  // DO NOT LOWER - Image models need 1.0
+            responseModalities: ["TEXT", "IMAGE"]
+          }
+        })
+      }, 90000); // Reduced timeout to 90 seconds per attempt
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data.error?.message || 'Image edit failed';
+        console.error(`Gemini edit error (attempt ${attempt}):`, errorMsg);
+        
+        // If model is overloaded, retry after a delay
+        if (errorMsg.includes('overloaded') || errorMsg.includes('503') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+          lastError = new Error(errorMsg);
+          if (attempt < maxRetries) {
+            const delay = attempt * 3000; // 3s, 6s, 9s
+            console.log(`⏳ Model busy, waiting ${delay/1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        }
+        throw new Error(errorMsg);
       }
-    });
-    parts.push({ text: "This second image is the original template for reference - use it to ensure logos and headers match exactly." });
+
+      // Extract the generated image
+      const candidates = data.candidates || [];
+      for (const candidate of candidates) {
+        const candidateParts = candidate.content?.parts || [];
+        for (const part of candidateParts) {
+          if (part.inlineData?.data) {
+            const duration = Date.now() - startTime;
+            console.log(`✅ Poster edited with Nano Banana Pro in ${duration}ms`);
+            return {
+              success: true,
+              imageBase64: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`,
+              model: 'nano-banana-pro-preview'
+            };
+          }
+        }
+      }
+      
+      // If we got here, no image was returned
+      lastError = new Error('No image returned from model');
+      if (attempt < maxRetries) {
+        console.log(`⚠️ No image in response, retrying...`);
+        continue;
+      }
+    
+    } catch (error) {
+      console.error(`Nano Banana Pro poster edit failed (attempt ${attempt}):`, error.message);
+      lastError = error;
+      
+      // Retry on timeout or network errors
+      if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT') || error.message.includes('overloaded')) {
+        if (attempt < maxRetries) {
+          const delay = attempt * 3000;
+          console.log(`⏳ Request failed, waiting ${delay/1000}s before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+    }
   }
   
-  parts.push({ text: prompt });
-
-  // Use Nano Banana Pro Preview for image editing
-  try {
-    console.log('🎨 Editing poster with Nano Banana Pro...');
-    
-    const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent';
-    
-    const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: parts
-        }],
-        generationConfig: {
-          temperature: 1.0,  // DO NOT LOWER - Image models need 1.0
-          responseModalities: ["TEXT", "IMAGE"]
-        }
-      })
-    }, 120000);
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error('Gemini edit error:', data.error?.message || data);
-      throw new Error(data.error?.message || 'Image edit failed');
-    }
-
-    // Extract the generated image
-    const candidates = data.candidates || [];
-    for (const candidate of candidates) {
-      const parts = candidate.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          const duration = Date.now() - startTime;
-          console.log(`✅ Poster edited with Nano Banana Pro in ${duration}ms`);
-          return {
-            success: true,
-            imageBase64: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`,
-            model: 'nano-banana-pro-preview'
-          };
-        }
-      }
-    }
-    
-    throw new Error('Nano Banana Pro returned no image');
-    
-  } catch (error) {
-    console.error('Nano Banana Pro poster edit failed:', error.message);
-    return {
-      success: false,
-      error: error.message || 'Failed to edit poster. Please try again with different instructions.'
-    };
-  }
+  // All retries exhausted
+  return {
+    success: false,
+    error: lastError?.message || 'Failed to edit poster. The AI model is busy - please try again in a moment.'
+  };
 }
 
 /**
