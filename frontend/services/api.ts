@@ -951,12 +951,25 @@ export const apiService = {
   generateTemplatePoster: async (
     templateImage: string, 
     content: string, 
-    options?: { platform?: string; style?: string; useAI?: boolean }
+    options?: { 
+      platform?: string; 
+      style?: string; 
+      useAI?: boolean;
+      logoOverlay?: {
+        enabled: boolean;
+        logoUrl: string;
+        position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+        size?: 'small' | 'medium' | 'large';
+        opacity?: number;
+        padding?: number;
+      };
+    }
   ): Promise<{ 
     success: boolean; 
     imageBase64?: string; 
     imageUrl?: string; 
     model?: string; 
+    logoApplied?: boolean;
     message?: string;
     error?: string;
   }> => {
@@ -969,7 +982,8 @@ export const apiService = {
           content, 
           platform: options?.platform || 'instagram',
           style: options?.style,
-          useAI: options?.useAI || false
+          useAI: options?.useAI || false,
+          logoOverlay: options?.logoOverlay
         }) 
       },
       true
@@ -2232,5 +2246,79 @@ export const apiService = {
       true
     );
     return response;
+  },
+};
+
+// ================================
+// Brand Assets API
+// ================================
+export const brandAssetsAPI = {
+  // Get all brand assets
+  getAll: async (type?: 'logo' | 'template'): Promise<any> => {
+    const query = type ? `?type=${type}` : '';
+    return await apiCall<any>(`/brand-assets${query}`, {}, true);
+  },
+
+  // Get only logos
+  getLogos: async (): Promise<any> => {
+    return await apiCall<any>('/brand-assets/logos', {}, true);
+  },
+
+  // Get only templates
+  getTemplates: async (): Promise<any> => {
+    return await apiCall<any>('/brand-assets/templates', {}, true);
+  },
+
+  // Get primary logo
+  getPrimaryLogo: async (): Promise<any> => {
+    return await apiCall<any>('/brand-assets/primary-logo', {}, true);
+  },
+
+  // Upload a new asset (logo or template)
+  upload: async (data: {
+    imageData: string;
+    type: 'logo' | 'template';
+    name: string;
+    isPrimary?: boolean;
+    defaultPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
+    defaultSize?: 'small' | 'medium' | 'large';
+  }): Promise<any> => {
+    return await apiCall<any>(
+      '/brand-assets/upload',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+  },
+
+  // Update an asset
+  update: async (id: string, data: {
+    name?: string;
+    isPrimary?: boolean;
+    defaultPosition?: string;
+    defaultSize?: string;
+  }): Promise<any> => {
+    return await apiCall<any>(
+      `/brand-assets/${id}`,
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+  },
+
+  // Set a logo as primary
+  setPrimary: async (id: string): Promise<any> => {
+    return await apiCall<any>(
+      `/brand-assets/${id}/set-primary`,
+      { method: 'PUT' },
+      true
+    );
+  },
+
+  // Delete an asset
+  delete: async (id: string): Promise<any> => {
+    return await apiCall<any>(
+      `/brand-assets/${id}`,
+      { method: 'DELETE' },
+      true
+    );
   },
 };

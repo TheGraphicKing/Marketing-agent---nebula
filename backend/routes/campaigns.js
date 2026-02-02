@@ -17,6 +17,12 @@ const { postToSocialMedia, getAyrshareAnalytics } = require('../services/socialM
 // Import image uploader for converting base64 to hosted URLs
 const { ensurePublicUrl, isBase64DataUrl } = require('../services/imageUploader');
 
+// Import logo overlay service for compositing logos onto posters
+const { overlayLogoAndUpload } = require('../services/logoOverlay');
+
+// Import BrandAsset model for fetching user's logos
+const BrandAsset = require('../models/BrandAsset');
+
 /**
  * GET /api/campaigns
  * Get all campaigns for the user with optional filters
@@ -970,10 +976,11 @@ const { generatePosterFromTemplate, editPosterFromTemplate } = require('../servi
  * POST /api/campaigns/template-poster
  * Generate a poster from a template image and content
  * Uses Canvas for reliable text overlay, AI as fallback
+ * Supports logo overlay from Brand Assets
  */
 router.post('/template-poster', protect, async (req, res) => {
   try {
-    const { templateImage, content, platform, style, useAI } = req.body;
+    const { templateImage, content, platform, style, useAI, logoOverlay } = req.body;
     
     if (!templateImage) {
       return res.status(400).json({ 
@@ -992,6 +999,9 @@ router.post('/template-poster', protect, async (req, res) => {
     console.log('🎨 Generating template poster...');
     console.log('📝 Content length:', content.length, 'characters');
     console.log('📱 Platform:', platform || 'general');
+    if (logoOverlay?.enabled) {
+      console.log('🏷️ Logo overlay enabled:', logoOverlay.position, logoOverlay.size);
+    }
     
     // Always use AI (Gemini) for poster generation - it produces better results
     const result = await generateTemplatePoster(templateImage, content, {
@@ -1002,23 +1012,54 @@ router.post('/template-poster', protect, async (req, res) => {
     if (result.success) {
       console.log('✅ Template poster generated successfully with', result.model || result.method);
       
-      // Upload to Cloudinary for persistent URL
+      let finalImageBase64 = result.imageBase64;
       let hostedUrl = null;
-      try {
-        const uploadResult = await ensurePublicUrl(result.imageBase64);
-        if (uploadResult) {
-          hostedUrl = uploadResult;
-          console.log('✅ Poster uploaded to Cloudinary:', hostedUrl);
+      
+      // Apply logo overlay if requested
+      if (logoOverlay?.enabled && logoOverlay?.logoUrl) {
+        try {
+          console.log('🏷️ Applying logo overlay...');
+          const overlayResult = await overlayLogoAndUpload(
+            finalImageBase64,
+            logoOverlay.logoUrl,
+            {
+              position: logoOverlay.position || 'bottom-right',
+              size: logoOverlay.size || 'medium',
+              opacity: logoOverlay.opacity || 0.9,
+              padding: logoOverlay.padding || 20
+            }
+          );
+          
+          if (overlayResult.success) {
+            hostedUrl = overlayResult.url;
+            console.log('✅ Logo overlay applied and uploaded:', hostedUrl);
+          } else {
+            console.warn('⚠️ Logo overlay failed, using original image');
+          }
+        } catch (overlayError) {
+          console.warn('⚠️ Logo overlay error:', overlayError.message);
         }
-      } catch (uploadError) {
-        console.warn('⚠️ Could not upload to Cloudinary, returning base64');
+      }
+      
+      // If no logo overlay or it failed, upload the base image
+      if (!hostedUrl) {
+        try {
+          const uploadResult = await ensurePublicUrl(finalImageBase64);
+          if (uploadResult) {
+            hostedUrl = uploadResult;
+            console.log('✅ Poster uploaded to Cloudinary:', hostedUrl);
+          }
+        } catch (uploadError) {
+          console.warn('⚠️ Could not upload to Cloudinary, returning base64');
+        }
       }
       
       res.json({
         success: true,
-        imageBase64: result.imageBase64,
+        imageBase64: finalImageBase64,
         imageUrl: hostedUrl,
         model: result.model || result.method,
+        logoApplied: logoOverlay?.enabled && hostedUrl ? true : false,
         message: 'Poster generated successfully'
       });
     } else {

@@ -42,7 +42,11 @@ async function uploadBase64Image(base64Data, folder = 'nebula-campaigns') {
     return {
       success: true,
       url: result.secure_url,
-      publicId: result.public_id
+      publicId: result.public_id,
+      width: result.width,
+      height: result.height,
+      bytes: result.bytes,
+      format: result.format
     };
   } catch (error) {
     console.error('❌ Cloudinary upload error:', error.message);
@@ -196,11 +200,34 @@ async function uploadImageWithLogoOverlay(imageData, logoPublicId, options = {})
   }
 }
 
+/**
+ * Delete an image from Cloudinary
+ * @param {string} publicId - Cloudinary public ID of the image
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function deleteImage(publicId) {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId);
+    console.log('🗑️ Image deleted from Cloudinary:', publicId, result);
+    return {
+      success: result.result === 'ok',
+      result: result.result
+    };
+  } catch (error) {
+    console.error('❌ Cloudinary delete error:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   uploadBase64Image,
   uploadMultipleImages,
   isBase64DataUrl,
   ensurePublicUrl,
   uploadLogo,
-  uploadImageWithLogoOverlay
+  uploadImageWithLogoOverlay,
+  deleteImage
 };

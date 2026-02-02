@@ -52,6 +52,9 @@ const analyticsRoutes = require('./routes/analytics');
 // Notification routes
 const notificationRoutes = require('./routes/notifications');
 
+// Brand Assets routes
+const brandAssetsRoutes = require('./routes/brandAssets');
+
 // Notification scheduler service
 const notificationScheduler = require('./services/notificationScheduler');
 
@@ -121,6 +124,9 @@ app.use('/api/analytics', analyticsRoutes);
 
 // Routes - Notifications
 app.use('/api/notifications', notificationRoutes);
+
+// Routes - Brand Assets
+app.use('/api/brand-assets', brandAssetsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

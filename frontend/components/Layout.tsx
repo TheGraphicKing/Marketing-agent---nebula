@@ -11,7 +11,8 @@ import {
   Link2,
   Sparkles,
   Sun,
-  Moon
+  Moon,
+  Palette
 } from 'lucide-react';
 import { User } from '../types';
 import NotificationBell from './NotificationBell';
@@ -55,6 +56,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
     { path: '/competitors', label: 'Competitors', icon: Users },
+    { path: '/brand-assets', label: 'Brand Assets', icon: Palette },
     { path: '/connect-socials', label: 'Connect Socials', icon: Link2 },
   ];
 

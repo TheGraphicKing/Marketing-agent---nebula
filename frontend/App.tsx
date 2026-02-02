@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Campaigns from './pages/Campaigns';
 import Competitors from './pages/Competitors';
 import ConnectSocials from './pages/ConnectSocials';
+import BrandAssets from './pages/BrandAssets';
 import Settings from './pages/Settings';
 import { ThemeProvider } from './context/ThemeContext';
 import { apiService } from './services/api';
@@ -101,6 +102,7 @@ const App: React.FC = () => {
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/competitors" element={<Competitors />} />
+                    <Route path="/brand-assets" element={<BrandAssets />} />
                     <Route path="/connect-socials" element={<ConnectSocials />} />
                     <Route path="/settings" element={<Settings user={user} onUserUpdate={setUser} />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
