@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const BrandAsset = require('../models/BrandAsset');
-const auth = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const { uploadBase64Image, deleteImage } = require('../services/imageUploader');
 
 /**
@@ -9,7 +9,7 @@ const { uploadBase64Image, deleteImage } = require('../services/imageUploader');
  * @desc    Get all brand assets for current user
  * @access  Private
  */
-router.get('/', auth, async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
     const { type } = req.query;
     const query = { user: req.user._id };
@@ -37,7 +37,7 @@ router.get('/', auth, async (req, res) => {
  * @desc    Get only logos for current user
  * @access  Private
  */
-router.get('/logos', auth, async (req, res) => {
+router.get('/logos', protect, async (req, res) => {
   try {
     const logos = await BrandAsset.find({ user: req.user._id, type: 'logo' })
       .sort({ isPrimary: -1, createdAt: -1 });
@@ -58,7 +58,7 @@ router.get('/logos', auth, async (req, res) => {
  * @desc    Get only templates for current user
  * @access  Private
  */
-router.get('/templates', auth, async (req, res) => {
+router.get('/templates', protect, async (req, res) => {
   try {
     const templates = await BrandAsset.find({ user: req.user._id, type: 'template' })
       .sort({ createdAt: -1 });
@@ -79,7 +79,7 @@ router.get('/templates', auth, async (req, res) => {
  * @desc    Upload a new brand asset (logo or template)
  * @access  Private
  */
-router.post('/upload', auth, async (req, res) => {
+router.post('/upload', protect, async (req, res) => {
   try {
     const { imageData, type, name, isPrimary, defaultPosition, defaultSize } = req.body;
     
@@ -139,7 +139,7 @@ router.post('/upload', auth, async (req, res) => {
  * @desc    Update a brand asset (name, isPrimary, position, size)
  * @access  Private
  */
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', protect, async (req, res) => {
   try {
     const { name, isPrimary, defaultPosition, defaultSize } = req.body;
     
@@ -172,7 +172,7 @@ router.put('/:id', auth, async (req, res) => {
  * @desc    Set a logo as primary
  * @access  Private
  */
-router.put('/:id/set-primary', auth, async (req, res) => {
+router.put('/:id/set-primary', protect, async (req, res) => {
   try {
     const asset = await BrandAsset.findOne({ _id: req.params.id, user: req.user._id, type: 'logo' });
     
@@ -205,7 +205,7 @@ router.put('/:id/set-primary', auth, async (req, res) => {
  * @desc    Delete a brand asset
  * @access  Private
  */
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
     const asset = await BrandAsset.findOne({ _id: req.params.id, user: req.user._id });
     
@@ -241,7 +241,7 @@ router.delete('/:id', auth, async (req, res) => {
  * @desc    Get the primary logo for current user
  * @access  Private
  */
-router.get('/primary-logo', auth, async (req, res) => {
+router.get('/primary-logo', protect, async (req, res) => {
   try {
     let logo = await BrandAsset.findOne({ user: req.user._id, type: 'logo', isPrimary: true });
     
