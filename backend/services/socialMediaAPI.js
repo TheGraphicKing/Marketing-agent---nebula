@@ -187,11 +187,12 @@ async function getUserSocialAnalytics(profileKey, platforms = ['instagram', 'fac
       headers['Profile-Key'] = profileKey;
     }
     
-    // Ayrshare social analytics endpoint uses POST method
+    // Ayrshare social analytics endpoint uses POST method - use longer timeout
     const response = await makeRequest('https://app.ayrshare.com/api/analytics/social', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ platforms })
+      body: JSON.stringify({ platforms }),
+      timeout: 60000 // 60 second timeout for analytics
     });
 
     console.log('Ayrshare social analytics response:', response.status, JSON.stringify(response.data).substring(0, 500));

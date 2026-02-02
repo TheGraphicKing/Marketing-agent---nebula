@@ -1004,86 +1004,118 @@ const Dashboard: React.FC = () => {
           </div>
         ) : (
           <div className="relative">
-            {/* Bar Chart */}
-            <div className="flex items-end justify-center gap-8 h-64 px-4">
+            {/* Professional Horizontal Bar Chart */}
+            <div className="space-y-4">
               {(() => {
-                const maxFollowers = Math.max(...followerData.map(p => p.followers), 1); // min 1 to avoid division by 0
+                const maxFollowers = Math.max(...followerData.map(p => p.followers), 100);
+                const totalFollowers = followerData.reduce((sum, p) => sum + p.followers, 0);
+                
                 return followerData.map((platform, idx) => {
-                  // If all platforms have 0 followers, show equal bars
-                  const allZero = followerData.every(p => p.followers === 0);
-                  const barHeight = allZero ? 100 : (maxFollowers > 0 ? (platform.followers / maxFollowers) * 180 : 40);
+                  const percentage = maxFollowers > 0 ? (platform.followers / maxFollowers) * 100 : 15;
+                  const displayPercentage = Math.max(percentage, 15); // Minimum 15% width for visibility
                   const isHovered = hoveredBar === platform.platform;
                   
                   return (
                     <div 
                       key={platform.platform}
-                      className="flex flex-col items-center gap-3 relative"
+                      className={`group cursor-pointer transition-all duration-200 ${isHovered ? 'scale-[1.02]' : ''}`}
                       onMouseEnter={() => setHoveredBar(platform.platform)}
                       onMouseLeave={() => setHoveredBar(null)}
                     >
-                      {/* Platform Logo on top of bar */}
-                      <div 
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all duration-300 ${isHovered ? 'scale-110' : ''}`}
-                        style={{ 
-                          background: platform.bgColor.includes('gradient') ? platform.bgColor : platform.bgColor,
-                          backgroundColor: !platform.bgColor.includes('gradient') ? platform.bgColor : undefined
-                        }}
-                      >
-                        <img 
-                          src={platform.logo} 
-                          alt={platform.name}
-                          className="w-6 h-6 object-contain"
+                      {/* Platform Row */}
+                      <div className="flex items-center gap-4">
+                        {/* Platform Icon */}
+                        <div 
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 transition-transform ${isHovered ? 'scale-110' : ''}`}
                           style={{ 
-                            filter: platform.platform === 'instagram' || platform.platform === 'twitter' || platform.platform === 'tiktok' 
-                              ? 'brightness(0) invert(1)' 
-                              : 'none' 
+                            background: platform.bgColor.includes('linear') 
+                              ? platform.bgColor 
+                              : platform.bgColor
                           }}
-                        />
-                      </div>
-                      
-                      {/* Follower count tooltip on hover */}
-                      {isHovered && (
-                        <div className={`absolute -top-8 left-1/2 transform -translate-x-1/2 px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg whitespace-nowrap z-10 ${isDarkMode ? 'bg-white text-[#0a0f1a]' : 'bg-[#0a0f1a] text-white'}`}>
-                          {platform.followers > 0 ? `${platform.followers.toLocaleString()} followers` : 'Connected ✓'}
-                          <div className={`absolute left-1/2 -bottom-1 transform -translate-x-1/2 w-2 h-2 rotate-45 ${isDarkMode ? 'bg-white' : 'bg-[#0a0f1a]'}`}></div>
+                        >
+                          <img 
+                            src={platform.logo} 
+                            alt={platform.name}
+                            className="w-7 h-7 object-contain"
+                            style={{ 
+                              filter: ['instagram', 'twitter', 'tiktok'].includes(platform.platform) 
+                                ? 'brightness(0) invert(1)' 
+                                : 'none' 
+                            }}
+                          />
                         </div>
-                      )}
-                      
-                      {/* The Bar */}
-                      <div 
-                        className={`w-16 rounded-t-xl transition-all duration-500 cursor-pointer relative overflow-hidden ${isHovered ? 'shadow-2xl' : 'shadow-lg'}`}
-                        style={{ 
-                          height: `${Math.max(barHeight, 20)}px`,
-                          background: platform.bgColor.includes('gradient') 
-                            ? platform.bgColor 
-                            : `linear-gradient(to top, ${platform.color}, ${platform.color}dd)`,
-                          transform: isHovered ? 'scaleY(1.05)' : 'scaleY(1)',
-                          transformOrigin: 'bottom'
-                        }}
-                      >
-                        {/* Shine effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                        
+                        {/* Bar Container */}
+                        <div className="flex-1">
+                          {/* Platform Name & Follower Count */}
+                          <div className="flex justify-between items-center mb-2">
+                            <span className={`text-sm font-semibold ${theme.text}`}>{platform.name}</span>
+                            <span className={`text-sm font-bold ${isHovered ? 'text-[#ffcc29]' : theme.text}`}>
+                              {platform.followers > 0 
+                                ? platform.followers >= 1000 
+                                  ? `${(platform.followers / 1000).toFixed(1)}K`
+                                  : platform.followers.toLocaleString()
+                                : 'Connected'}
+                            </span>
+                          </div>
+                          
+                          {/* Progress Bar */}
+                          <div className={`h-8 rounded-xl overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                            <div 
+                              className="h-full rounded-xl relative overflow-hidden transition-all duration-500"
+                              style={{ 
+                                width: `${displayPercentage}%`,
+                                background: platform.bgColor.includes('linear') 
+                                  ? platform.bgColor 
+                                  : `linear-gradient(90deg, ${platform.color}dd 0%, ${platform.color} 100%)`
+                              }}
+                            >
+                              {/* Shine effect */}
+                              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0"></div>
+                              
+                              {/* Animated shine on hover */}
+                              {isHovered && (
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                              )}
+                              
+                              {/* Follower text inside bar */}
+                              {platform.followers > 0 && (
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white text-xs font-bold drop-shadow-lg">
+                                  {platform.followers.toLocaleString()} followers
+                                </span>
+                              )}
+                              {platform.followers === 0 && (
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/80 text-xs font-medium">
+                                  ✓ Connected
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      
-                      {/* Platform Name */}
-                      <span className={`text-xs font-medium ${theme.textSecondary}`}>{platform.name}</span>
                     </div>
                   );
                 });
               })()}
             </div>
             
-            {/* Total Followers Summary */}
-            <div className={`mt-6 pt-4 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} flex justify-center gap-8`}>
-              <div className="text-center">
-                <p className={`text-2xl font-bold ${theme.text}`}>
+            {/* Stats Summary Row */}
+            <div className={`mt-8 pt-5 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} grid grid-cols-3 gap-4`}>
+              <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                <p className={`text-3xl font-bold ${theme.text}`}>
                   {followerData.reduce((sum, p) => sum + p.followers, 0).toLocaleString()}
                 </p>
-                <p className={`text-xs ${theme.textMuted}`}>Total Followers</p>
+                <p className={`text-xs font-medium ${theme.textMuted} mt-1`}>Total Followers</p>
               </div>
-              <div className="text-center">
-                <p className={`text-2xl font-bold ${theme.text}`}>{followerData.length}</p>
-                <p className={`text-xs ${theme.textMuted}`}>Connected Platforms</p>
+              <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                <p className={`text-3xl font-bold ${theme.text}`}>{followerData.length}</p>
+                <p className={`text-xs font-medium ${theme.textMuted} mt-1`}>Connected Platforms</p>
+              </div>
+              <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                <p className={`text-3xl font-bold text-emerald-500`}>
+                  {followerData.filter(p => p.followers > 0).length > 0 ? '✓' : '—'}
+                </p>
+                <p className={`text-xs font-medium ${theme.textMuted} mt-1`}>Analytics Active</p>
               </div>
             </div>
           </div>
