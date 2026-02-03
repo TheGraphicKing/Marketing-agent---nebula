@@ -937,8 +937,128 @@ const Dashboard: React.FC = () => {
     return actionMap['create_campaign'];
   };
 
+  // Skeleton Loading Component
+  const DashboardSkeleton = () => (
+    <div className="max-w-7xl mx-auto space-y-8 p-1 animate-pulse">
+      {/* Header Skeleton */}
+      <div className="flex justify-between items-center">
+        <div>
+          <div className={`h-7 w-64 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+          <div className={`h-4 w-80 mt-2 rounded ${isDarkMode ? 'bg-slate-700/60' : 'bg-slate-200/80'}`}></div>
+        </div>
+        <div className={`h-10 w-28 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+      </div>
+
+      {/* Social Followers Skeleton */}
+      <div className={`${isDarkMode ? 'bg-[#0B0F1A]' : 'bg-white'} rounded-2xl border ${isDarkMode ? 'border-slate-700/50' : 'border-[#ededed]'} p-6`}>
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className={`w-5 h-5 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className={`h-4 w-32 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+          </div>
+          <div className={`h-9 w-32 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+        </div>
+        <div className="space-y-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+              <div className="flex-1">
+                <div className={`h-3 w-24 rounded mb-2 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                <div className={`h-8 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`} style={{ width: `${80 - i * 15}%` }}></div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className={`mt-8 pt-5 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} grid grid-cols-2 gap-4`}>
+          <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+            <div className={`h-8 w-28 mx-auto rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className={`h-3 w-24 mx-auto mt-2 rounded ${isDarkMode ? 'bg-slate-700/60' : 'bg-slate-200/80'}`}></div>
+          </div>
+          <div className={`text-center p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+            <div className={`h-8 w-8 mx-auto rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className={`h-3 w-32 mx-auto mt-2 rounded ${isDarkMode ? 'bg-slate-700/60' : 'bg-slate-200/80'}`}></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Competitor Radar & Strategic Advisor Skeletons */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Competitor Radar Skeleton */}
+        <div className={`${isDarkMode ? 'bg-[#0B0F1A]' : 'bg-white'} rounded-2xl border ${isDarkMode ? 'border-slate-700/50' : 'border-[#ededed]'} p-6 min-h-[420px]`}>
+          <div className="flex justify-between items-center mb-4">
+            <div className={`h-4 w-32 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className="flex gap-2">
+              <div className={`h-7 w-20 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+              <div className={`h-7 w-7 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 mb-4 pb-3 border-b ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className={`h-8 w-24 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            ))}
+          </div>
+          <div className="space-y-4">
+            <div className={`h-5 w-40 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className={`h-32 w-full rounded-xl ${isDarkMode ? 'bg-slate-700/50' : 'bg-slate-100'}`}></div>
+            <div className="flex gap-4">
+              <div className={`h-10 w-16 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+              <div className={`h-10 w-16 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+              <div className={`h-10 w-16 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Strategic Advisor Skeleton */}
+        <div className={`${isDarkMode ? 'bg-[#0B0F1A]' : 'bg-white'} rounded-2xl border ${isDarkMode ? 'border-slate-700/50' : 'border-[#ededed]'} p-6 min-h-[420px]`}>
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <div className={`h-4 w-32 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            </div>
+            <div className={`h-8 w-24 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+          </div>
+          <div className="space-y-3 mt-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className={`p-4 rounded-xl ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  <div className="flex-1">
+                    <div className={`h-4 w-3/4 rounded mb-2 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                    <div className={`h-3 w-1/2 rounded ${isDarkMode ? 'bg-slate-700/60' : 'bg-slate-200/80'}`}></div>
+                  </div>
+                  <div className={`h-8 w-20 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Campaign Calendar Skeleton */}
+      <div className={`${isDarkMode ? 'bg-[#0B0F1A]' : 'bg-white'} rounded-2xl border ${isDarkMode ? 'border-slate-700/50' : 'border-[#ededed]'} p-6`}>
+        <div className="flex justify-between items-center mb-6">
+          <div className={`h-5 w-36 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+          <div className="flex gap-2">
+            <div className={`h-8 w-8 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className={`h-8 w-28 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            <div className={`h-8 w-8 rounded-lg ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {[...Array(7)].map((_, i) => (
+            <div key={i} className={`h-4 w-8 mx-auto rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+          ))}
+          {[...Array(35)].map((_, i) => (
+            <div key={i} className={`h-20 rounded-lg ${isDarkMode ? 'bg-slate-800/30' : 'bg-slate-50'} ${i % 7 === 0 || i % 7 === 6 ? 'opacity-50' : ''}`}>
+              <div className={`h-4 w-4 m-2 rounded ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   if (loading) {
-    return null;
+    return <DashboardSkeleton />;
   }
 
   const currentCompetitor = data?.competitorActivity?.[competitorIndex];
