@@ -2826,24 +2826,19 @@ async function generateTemplatePoster(templateImageBase64, content, options = {}
   try {
     console.log('🎨 Generating template poster with Nano Banana Pro...');
     
-    const prompt = `You are a professional graphic designer. Your task is to recreate this poster/template image with NEW text content.
+    const prompt = `You are a professional graphic designer. 
 
-CRITICAL - PRESERVE EXACTLY:
-1. COLORS: Keep the EXACT same background color, gradients, and color scheme from the input image
-2. LOGOS/IMAGES: Recreate ALL logos, emblems, photos, icons with maximum sharpness and clarity
-3. LAYOUT: Maintain the EXACT same positions, spacing, and proportions of all elements
-4. STYLE: Keep the same fonts, text colors, and visual style as the original
+Look at this template/poster image carefully. Your task is to recreate it with NEW text content.
 
-TEXT REPLACEMENT - Replace the existing text with this NEW content:
+NEW TEXT CONTENT TO USE:
 ${content}
 
-QUALITY REQUIREMENTS:
-- Ultra-sharp, print-ready resolution
-- All logos and emblems must be crisp with clean edges (no blur or smudging)
-- Text must be perfectly readable
-- Maintain professional poster quality
-
-DO NOT change any colors, backgrounds, or visual style from the original image. Only replace the text content.`;
+Instructions:
+1. Keep the same design, colors, layout, and style as the original template
+2. Preserve all logos, images, and visual elements exactly as they appear
+3. Replace the existing text with the new content provided above
+4. Match the original fonts and text styling as closely as possible
+5. Output a high-quality, print-ready poster image`;
 
     const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent';
     
