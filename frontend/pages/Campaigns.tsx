@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { apiService, brandAssetsAPI } from '../services/api';
+import { apiService } from '../services/api';
 import { Campaign } from '../types';
 import { Plus, Sparkles, Filter, Loader2, Calendar, BarChart3, Image as ImageIcon, Video, X, ChevronRight, Check, Eye, MousePointer, Archive, Send, Edit3, DollarSign, RefreshCw, Wand2, Instagram, Facebook, Twitter, Linkedin, Youtube, Clock, Heart, MessageCircle, Share2, Zap, Download, FileText, ImageDown, ChevronDown, Trash2, Save } from 'lucide-react';
 import { 
@@ -2962,12 +2962,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
     // Reference image for editing (like AI tools - "make it look like this")
     const [editReferenceImage, setEditReferenceImage] = useState<string | null>(null);
     
-    // Logo overlay state - AI auto-detects position, no manual selection needed
-    const [logoOverlayEnabled, setLogoOverlayEnabled] = useState(false);
-    const [availableLogos, setAvailableLogos] = useState<Array<{ _id: string; name: string; url: string; isPrimary: boolean }>>([]);
-    const [selectedLogoId, setSelectedLogoId] = useState<string | null>(null);
-    const [loadingLogos, setLoadingLogos] = useState(false);
-    
     // Schedule state
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(connectedPlatforms.slice(0, 1));
     const [isScheduleMode, setIsScheduleMode] = useState(false);
@@ -2982,34 +2976,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
         ? 'bg-[#0d1117] border-slate-700/50 text-white placeholder-slate-500' 
         : 'bg-white border-slate-200 text-slate-900'
     }`;
-
-    // Fetch available logos on mount
-    useEffect(() => {
-      const fetchLogos = async () => {
-        setLoadingLogos(true);
-        try {
-          const response = await brandAssetsAPI.getLogos();
-          if (response.success && response.logos) {
-            setAvailableLogos(response.logos);
-            // Auto-select primary logo if exists
-            const primaryLogo = response.logos.find((l: any) => l.isPrimary);
-            if (primaryLogo) {
-              setSelectedLogoId(primaryLogo._id);
-            } else if (response.logos.length > 0) {
-              setSelectedLogoId(response.logos[0]._id);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to fetch logos:', err);
-        } finally {
-          setLoadingLogos(false);
-        }
-      };
-      fetchLogos();
-    }, []);
-
-    // Get selected logo
-    const selectedLogo = availableLogos.find(l => l._id === selectedLogoId);
 
     // Handle file upload
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3073,12 +3039,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
       setIsGenerating(true);
       setStep('preview');
 
-      // Prepare logo overlay config if enabled - AI auto-detects position
-      const logoOverlayConfig = logoOverlayEnabled && selectedLogo ? {
-        enabled: true,
-        logoUrl: selectedLogo.url
-      } : undefined;
-
       for (let i = 0; i < posters.length; i++) {
         const poster = posters[i];
         if (!poster.content.trim()) continue;
@@ -3099,13 +3059,12 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
               selectedPlatforms[0] || 'instagram'
             );
           } else {
-            // Normal template generation with optional logo overlay
+            // Normal template generation
             result = await apiService.generateTemplatePoster(
               poster.templateImage,
               poster.content,
               { 
-                platform: selectedPlatforms[0] || 'instagram',
-                logoOverlay: logoOverlayConfig
+                platform: selectedPlatforms[0] || 'instagram'
               }
             );
           }
@@ -3485,89 +3444,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Logo Overlay Section */}
-                {posters.length > 0 && (
-                  <div className={`rounded-xl border p-4 ${isDarkMode ? 'border-slate-700 bg-[#0d1117]' : 'border-slate-200 bg-white'}`}>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-[#ffcc29]/10 rounded-lg">
-                          <ImageIcon className="w-5 h-5 text-[#ffcc29]" />
-                        </div>
-                        <div>
-                          <h3 className={`font-medium ${theme.text}`}>Auto Logo Replacement</h3>
-                          <p className={`text-xs ${theme.textSecondary}`}>AI detects & replaces logos in posters with your brand logo</p>
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={logoOverlayEnabled}
-                          onChange={(e) => setLogoOverlayEnabled(e.target.checked)}
-                          className="w-4 h-4 rounded border-gray-300 text-[#ffcc29] focus:ring-[#ffcc29]"
-                        />
-                        <span className={`text-sm ${theme.textSecondary}`}>Enable</span>
-                      </label>
-                    </div>
-
-                    {logoOverlayEnabled && (
-                      <div className="space-y-4">
-                        {loadingLogos ? (
-                          <div className="flex items-center justify-center py-4">
-                            <Loader2 className="w-5 h-5 animate-spin text-[#ffcc29]" />
-                          </div>
-                        ) : availableLogos.length === 0 ? (
-                          <div className={`text-center py-4 ${theme.textSecondary}`}>
-                            <p className="text-sm">No logos found</p>
-                            <a href="/#/brand-assets" className="text-[#ffcc29] text-sm hover:underline">
-                              Upload logos in Brand Assets →
-                            </a>
-                          </div>
-                        ) : (
-                          <>
-                            {/* Logo Selection */}
-                            <div>
-                              <label className={`text-xs ${theme.textSecondary} mb-2 block`}>Select Logo</label>
-                              <div className="flex gap-2 flex-wrap">
-                                {availableLogos.map((logo) => (
-                                  <button
-                                    key={logo._id}
-                                    onClick={() => setSelectedLogoId(logo._id)}
-                                    className={`relative p-2 rounded-lg border-2 transition-all ${
-                                      selectedLogoId === logo._id
-                                        ? 'border-[#ffcc29] bg-[#ffcc29]/10'
-                                        : isDarkMode ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
-                                    }`}
-                                  >
-                                    <img src={logo.url} alt={logo.name} className="w-12 h-12 object-contain" />
-                                    {logo.isPrimary && (
-                                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#ffcc29] rounded-full flex items-center justify-center">
-                                        <Check className="w-3 h-3 text-black" />
-                                      </span>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Info about auto-detection */}
-                            {selectedLogo && (
-                              <div className={`flex items-center gap-3 p-3 rounded-lg ${isDarkMode ? 'bg-slate-800/50' : 'bg-slate-100'}`}>
-                                <img src={selectedLogo.url} alt="Selected logo" className="w-10 h-10 object-contain" />
-                                <div className="flex-1">
-                                  <p className={`text-sm font-medium ${theme.text}`}>{selectedLogo.name}</p>
-                                  <p className={`text-xs ${theme.textSecondary}`}>
-                                    ✨ AI will auto-detect and replace logos
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
