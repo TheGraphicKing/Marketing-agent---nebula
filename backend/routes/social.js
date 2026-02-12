@@ -240,7 +240,7 @@ router.get('/:platform/auth', protect, async (req, res) => {
     }
     
     // Step 2: Generate JWT URL for SSO to social linking page
-    const redirectUrl = `${FRONTEND_URL}/connect-socials?${platformLower}=connected`;
+    const redirectUrl = `${FRONTEND_URL}/#/connect-socials?${platformLower}=connected`;
     
     // Map platform to Ayrshare's expected format for allowedSocial
     const ayrshareplatform = AYRSHARE_PLATFORM_MAP[platformLower] || platformLower;
