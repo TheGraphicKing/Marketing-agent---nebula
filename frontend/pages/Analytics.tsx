@@ -103,7 +103,7 @@ const Analytics: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'posts') {
       campaigns.forEach(c => {
-        if (c.socialPostId) loadPostAnalytics(c.socialPostId);
+        if (c.socialPostId) loadPostAnalytics(c.socialPostId, c.platforms);
       });
     }
   }, [activeTab, campaigns.length]);
@@ -116,11 +116,12 @@ const Analytics: React.FC = () => {
     setRefreshing(false);
   };
 
-  const loadPostAnalytics = async (postId: string) => {
+  const loadPostAnalytics = async (postId: string, platforms?: string[]) => {
     // Always fetch fresh data — no caching, live analytics
     setPostLoading(prev => ({ ...prev, [postId]: true }));
     try {
-      const res = await apiService.getPostAnalytics(postId);
+      // Use campaign's actual platforms so we don't request analytics for platforms the post wasn't sent to
+      const res = await apiService.getPostAnalytics(postId, platforms);
       console.log('Post analytics response for', postId, ':', res);
       if (res?.success) {
         setPostAnalytics(prev => ({ ...prev, [postId]: res.analytics }));
@@ -271,7 +272,7 @@ const OverviewTab: React.FC<{
   accountAnalytics: any;
   campaigns: any[];
   postAnalytics: Record<string, any>;
-  loadPostAnalytics: (postId: string) => void;
+  loadPostAnalytics: (postId: string, platforms?: string[]) => void;
   isDarkMode: boolean;
   tc: any;
   formatNumber: (n: number) => string;
@@ -281,7 +282,7 @@ const OverviewTab: React.FC<{
   useEffect(() => {
     campaigns.forEach(c => {
       if (c.socialPostId && !postAnalytics[c.socialPostId]) {
-        loadPostAnalytics(c.socialPostId);
+        loadPostAnalytics(c.socialPostId, c.platforms);
       }
     });
   }, [campaigns.length]);
@@ -626,7 +627,7 @@ const PostAnalyticsTab: React.FC<{
   campaigns: any[];
   postAnalytics: Record<string, any>;
   postLoading: Record<string, boolean>;
-  loadPostAnalytics: (postId: string) => void;
+  loadPostAnalytics: (postId: string, platforms?: string[]) => void;
   isDarkMode: boolean;
   tc: any;
   formatNumber: (n: number) => string;
@@ -637,13 +638,13 @@ const PostAnalyticsTab: React.FC<{
   // Pre-fetch all campaign analytics on mount
   useEffect(() => {
     campaigns.forEach(c => {
-      if (c.socialPostId) loadPostAnalytics(c.socialPostId);
+      if (c.socialPostId) loadPostAnalytics(c.socialPostId, c.platforms);
     });
   }, [campaigns.length]);
 
-  const handleToggle = (campaignId: string, postId: string) => {
+  const handleToggle = (campaignId: string, postId: string, platforms?: string[]) => {
     setExpandedId(prev => prev === campaignId ? null : campaignId);
-    if (!postAnalytics[postId]) loadPostAnalytics(postId);
+    if (!postAnalytics[postId]) loadPostAnalytics(postId, platforms);
   };
 
   // Primary metrics — shown in a compact chip row
@@ -851,7 +852,7 @@ const PostAnalyticsTab: React.FC<{
           >
             {/* Campaign header */}
             <button
-              onClick={() => handleToggle(campaign._id, postId)}
+              onClick={() => handleToggle(campaign._id, postId, campaign.platforms)}
               className={`w-full flex items-center justify-between p-3.5 text-left transition-colors ${
                 isDarkMode ? 'hover:bg-slate-800/30' : 'hover:bg-gray-50'
               }`}
@@ -986,9 +987,10 @@ const AdsTab: React.FC<{
         Manage your Facebook & Instagram boosted posts
       </p>
       {boostedAds.map((ad: any, i: number) => {
-        const adId = ad.id || ad.adId || ad._id || `ad-${i}`;
+        const adId = ad.adId || ad.id || ad._id || `ad-${i}`;
         const status = ad.status || ad.effective_status || 'UNKNOWN';
         const isActive = status === 'ACTIVE';
+        const curr = ad.currency === 'INR' ? '₹' : ad.currency === 'EUR' ? '€' : ad.currency === 'GBP' ? '£' : '$';
 
         return (
           <div key={adId} className={`rounded-xl p-5 ${tc.card}`}>
@@ -1027,13 +1029,13 @@ const AdsTab: React.FC<{
               {ad.dailyBudget !== undefined && (
                 <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-[#070A12]' : 'bg-gray-50'}`}>
                   <p className={`text-xs ${tc.textMuted}`}>Daily Budget</p>
-                  <p className={`text-sm font-semibold ${tc.text}`}>${ad.dailyBudget}</p>
+                  <p className={`text-sm font-semibold ${tc.text}`}>{curr}{ad.dailyBudget}</p>
                 </div>
               )}
               {ad.spend !== undefined && (
                 <div className={`p-2 rounded-lg ${isDarkMode ? 'bg-[#070A12]' : 'bg-gray-50'}`}>
                   <p className={`text-xs ${tc.textMuted}`}>Spent</p>
-                  <p className={`text-sm font-semibold ${tc.text}`}>${ad.spend}</p>
+                  <p className={`text-sm font-semibold ${tc.text}`}>{curr}{typeof ad.spend === 'number' ? ad.spend.toFixed(2) : ad.spend}</p>
                 </div>
               )}
               {ad.impressions !== undefined && (
@@ -1064,6 +1066,19 @@ const AdsTab: React.FC<{
                 {ad.startDate && ad.endDate && ' → '}
                 {ad.endDate && new Date(ad.endDate).toLocaleDateString()}
               </div>
+            )}
+
+            {/* Preview Link */}
+            {ad.previewLink && (
+              <a
+                href={ad.previewLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 mt-3 text-xs font-medium ${isDarkMode ? 'text-[#ffcc29] hover:text-yellow-300' : 'text-amber-600 hover:text-amber-700'}`}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Preview Ad
+              </a>
             )}
           </div>
         );

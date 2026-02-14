@@ -235,8 +235,16 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
 
       // Duration
       if (durationType === 'set') {
-        params.startDate = new Date(startDate).toISOString();
-        params.endDate = new Date(endDate).toISOString();
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const hoursDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        if (hoursDiff < 30) {
+          setError('End date must be at least 30 hours after start date (Facebook requirement).');
+          setLoading(false);
+          return;
+        }
+        params.startDate = start.toISOString();
+        params.endDate = end.toISOString();
       }
       // If ongoing, don't send endDate — Ayrshare will set it as ongoing
 
@@ -295,18 +303,25 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
   const fundingInfo = selectedAccountData?.fundingSource;
   const accountCurrency = selectedAccountData?.currency || 'USD';
 
+  // Currency helper
+  const currencySymbol = accountCurrency === 'INR' ? '₹' : accountCurrency === 'EUR' ? '€' : accountCurrency === 'GBP' ? '£' : '$';
+  const minBudget = accountCurrency === 'INR' ? 100 : 1;
+  const maxBudget = accountCurrency === 'INR' ? 50000 : 1000;
+  const defaultBudget = accountCurrency === 'INR' ? 500 : 5;
+  const minBid = accountCurrency === 'INR' ? 50 : 1;
+
   // Calculate estimated total for set duration
   const daysCount = durationType === 'set' && startDate && endDate
     ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000))
     : 0;
 
   // Radio component
-  const Radio = ({ selected, onClick }: { selected: boolean; onClick: () => void }) => (
-    <button onClick={onClick} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
+  const Radio = ({ selected }: { selected: boolean; onClick?: () => void }) => (
+    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
       selected ? 'border-[#ffcc29] bg-[#ffcc29]' : isDarkMode ? 'border-slate-600' : 'border-gray-300'
     }`}>
       {selected && <div className="w-2 h-2 rounded-full bg-[#070A12]" />}
-    </button>
+    </div>
   );
 
   // Toggle component
@@ -343,7 +358,12 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
                 value={selectedAccount}
                 onChange={e => {
                   setSelectedAccount(e.target.value);
-                  setSelectedAccountData(adAccounts.find(a => a.id === e.target.value) || null);
+                  const acc = adAccounts.find(a => a.id === e.target.value) || null;
+                  setSelectedAccountData(acc);
+                  // Update budget defaults for currency
+                  const curr = acc?.currency || 'USD';
+                  setDailyBudget(curr === 'INR' ? 500 : 5);
+                  setBidAmount(curr === 'INR' ? 50 : 1);
                 }}
                 className={`text-xs px-2 py-1 rounded-lg border ${tc.input} max-w-[180px]`}
               >
@@ -398,7 +418,14 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
                   {error && (
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
                       <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>{error}</span>
+                      <div>
+                        <span>{error}</span>
+                        {error.toLowerCase().includes('post id') && (
+                          <p className="mt-1 text-xs opacity-80">
+                            Make sure the post was published on a Facebook Page or Instagram Business account connected to this ad account.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -797,35 +824,35 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
                     <div className={`mt-3 p-4 rounded-xl border ${isDarkMode ? 'border-slate-700/50 bg-[#070A12]/50' : 'border-gray-200 bg-gray-50'}`}>
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className={`text-2xl font-bold ${tc.text}`}>${dailyBudget} <span className="text-sm font-normal">daily</span></p>
+                          <p className={`text-2xl font-bold ${tc.text}`}>{currencySymbol}{dailyBudget} <span className="text-sm font-normal">daily</span></p>
                         </div>
                       </div>
                       {/* Budget Slider */}
                       <div className="mt-3">
                         <label className={`text-xs font-medium ${tc.textMuted}`}>Daily budget</label>
-                        <p className={`text-sm ${tc.textSecondary} mb-2`}>Budget per day: ${dailyBudget}</p>
+                        <p className={`text-sm ${tc.textSecondary} mb-2`}>Budget per day: {currencySymbol}{dailyBudget}</p>
                         <input
                           type="range"
-                          min={1}
-                          max={1000}
+                          min={minBudget}
+                          max={maxBudget}
                           step={1}
                           value={dailyBudget}
                           onChange={e => setDailyBudget(Number(e.target.value))}
                           className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#ffcc29]"
                           style={{
-                            background: `linear-gradient(to right, #ffcc29 ${(dailyBudget / 1000) * 100}%, ${isDarkMode ? '#1e293b' : '#e5e7eb'} ${(dailyBudget / 1000) * 100}%)`
+                            background: `linear-gradient(to right, #ffcc29 ${((dailyBudget - minBudget) / (maxBudget - minBudget)) * 100}%, ${isDarkMode ? '#1e293b' : '#e5e7eb'} ${((dailyBudget - minBudget) / (maxBudget - minBudget)) * 100}%)`
                           }}
                         />
                         <div className="flex justify-between mt-1">
-                          <span className={`text-xs ${tc.textMuted}`}>$1</span>
-                          <span className={`text-xs ${tc.textMuted}`}>$1,000</span>
+                          <span className={`text-xs ${tc.textMuted}`}>{currencySymbol}{minBudget}</span>
+                          <span className={`text-xs ${tc.textMuted}`}>{currencySymbol}{maxBudget.toLocaleString()}</span>
                         </div>
                       </div>
                       {/* Bid amount */}
                       <div className="mt-3">
-                        <label className={`text-xs font-medium ${tc.textMuted}`}>Max bid amount ($)</label>
+                        <label className={`text-xs font-medium ${tc.textMuted}`}>Max bid amount ({currencySymbol})</label>
                         <input
-                          type="number" min={1} step={0.5} value={bidAmount}
+                          type="number" min={minBid} step={0.5} value={bidAmount}
                           onChange={e => setBidAmount(Number(e.target.value))}
                           className={`w-24 px-3 py-1.5 mt-1 rounded-lg text-sm border ${tc.input}`}
                         />
@@ -886,12 +913,13 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
                           <div>
                             <label className={`text-xs font-medium ${tc.textMuted}`}>End date</label>
                             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                              min={startDate ? (() => { const d = new Date(startDate); d.setDate(d.getDate() + 2); return d.toISOString().split('T')[0]; })() : ''}
                               className={`w-full mt-1 px-3 py-2 rounded-lg text-sm border ${tc.input}`} />
                           </div>
                         </div>
                         {daysCount > 0 && (
                           <p className={`text-sm mt-3 ${tc.textSecondary}`}>
-                            {daysCount} days &middot; Estimated total: <span className={`font-bold ${tc.text}`}>${(dailyBudget * daysCount).toFixed(2)}</span>
+                            {daysCount} days &middot; Estimated total: <span className={`font-bold ${tc.text}`}>{currencySymbol}{(dailyBudget * daysCount).toFixed(2)}</span>
                           </p>
                         )}
                       </div>
@@ -1007,7 +1035,7 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
                     <div className="space-y-1.5">
                       <div className="flex justify-between">
                         <span className={`text-sm ${tc.textSecondary}`}>Daily budget</span>
-                        <span className={`text-sm font-medium ${tc.text}`}>${dailyBudget.toFixed(2)}</span>
+                        <span className={`text-sm font-medium ${tc.text}`}>{currencySymbol}{dailyBudget.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`text-sm ${tc.textSecondary}`}>Duration</span>
@@ -1018,7 +1046,7 @@ const BoostPostModal: React.FC<BoostPostModalProps> = ({ isOpen, onClose, campai
                       {durationType === 'set' && daysCount > 0 && (
                         <div className={`flex justify-between pt-1.5 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-gray-200'}`}>
                           <span className={`text-sm font-semibold ${tc.text}`}>Estimated total</span>
-                          <span className="text-sm font-bold text-[#ffcc29]">${(dailyBudget * daysCount).toFixed(2)}</span>
+                          <span className="text-sm font-bold text-[#ffcc29]">{currencySymbol}{(dailyBudget * daysCount).toFixed(2)}</span>
                         </div>
                       )}
                     </div>

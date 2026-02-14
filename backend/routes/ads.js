@@ -105,7 +105,8 @@ router.post('/boost', protect, async (req, res) => {
     });
 
     if (!result.success) {
-      return res.status(400).json({ success: false, error: result.error || 'Failed to boost post', details: result.data });
+      const errMsg = result.error || (result.data && (result.data.message || result.data.error)) || 'Failed to boost post';
+      return res.status(400).json({ success: false, error: errMsg, message: errMsg, details: result.data });
     }
 
     res.json({ success: true, data: result.data });
@@ -127,15 +128,36 @@ router.post('/boost', protect, async (req, res) => {
 router.get('/boosted', protect, async (req, res) => {
   try {
     const profileKey = await getProfileKey(req.user.userId || req.user.id);
-    const { status, limit } = req.query;
+    const { status, limit, accountId } = req.query;
 
-    const result = await getBoostedAds(profileKey, { status, limit: limit ? parseInt(limit) : undefined });
+    const result = await getBoostedAds(profileKey, { status, limit: limit ? parseInt(limit) : undefined, accountId });
 
     if (!result.success) {
       return res.status(400).json({ success: false, error: result.error || 'Failed to get boosted ads' });
     }
 
-    res.json({ success: true, ads: result.data });
+    // Flatten Ayrshare's nested ad structure for the frontend
+    const ads = (result.data?.ads || []).map(item => {
+      const ad = item.ad || item;
+      return {
+        ...ad,
+        postId: item.postId || ad.postId,
+        adId: ad.adId || ad.id,
+        name: ad.name || ad.adName,
+        status: ad.deliveryStatus || ad.status,
+        objective: ad.goal?.title || ad.goal?.type || ad.objective,
+        spend: ad.metrics?.spend ?? ad.spend ?? 0,
+        impressions: ad.metrics?.impressions ?? ad.impressions ?? 0,
+        reach: ad.metrics?.reach ?? ad.reach ?? 0,
+        clicks: ad.metrics?.clicks ?? ad.clicks ?? 0,
+        ctr: ad.metrics?.ctr ?? ad.ctr ?? 0,
+        cpm: ad.metrics?.cpm ?? ad.cpm ?? 0,
+        dailyBudget: ad.dailyBudget ?? 0,
+        currency: ad.metrics?.accountCurrency || 'USD',
+      };
+    });
+
+    res.json({ success: true, ads });
   } catch (error) {
     console.error('Get boosted ads error:', error);
     res.status(500).json({ success: false, error: error.message });
