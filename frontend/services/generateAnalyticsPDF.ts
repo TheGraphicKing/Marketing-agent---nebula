@@ -352,15 +352,30 @@ function normalizePlatformData(accountAnalytics: any, platform: string) {
   const raw = accountAnalytics?.[platform];
   if (!raw) return null;
   const d = raw.analytics || raw;
+
+  // Helper: extract a numeric value — handles nested objects like LinkedIn's { totalFollowerCount: N }
+  const num = (val: any): number => {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === 'number') return isFinite(val) ? val : 0;
+    if (typeof val === 'object') {
+      const n = val.totalFollowerCount ?? val.total ?? val.count;
+      if (typeof n === 'number') return n;
+      const first = Object.values(val).find((v: any) => typeof v === 'number');
+      return typeof first === 'number' ? first : 0;
+    }
+    const parsed = Number(val);
+    return isFinite(parsed) ? parsed : 0;
+  };
+
   return {
-    followers:      d.followersCount ?? d.followers ?? d.fanCount ?? d.firstDegreeSize ?? d.connectionsCount ?? d.networkSize ?? 0,
-    following:      d.followingCount ?? d.following ?? 0,
-    posts:          d.postsCount ?? d.posts ?? d.mediaCount ?? 0,
-    engagementRate: d.engagementRate ?? d.engagement_rate ?? undefined,
-    reach:          d.reach ?? 0,
-    impressions:    d.impressions ?? 0,
+    followers:      num(d.followersCount) || num(d.followers) || num(d.fanCount) || num(d.firstDegreeSize) || num(d.connectionsCount) || num(d.networkSize) || 0,
+    following:      num(d.followingCount) || num(d.following) || 0,
+    posts:          num(d.postsCount) || num(d.posts) || num(d.mediaCount) || 0,
+    engagementRate: num(d.engagementRate) || num(d.engagement_rate) || undefined,
+    reach:          num(d.reach) || 0,
+    impressions:    num(d.impressions) || 0,
     name:           d.name ?? d.username ?? d.localizedFirstName ?? platform,
-    likes:          d.fanCount ?? d.likes ?? 0,
+    likes:          num(d.fanCount) || num(d.likes) || 0,
   };
 }
 
