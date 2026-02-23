@@ -37,14 +37,10 @@ const chatRoutes = require('./routes/chat');
 const dashboardRoutes = require('./routes/dashboard');
 const campaignRoutes = require('./routes/campaigns');
 const competitorRoutes = require('./routes/competitors');
-const influencerRoutes = require('./routes/influencers');
 const reminderRoutes = require('./routes/reminders');
 
 // New real-data routes
 const brandRoutes = require('./routes/brand');
-const trendRoutes = require('./routes/trends');
-const contentRoutes = require('./routes/content');
-const campaignBuilderRoutes = require('./routes/campaignBuilder');
 const analyticsRoutes = require('./routes/analytics');
 
 // Reachouts CRM routes - REMOVED
@@ -60,6 +56,8 @@ const adsRoutes = require('./routes/ads');
 
 // Notification scheduler service
 const notificationScheduler = require('./services/notificationScheduler');
+// Analytics snapshot scheduler
+const snapshotScheduler = require('./services/snapshotScheduler');
 
 const app = express();
 
@@ -113,14 +111,10 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/competitors', competitorRoutes);
-app.use('/api/influencers', influencerRoutes);
 app.use('/api/reminders', reminderRoutes);
 
 // Routes - Real Data Features
 app.use('/api/brand', brandRoutes);
-app.use('/api/trends', trendRoutes);
-app.use('/api/content', contentRoutes);
-app.use('/api/campaign-builder', campaignBuilderRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 // Routes - Reachouts CRM - REMOVED
@@ -232,6 +226,21 @@ const startServer = async () => {
     } catch (schedulerError) {
       console.warn('⚠️  Notification scheduler failed to start:', schedulerError.message);
     }
+
+    // Start analytics snapshot scheduler (every 12 hours)
+    try {
+      snapshotScheduler.start();
+    } catch (schedulerError) {
+      console.warn('⚠️  Snapshot scheduler failed to start:', schedulerError.message);
+    }
+
+    // Initialize OTP email service
+    try {
+      const otpService = require('./services/otpService');
+      otpService.initialize();
+    } catch (otpError) {
+      console.warn('⚠️  OTP service failed to initialize:', otpError.message);
+    }
   } catch (error) {
     console.warn('⚠️  MongoDB not available:', error.message);
     console.warn('   Server will start in demo mode (no database persistence)');
@@ -259,6 +268,7 @@ mongoose.connection.on('error', (err) => {
 process.on('SIGINT', async () => {
   console.log('\nShutting down gracefully...');
   notificationScheduler.stop();
+  snapshotScheduler.stop();
   await mongoose.connection.close();
   process.exit(0);
 });

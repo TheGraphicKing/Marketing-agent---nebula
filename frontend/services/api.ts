@@ -191,27 +191,56 @@ export const apiService = {
   // REAL AUTHENTICATION ENDPOINTS
   // ============================================
   
-  register: async (data: { email: string; password: string; firstName: string; companyName?: string }): Promise<AuthResponse> => {
-    const response = await apiCall<{ success: boolean; message: string; token: string; user: User }>(
+  register: async (data: { email: string; password: string; firstName: string; companyName?: string }): Promise<AuthResponse & { requiresVerification?: boolean }> => {
+    const response = await apiCall<{ success: boolean; message: string; token: string; user: User; requiresVerification?: boolean }>(
       '/auth/signup',
       { method: 'POST', body: JSON.stringify(data) }
     );
     
-    if (response.token) {
+    // SECURITY: Do NOT save token until OTP is verified
+    if (response.token && !response.requiresVerification) {
       setToken(response.token);
     }
     
     return {
       success: response.success,
       token: response.token,
-      user: response.user
+      user: response.user,
+      requiresVerification: response.requiresVerification
     };
   },
 
-  login: async (data: { email: string; password: string }): Promise<AuthResponse> => {
-    const response = await apiCall<{ success: boolean; message: string; token: string; user: User }>(
+  login: async (data: { email: string; password: string }): Promise<AuthResponse & { requiresVerification?: boolean }> => {
+    const response = await apiCall<{ success: boolean; message: string; token: string; user: User; requiresVerification?: boolean }>(
       '/auth/login',
       { method: 'POST', body: JSON.stringify(data) }
+    );
+    
+    // SECURITY: Do NOT save token until OTP is verified
+    if (response.token && !response.requiresVerification) {
+      setToken(response.token);
+    }
+    
+    return {
+      success: response.success,
+      token: response.token,
+      user: response.user,
+      requiresVerification: response.requiresVerification
+    };
+  },
+
+  // OTP Verification
+  sendOTP: async (email: string): Promise<{ success: boolean; message: string; retryAfter?: number }> => {
+    return apiCall('/auth/send-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  },
+
+  verifyOTP: async (email: string, otp: string): Promise<AuthResponse & { requiresVerification?: boolean }> => {
+    const response = await apiCall<{ success: boolean; message: string; token: string; user: User }>(
+      '/auth/verify-otp',
+      { method: 'POST', body: JSON.stringify({ email, otp }) }
     );
     
     if (response.token) {
@@ -267,6 +296,10 @@ export const apiService = {
 
   logout: (): void => {
     removeToken();
+    // Clear user-specific caches so next user doesn't see stale data
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('nebula_suggested_campaigns')) localStorage.removeItem(key);
+    });
   },
 
   completeOnboarding: async (data: BusinessProfile, connectedSocials?: {platform: string; username?: string}[]): Promise<{ success: boolean; user: User }> => {
@@ -1268,6 +1301,15 @@ export const apiService = {
     return { reminder: response.reminder };
   },
 
+  updateReminder: async (id: string, data: Record<string, any>): Promise<{ reminder: any }> => {
+    const response = await apiCall<{ success: boolean; reminder: any }>(
+      `/reminders/${id}`,
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+    return { reminder: response.reminder };
+  },
+
   deleteReminder: async (id: string): Promise<{ success: boolean }> => {
     const response = await apiCall<{ success: boolean }>(
       `/reminders/${id}`,
@@ -1718,6 +1760,24 @@ export const apiService = {
     return response;
   },
 
+  // Get historical analytics snapshots for trend charts
+  getAnalyticsHistory: async (days: number = 30): Promise<any> => {
+    return await apiCall<any>(
+      `/analytics/history?days=${days}`,
+      { method: 'GET' },
+      true
+    );
+  },
+
+  // Manually trigger a snapshot for the current user
+  takeSnapshotNow: async (): Promise<any> => {
+    return await apiCall<any>(
+      '/analytics/snapshot-now',
+      { method: 'POST' },
+      true
+    );
+  },
+
   // ============================================
   // AYRSHARE ADS / BOOST
   // ============================================
@@ -1796,7 +1856,7 @@ export const apiService = {
   },
 
   // ============================================
-  // REAL-TIME DATA APIs (Ayrshare, Apify, SearchAPI)
+  // REAL-TIME DATA APIs (Ayrshare, Apify)
   // ============================================
 
   // Get real-time competitor data using Apify scraping
@@ -1834,30 +1894,6 @@ export const apiService = {
     const response = await apiCall<any>(
       '/dashboard/refresh-competitor-posts',
       { method: 'POST' },
-      true
-    );
-    return response;
-  },
-
-  // Get real-time trends using SearchAPI
-  getRealTimeTrends: async (query?: string, category?: string): Promise<any> => {
-    const params = new URLSearchParams();
-    if (query) params.append('query', query);
-    if (category) params.append('category', category);
-    
-    const response = await apiCall<any>(
-      `/trends/real-time?${params.toString()}`,
-      { method: 'GET' },
-      true
-    );
-    return response;
-  },
-
-  // Search social media for trends
-  searchSocialTrends: async (query: string, platform: string = 'twitter'): Promise<any> => {
-    const response = await apiCall<any>(
-      `/trends/social-search?query=${encodeURIComponent(query)}&platform=${platform}`,
-      { method: 'GET' },
       true
     );
     return response;
