@@ -334,7 +334,19 @@ function parseGeminiJSON(text) {
  * Generate personalized campaign suggestions based on business profile
  * Creates highly specific campaigns tailored to the company's products, audience, and brand voice
  */
-async function generateCampaignSuggestions(businessProfile, count = 6) {
+// Platform-specific caption rules for AI prompt injection
+function getPlatformCaptionRules(platform) {
+  const rules = {
+    'twitter': '- STRICT 280 character limit (including hashtags). Keep it punchy and concise.\n- Use 1-3 hashtags MAX, placed at the end.\n- No line breaks or long paragraphs — single impactful statement.\n- Threads are OK but each tweet must be under 280 chars.',
+    'x': '- STRICT 280 character limit (including hashtags). Keep it punchy and concise.\n- Use 1-3 hashtags MAX, placed at the end.\n- No line breaks or long paragraphs — single impactful statement.',
+    'instagram': '- Caption can be up to 2200 characters but keep it engaging (150-300 chars ideal for feed).\n- Use 5-15 relevant hashtags.\n- Include line breaks for readability.\n- Start with a hook in the first line (visible before "more").\n- Use emojis generously.',
+    'linkedin': '- Professional tone, 150-300 words ideal.\n- No excessive emojis (1-2 max).\n- Use line breaks every 1-2 sentences for readability.\n- Include a thought-provoking question or CTA at the end.\n- 3-5 hashtags max, lowercase preferred.',
+    'facebook': '- Medium length (100-250 chars ideal for engagement).\n- Conversational and relatable tone.\n- 1-3 hashtags max.\n- Include a question or CTA to drive comments.\n- Emojis OK but moderate.',
+  };
+  return rules[platform.toLowerCase()] || rules['instagram'];
+}
+
+async function generateCampaignSuggestions(businessProfile, count = 6, allowedPlatforms = null) {
   // Build a comprehensive context from the business profile
   const companyName = businessProfile.name || 'Your Company';
   const industry = businessProfile.industry || 'General';
@@ -344,6 +356,12 @@ async function generateCampaignSuggestions(businessProfile, count = 6) {
   const brandVoice = businessProfile.brandVoice || 'Professional';
   const description = businessProfile.description || '';
   const marketingGoals = (businessProfile.marketingGoals || []).join(', ') || 'Brand awareness';
+  
+  // Filter platforms — exclude YouTube always, use allowed list if provided
+  const defaultPlatforms = ['instagram', 'facebook', 'linkedin', 'twitter'];
+  const platformsList = allowedPlatforms 
+    ? allowedPlatforms.map(p => p.toLowerCase()).filter(p => p !== 'youtube')
+    : defaultPlatforms;
   
   // Get products/services context if available
   const products = businessProfile.products?.map(p => p.name || p).join(', ') || '';
@@ -398,6 +416,11 @@ ${brandVoice === 'Playful' ? '- Use humor, puns, emojis liberally, casual langua
 ${brandVoice === 'Bold' ? '- Use strong statements, powerful words, confident assertions, call to action' : ''}
 ${brandVoice === 'Minimal' ? '- Use concise, clean language, fewer words, impactful statements' : ''}
 
+=== PLATFORM-SPECIFIC CAPTION RULES ===
+${platformsList.map(p => `[${p.toUpperCase()}]\n${getPlatformCaptionRules(p)}`).join('\n\n')}
+
+IMPORTANT: Each campaign's caption MUST strictly follow the rules of its assigned platform. Especially enforce character limits for Twitter/X.
+
 Return ONLY valid JSON (no markdown, no code blocks):
 {
   "campaigns": [
@@ -420,7 +443,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
   ]
 }
 
-Generate ${count} diverse campaigns covering different objectives (awareness, engagement, sales, etc.) and platforms (instagram, facebook, linkedin, twitter/X, youtube). Make every campaign UNIQUE and SPECIFIC to ${companyName}.`;
+Generate ${count} diverse campaigns covering different objectives (awareness, engagement, sales, etc.) and platforms. ONLY use these platforms: ${platformsList.join(', ')}. Do NOT include YouTube. Make every campaign UNIQUE and SPECIFIC to ${companyName}.`;
 
   try {
     // Use higher token limit for generating multiple campaigns
@@ -476,6 +499,9 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
         return {
           ...campaign,
           imageUrl,
+          // Post-process: force platform to one of the allowed platforms (Gemini sometimes ignores constraints)
+          platforms: platformsList.length > 0 ? [platformsList[index % platformsList.length]] : campaign.platforms,
+          platform: platformsList.length > 0 ? platformsList[index % platformsList.length] : campaign.platform,
           id: campaign.id || `campaign_${index + 1}`
         };
       }));
@@ -492,7 +518,7 @@ Generate ${count} diverse campaigns covering different objectives (awareness, en
  * Generate a SINGLE campaign quickly for streaming/progressive loading
  * This is optimized for speed - generates one campaign at a time
  */
-async function generateSingleCampaign(businessProfile, index, total) {
+async function generateSingleCampaign(businessProfile, index, total, allowedPlatforms = null) {
   const companyName = businessProfile.name || 'Your Company';
   const industry = businessProfile.industry || 'General';
   const niche = businessProfile.niche || industry;
@@ -503,7 +529,10 @@ async function generateSingleCampaign(businessProfile, index, total) {
   
   // Vary objectives for diversity with randomness
   const objectives = ['awareness', 'engagement', 'sales', 'traffic', 'trust', 'conversion'];
-  const platforms = ['instagram', 'facebook', 'linkedin', 'twitter', 'youtube'];
+  // Filter platforms — exclude YouTube always, use allowed list if provided
+  const platforms = allowedPlatforms 
+    ? allowedPlatforms.map(p => p.toLowerCase()).filter(p => p !== 'youtube')
+    : ['instagram', 'facebook', 'linkedin', 'twitter'];
   
   // Add randomness to selection to ensure variety on regeneration
   const randomSeed = Date.now() + index;
@@ -547,6 +576,11 @@ Platform: ${platform}
 Goals: ${marketingGoals}
 Timestamp: ${Date.now()}
 
+=== PLATFORM CAPTION RULES FOR ${platform.toUpperCase()} ===
+${getPlatformCaptionRules(platform)}
+
+IMPORTANT: The caption MUST strictly follow the ${platform} platform rules above. ${platform.toLowerCase() === 'twitter' || platform.toLowerCase() === 'x' ? 'STRICTLY keep caption under 280 characters including hashtags!' : ''}
+
 Return ONLY valid JSON (no markdown):
 {
   "id": "campaign_${Date.now()}_${index}",
@@ -563,6 +597,10 @@ Return ONLY valid JSON (no markdown):
   try {
     const response = await callGemini(prompt, { temperature: 0.95, maxTokens: 1024, skipCache: true });
     const campaign = parseGeminiJSON(response);
+    
+    // Post-process: force the platform to match what was requested (Gemini sometimes ignores it)
+    campaign.platforms = [platform];
+    campaign.platform = platform;
     
     // Build rich brand context for image generation
     const brandContext = {
@@ -3645,6 +3683,26 @@ IMPORTANT RULES:
       skipCache: true  // Always skip cache — ICP is persisted in MongoDB per user
     });
     const parsed = parseGeminiJSON(raw);
+    
+    // Post-process: normalize channel strategy percentages to exactly 100%
+    if (parsed.channelStrategy && parsed.channelStrategy.length > 0) {
+      const total = parsed.channelStrategy.reduce((sum, ch) => sum + (ch.percentage || 0), 0);
+      if (total !== 100 && total > 0) {
+        // Scale all percentages proportionally, then adjust rounding error on largest
+        const scaled = parsed.channelStrategy.map(ch => ({
+          ...ch,
+          percentage: Math.round((ch.percentage / total) * 100)
+        }));
+        const scaledTotal = scaled.reduce((sum, ch) => sum + ch.percentage, 0);
+        const diff = 100 - scaledTotal;
+        // Add rounding remainder to the channel with the highest percentage
+        const maxIdx = scaled.reduce((mi, ch, i, arr) => ch.percentage > arr[mi].percentage ? i : mi, 0);
+        scaled[maxIdx].percentage += diff;
+        parsed.channelStrategy = scaled;
+        console.log(`📊 Normalized channel percentages from ${total}% to 100%`);
+      }
+    }
+    
     return parsed;
   } catch (error) {
     console.error('❌ ICP/Strategy generation failed:', error.message);

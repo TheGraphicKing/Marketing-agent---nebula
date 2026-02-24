@@ -302,6 +302,7 @@ export const apiService = {
         localStorage.removeItem(key);
       }
     });
+    localStorage.removeItem('nebula_focus_platforms');
     // Clear session storage too
     sessionStorage.removeItem('nebulaa_website_analysis');
   },
@@ -422,10 +423,14 @@ export const apiService = {
     }
   },
 
-  getCampaignSuggestions: async (count: number = 3, forceRefresh: boolean = false): Promise<any> => {
+  getCampaignSuggestions: async (count: number = 3, forceRefresh: boolean = false, platforms?: string[]): Promise<any> => {
     try {
+      let url = `/dashboard/campaign-suggestions?count=${count}${forceRefresh ? '&refresh=true' : ''}`;
+      if (platforms && platforms.length > 0) {
+        url += `&platforms=${encodeURIComponent(platforms.join(','))}`;
+      }
       const response = await apiCall<{ success: boolean; data: any; cached?: boolean }>(
-        `/dashboard/campaign-suggestions?count=${count}${forceRefresh ? '&refresh=true' : ''}`,
+        url,
         { method: 'GET' },
         true
       );
@@ -442,12 +447,16 @@ export const apiService = {
     forceRefresh: boolean = false,
     onCampaign: (campaign: any, index: number, total: number, cached: boolean) => void,
     onComplete: (total: number) => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    platforms?: string[]
   ): (() => void) => {
     const token = localStorage.getItem('token');
     // Use relative URL in production, localhost in development
     const baseUrl = (window as any).__API_BASE_URL__ || (window.location.hostname !== 'localhost' ? '/api' : 'http://localhost:5000/api');
-    const url = `${baseUrl}/dashboard/campaign-suggestions-stream?count=${count}${forceRefresh ? '&refresh=true' : ''}`;
+    let url = `${baseUrl}/dashboard/campaign-suggestions-stream?count=${count}${forceRefresh ? '&refresh=true' : ''}`;
+    if (platforms && platforms.length > 0) {
+      url += `&platforms=${encodeURIComponent(platforms.join(','))}`;
+    }
     
     const eventSource = new EventSource(url + `&token=${token}`);
     
