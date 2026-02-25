@@ -934,7 +934,7 @@ const { generatePosterFromTemplate, editPosterFromTemplate } = require('../servi
  * POST /api/campaigns/generate-caption
  * Generate a caption from an uploaded image using AI vision
  */
-router.post('/generate-caption', protect, async (req, res) => {
+router.post('/generate-caption', protect, checkTrial, requireCredits('campaign_text'), async (req, res) => {
   try {
     const { image, platform } = req.body;
     
@@ -1047,11 +1047,15 @@ Return ONLY the caption text with hashtags. No JSON, no explanations.`;
     const hashtags = caption.match(hashtagRegex) || [];
     
     console.log('✅ Caption generated successfully');
+
+    // Deduct 2 credits for caption generation
+    const captionCreditResult = await deductCredits(userId, 'campaign_text', 1, `AI caption for ${platform || 'instagram'}`);
     
     res.json({
       success: true,
       caption: caption.trim(),
-      hashtags: hashtags
+      hashtags: hashtags,
+      creditsRemaining: captionCreditResult.creditsRemaining
     });
     
   } catch (error) {
@@ -1302,7 +1306,7 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
       
       // Deduct credits for image generation
       const userId = req.user.userId || req.user.id || req.user._id;
-      await deductCredits(userId, 'image_generated', 1, 'Generated template poster');
+      const posterCreditResult = await deductCredits(userId, 'image_generated', 1, 'Generated template poster');
 
       res.json({
         success: true,
@@ -1310,7 +1314,8 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
         imageUrl: hostedUrl,
         model: result.model || result.method,
         logoApplied: logoReplaced,
-        message: 'Poster generated successfully'
+        message: 'Poster generated successfully',
+        creditsRemaining: posterCreditResult.creditsRemaining
       });
     } else {
       res.status(500).json({
@@ -1367,7 +1372,7 @@ router.post('/template-poster/edit', protect, checkTrial, requireCredits('image_
 
       // Deduct credits for image edit
       const userId = req.user.userId || req.user.id || req.user._id;
-      await deductCredits(userId, 'image_edit', 1, 'Edited template poster');
+      const editCreditResult = await deductCredits(userId, 'image_edit', 1, 'Edited template poster');
 
       // Upload to Cloudinary
       let hostedUrl = null;
@@ -1385,7 +1390,8 @@ router.post('/template-poster/edit', protect, checkTrial, requireCredits('image_
         imageBase64: result.imageBase64,
         imageUrl: hostedUrl,
         model: result.model || result.method,
-        message: 'Poster updated successfully'
+        message: 'Poster updated successfully',
+        creditsRemaining: editCreditResult.creditsRemaining
       });
     } else {
       res.status(500).json({
@@ -1448,13 +1454,14 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
 
       // Deduct credits for image generation from reference
       const userId = req.user.userId || req.user.id || req.user._id;
-      await deductCredits(userId, 'image_generated', 1, 'Generated poster from reference');
+      const refCreditResult = await deductCredits(userId, 'image_generated', 1, 'Generated poster from reference');
       
       return res.json({
         success: true,
         imageBase64: result.imageBase64,
         imageUrl: hostedUrl,
-        model: result.model
+        model: result.model,
+        creditsRemaining: refCreditResult.creditsRemaining
       });
     } else {
       return res.status(500).json({
@@ -1477,7 +1484,7 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
  * POST /api/campaigns/template-poster/batch
  * Generate multiple posters from multiple templates in batch
  */
-router.post('/template-poster/batch', protect, checkTrial, async (req, res) => {
+router.post('/template-poster/batch', protect, checkTrial, requireCredits('image_generated', (req) => (req.body.posters?.length || 1)), async (req, res) => {
   try {
     const { posters, platform, useAI } = req.body;
     
@@ -1557,10 +1564,14 @@ router.post('/template-poster/batch', protect, checkTrial, async (req, res) => {
     
     const successCount = results.filter(r => r.success).length;
     console.log(`✅ Batch complete: ${successCount}/${posters.length} posters generated`);
+
+    // Fetch latest credit balance for frontend
+    const latestUser = await User.findById(req.user.userId || req.user.id || req.user._id).select('credits.balance');
     
     res.json({
       success: true,
       results,
+      creditsRemaining: latestUser?.credits?.balance ?? 0,
       summary: {
         total: posters.length,
         successful: successCount,
