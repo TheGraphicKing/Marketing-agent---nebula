@@ -620,11 +620,11 @@ router.post('/scrape-by-type', protect, async (req, res) => {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    // Now return ALL posts for this type
-    const allOfType = await Competitor.find({ userId, isActive: true, isIgnored: { $ne: true }, competitorType });
+    // Now return ALL posts for this type (re-query to get updated data)
+    const updatedCompetitors = await Competitor.find({ userId, isActive: true, isIgnored: { $ne: true }, competitorType });
     const oneMonthAgoFilter = Date.now() - (30 * 24 * 60 * 60 * 1000);
     const allPosts = [];
-    allOfType.forEach(c => {
+    updatedCompetitors.forEach(c => {
       if (c.posts && c.posts.length > 0) {
         c.posts.forEach(p => {
           // Skip posts with no valid date or older than 1 month
