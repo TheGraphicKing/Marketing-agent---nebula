@@ -800,7 +800,7 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
           
           if (result.success && result.data && result.data.length > 0) {
             const profile = result.data[0];
-            const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000); // 3 months in ms
+            const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
             
             const posts = (profile.latestPosts || profile.posts || [])
               .map((post, idx) => {
@@ -822,7 +822,7 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
                   isReal: true
                 };
               })
-              .filter(post => post.postedAtTimestamp > threeMonthsAgo) // Filter out posts older than 3 months
+              .filter(post => post.postedAtTimestamp > threeMonthsAgo) // Filter out posts older than 1 month
               .slice(0, limit);
             
             allPosts.push(...posts);
@@ -852,7 +852,7 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
           }, { timeout: 60000 });
           
           if (result.success && result.data && result.data.length > 0) {
-            const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+            const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
             
             const posts = result.data
               .map((tweet, idx) => {
@@ -903,7 +903,7 @@ async function fetchRealCompetitorPosts(competitorHandles, options = {}) {
           }, { timeout: 60000 });
           
           if (result.success && result.data && result.data.length > 0) {
-            const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+            const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
             
             const posts = result.data
               .map((video, idx) => {
