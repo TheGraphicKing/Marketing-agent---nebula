@@ -346,8 +346,8 @@ async function findInstagramProfile(competitor) {
  */
 async function fetchPostsForCompetitors(competitors) {
   const allPosts = [];
-  const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
-  console.log(`ðŸ“… 3-month threshold: ${new Date(threeMonthsAgo).toLocaleDateString()}`);
+  const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
+  console.log(`📅 1-month threshold: ${new Date(threeMonthsAgo).toLocaleDateString()}`);
 
   for (const competitor of competitors.slice(0, 5)) {
     try {
@@ -390,7 +390,7 @@ function processAndSavePosts(latestPosts, competitor, threeMonthsAgo) {
       comments: post.commentsCount || post.comments || 0,
       imageUrl: post.displayUrl || post.imageUrl || post.thumbnailUrl || null,
       postUrl: post.url || post.postUrl || `https://instagram.com/p/${post.shortCode || post.id || ''}`,
-      postedAt: post.timestamp || post.takenAtTimestamp || post.date || new Date(),
+      postedAt: new Date(timestamp),  // Use computed ms timestamp for accurate date
       postedAtTimestamp: timestamp,
       sentiment: analyzeSentiment(post.caption || ''),
       isRealData: true
@@ -554,7 +554,7 @@ router.post('/scrape-by-type', protect, async (req, res) => {
     console.log(`ðŸ“‹ Found ${competitors.length} ${competitorType} competitors without posts`);
 
     const results = [];
-    const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+    const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
 
     for (const competitor of competitors.slice(0, 7)) {
       try {
@@ -711,10 +711,12 @@ function formatTimeAgo(date) {
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
+  const diffWeeks = Math.floor(diffDays / 7);
   
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffWeeks < 5) return `${diffWeeks}w ago`;
   return past.toLocaleDateString();
 }
 
