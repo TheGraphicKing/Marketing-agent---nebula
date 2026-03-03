@@ -63,6 +63,9 @@ const paymentRoutes = require('./routes/payment');
 // Trial guard middleware
 const { checkTrial } = require('./middleware/trialGuard');
 
+// Content routes
+const contentRoutes = require('./routes/content');
+
 // Notification scheduler service
 const notificationScheduler = require('./services/notificationScheduler');
 // Analytics snapshot scheduler
@@ -142,6 +145,9 @@ app.use('/api/credits', creditsRoutes);
 
 // Routes - Payment / Razorpay
 app.use('/api/payment', paymentRoutes);
+
+// Routes - Content
+app.use('/api/content', contentRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
