@@ -507,6 +507,17 @@ const Dashboard: React.FC = () => {
   
   // Handle creating a post from suggestion
   const handleCreatePost = async (suggestion: any) => {
+    // Upfront credit check
+    try {
+      const creditData = await apiService.getCredits();
+      const balance = creditData?.credits?.balance ?? 0;
+      if (balance < 7) {
+        alert(`Insufficient credits. You need 7 credits to create a post but you only have ${balance}. Please wait for your next credit cycle or upgrade your plan.`);
+        return;
+      }
+    } catch (e) {
+      console.error('Credit check failed:', e);
+    }
     setSelectedSuggestion(suggestion);
     setShowPostCreator(true);
     setGeneratingPost(true);
@@ -532,7 +543,17 @@ const Dashboard: React.FC = () => {
   // Handle refining image
   const handleRefineImage = async () => {
     if (!imageRefinementPrompt.trim() || !postImagePrompt) return;
-    
+    // Upfront credit check
+    try {
+      const creditData = await apiService.getCredits();
+      const balance = creditData?.credits?.balance ?? 0;
+      if (balance < 3) {
+        alert(`Insufficient credits. You need 3 credits to refine an image but you only have ${balance}. Please wait for your next credit cycle or upgrade your plan.`);
+        return;
+      }
+    } catch (e) {
+      console.error('Credit check failed:', e);
+    }
     setRefiningImage(true);
     try {
       const result = await apiService.refineImage(postImagePrompt, imageRefinementPrompt);
@@ -663,6 +684,17 @@ const Dashboard: React.FC = () => {
 
   // Handle creating a rival post
   const handleCreateRivalPost = async (competitor: any) => {
+    // Upfront credit check
+    try {
+      const creditData = await apiService.getCredits();
+      const balance = creditData?.credits?.balance ?? 0;
+      if (balance < 7) {
+        alert(`Insufficient credits. You need 7 credits to create a rival post but you only have ${balance}. Please wait for your next credit cycle or upgrade your plan.`);
+        return;
+      }
+    } catch (e) {
+      console.error('Credit check failed:', e);
+    }
     setRivalPostLoading(true);
     setShowRivalPostModal(true);
     setRivalPost(null);
