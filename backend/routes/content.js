@@ -8,12 +8,12 @@ const User = require('../models/User');
 
 /**
  * @route   POST /api/content/regenerate-image
- * @desc    Generate a new image from a custom prompt using Vertex AI Imagen
+ * @desc    Refine/edit an existing image using Nano Banana 2
  * @access  Private
  */
 router.post('/regenerate-image', protect, async (req, res) => {
   try {
-    const { prompt, style, campaignId, industry, platform } = req.body;
+    const { prompt, style, campaignId, industry, platform, currentImageUrl } = req.body;
 
     if (!prompt) {
       return res.status(400).json({ success: false, error: 'Prompt is required' });
@@ -29,37 +29,15 @@ router.post('/regenerate-image', protect, async (req, res) => {
 
     const { originalImagePrompt, caption } = req.body;
 
-    console.log(`🎨 Regenerate image request - prompt: "${prompt.substring(0, 80)}...", platform: ${platform || 'instagram'}`);
+    console.log(`🎨 Refine image request - prompt: "${prompt.substring(0, 80)}...", platform: ${platform || 'instagram'}`);
 
-    // Build a context-aware prompt that keeps the image relevant to the original
-    let effectivePrompt;
-    if (originalImagePrompt) {
-      // Best case: we have the original image description, refine it
-      effectivePrompt = `${originalImagePrompt}. REFINEMENT: ${prompt}. Keep the same subject matter and scene but apply the refinement.`;
-    } else if (caption) {
-      // Fallback: use the post caption as context
-      effectivePrompt = `Create an image for this social media post: "${caption.substring(0, 300)}". Style/modification: ${prompt}. The image must be directly relevant to the post content.`;
-    } else {
-      effectivePrompt = prompt;
-    }
+    const contextPrompt = originalImagePrompt || caption || 'marketing image';
 
-    // Generate image from the prompt
-    const imageResult = await generateImageFromCustomPrompt(effectivePrompt, platform || 'instagram');
+    // Use refineImageWithPrompt (Nano Banana 2) for editing
+    const result = await refineImageWithPrompt(contextPrompt, prompt, style || 'professional', currentImageUrl);
 
-    if (!imageResult) {
-      return res.status(500).json({ success: false, error: 'Failed to generate image' });
-    }
-
-    // If the result is a base64 data URL, upload to Cloudinary for a permanent URL
-    let finalUrl = imageResult;
-    if (imageResult.startsWith('data:')) {
-      const uploadResult = await uploadBase64Image(imageResult, 'nebula-content');
-      if (uploadResult.success) {
-        finalUrl = uploadResult.url;
-        console.log('✅ Regenerated image uploaded to Cloudinary:', finalUrl);
-      } else {
-        console.warn('⚠️ Cloudinary upload failed, returning base64 image');
-      }
+    if (!result.success || !result.imageUrl) {
+      return res.status(500).json({ success: false, error: result.error || 'Failed to refine image' });
     }
 
     // Deduct 3 credits for image refinement
@@ -67,13 +45,13 @@ router.post('/regenerate-image', protect, async (req, res) => {
 
     res.json({
       success: true,
-      imageUrl: finalUrl,
+      imageUrl: result.imageUrl,
       prompt,
       creditsRemaining: creditResult.balance
     });
   } catch (error) {
-    console.error('❌ Regenerate image error:', error.message);
-    res.status(500).json({ success: false, error: error.message || 'Failed to regenerate image' });
+    console.error('❌ Refine image error:', error.message);
+    res.status(500).json({ success: false, error: error.message || 'Failed to refine image' });
   }
 });
 

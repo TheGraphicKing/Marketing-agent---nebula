@@ -1499,7 +1499,7 @@ router.post('/strategic-advisor/generate-post', protect, async (req, res) => {
  */
 router.post('/strategic-advisor/refine-image', protect, async (req, res) => {
   try {
-    const { originalPrompt, refinementPrompt, style } = req.body;
+    const { originalPrompt, refinementPrompt, style, currentImageUrl } = req.body;
     const userId = req.user._id || req.user.userId || req.user.id;
     
     if (!originalPrompt || !refinementPrompt) {
@@ -1514,7 +1514,7 @@ router.post('/strategic-advisor/refine-image', protect, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Insufficient credits', creditsRemaining: user.credits.balance, required: 3 });
     }
     
-    const result = await refineImageWithPrompt(originalPrompt, refinementPrompt, style);
+    const result = await refineImageWithPrompt(originalPrompt, refinementPrompt, style, currentImageUrl);
     
     // Deduct credits
     const creditResult = await deductCredits(userId, 3, 'refine_image');

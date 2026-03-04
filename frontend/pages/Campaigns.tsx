@@ -4949,7 +4949,8 @@ const EditSuggestionModal: React.FC<EditSuggestionModalProps> = ({ suggestion, o
                 prompt: imageEditPrompt,
                 platform: platform.toLowerCase(),
                 industry: suggestion.objective || 'marketing',
-                caption: caption || `${title}. ${suggestion.objective} campaign.`
+                caption: caption || `${title}. ${suggestion.objective} campaign.`,
+                currentImageUrl: currentImageUrl
             });
             if (result.success && result.imageUrl) {
                 setCurrentImageUrl(result.imageUrl);

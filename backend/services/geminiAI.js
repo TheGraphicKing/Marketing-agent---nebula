@@ -2753,17 +2753,107 @@ Return ONLY valid JSON:
 }
 
 /**
- * Refine/edit an image with a new prompt
+ * Refine/edit an image using Nano Banana 2 (gemini-3.1-flash-image-preview)
+ * Downloads the existing image, sends it with edit instructions to the model
  */
-async function refineImageWithPrompt(originalPrompt, refinementPrompt, style = 'professional') {
-  const combinedPrompt = `${originalPrompt}. Additionally: ${refinementPrompt}. Style: ${style}, high quality, social media optimized.`;
-  
+async function refineImageWithPrompt(originalPrompt, refinementPrompt, style = 'professional', currentImageUrl = null) {
+  const editPrompt = `You are an expert image editor. Edit this image based on the following instruction:
+
+EDIT INSTRUCTION: ${refinementPrompt}
+
+ORIGINAL CONTEXT: ${originalPrompt}
+STYLE: ${style}, high quality, social media optimized.
+
+Keep the overall composition and subject matter the same. Only apply the requested edit. Output the edited image.`;
+
   try {
-    const newImageUrl = await generateImageFromCustomPrompt(combinedPrompt);
+    let imageBase64 = null;
+    let mimeType = 'image/png';
+
+    // Download the current image if URL provided
+    if (currentImageUrl) {
+      console.log('📥 Downloading current image for refinement...');
+      const imageResponse = await fetchWithTimeout(currentImageUrl, {}, 30000);
+      if (imageResponse.ok) {
+        const buffer = await imageResponse.arrayBuffer();
+        imageBase64 = Buffer.from(buffer).toString('base64');
+        const contentType = imageResponse.headers.get('content-type');
+        if (contentType) mimeType = contentType.split(';')[0];
+        console.log(`✅ Image downloaded (${Math.round(buffer.byteLength / 1024)}KB, ${mimeType})`);
+      }
+    }
+
+    // If we have the image, use Nano Banana 2 for actual editing
+    if (imageBase64) {
+      console.log('🎨 Refining image with Nano Banana 2 (gemini-3.1-flash-image-preview)...');
+      const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent';
+
+      const requestBody = {
+        contents: [{
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: imageBase64
+              }
+            },
+            { text: editPrompt }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          responseModalities: ["TEXT", "IMAGE"]
+        }
+      };
+
+      const response = await fetchWithTimeout(`${apiUrl}?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      }, 120000);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Nano Banana 2 refinement failed');
+      }
+
+      // Extract the edited image
+      const candidates = data.candidates || [];
+      for (const candidate of candidates) {
+        const parts = candidate.content?.parts || [];
+        for (const part of parts) {
+          const inlineData = part.inlineData || part.inline_data;
+          if (inlineData?.data) {
+            const resultMime = inlineData.mimeType || inlineData.mime_type || 'image/png';
+            const base64Url = `data:${resultMime};base64,${inlineData.data}`;
+            
+            // Upload to Cloudinary for permanent URL
+            const uploadResult = await uploadBase64Image(base64Url, 'nebula-refined');
+            const finalUrl = uploadResult.success ? uploadResult.url : base64Url;
+
+            console.log('✅ Image refined with Nano Banana 2 successfully');
+            return {
+              success: true,
+              imageUrl: finalUrl,
+              prompt: editPrompt
+            };
+          }
+        }
+      }
+
+      throw new Error('Nano Banana 2 returned no image');
+    }
+
+    // Fallback: no image URL available, generate new image with Imagen (old behavior)
+    console.log('⚠️ No current image available, falling back to full generation...');
+    const newImageUrl = await generateImageFromCustomPrompt(
+      `${originalPrompt}. Additionally: ${refinementPrompt}. Style: ${style}, high quality, social media optimized.`
+    );
     return {
       success: true,
       imageUrl: newImageUrl,
-      prompt: combinedPrompt
+      prompt: `${originalPrompt}. ${refinementPrompt}`
     };
   } catch (error) {
     console.error('Image refinement error:', error);
