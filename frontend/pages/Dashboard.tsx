@@ -556,7 +556,7 @@ const Dashboard: React.FC = () => {
     }
     setRefiningImage(true);
     try {
-      const result = await apiService.refineImage(postImagePrompt, imageRefinementPrompt);
+      const result = await apiService.refineImage(postImagePrompt, imageRefinementPrompt, undefined, postImageUrl);
       if (result.success && result.imageUrl) {
         setPostImageUrl(result.imageUrl);
         setImageRefinementPrompt('');
@@ -4476,7 +4476,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                                         if (!eventImageRefinementPrompt.trim() || !eventPostImagePrompt) return;
                                                         setEventRefiningImage(true);
                                                         try {
-                                                            const result = await apiService.refineImage(eventPostImagePrompt, eventImageRefinementPrompt, eventGeneratedPost.imageStyle);
+                                                            const result = await apiService.refineImage(eventPostImagePrompt, eventImageRefinementPrompt, eventGeneratedPost.imageStyle, eventPostImageUrl);
                                                             if (result.success && result.imageUrl) {
                                                                 setEventPostImageUrl(result.imageUrl);
                                                                 setEventImageRefinementPrompt('');

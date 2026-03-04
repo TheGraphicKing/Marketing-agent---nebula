@@ -1481,7 +1481,7 @@ export const apiService = {
     }
   },
 
-  refineImage: async (originalPrompt: string, refinementPrompt: string, style?: string): Promise<{
+  refineImage: async (originalPrompt: string, refinementPrompt: string, style?: string, currentImageUrl?: string): Promise<{
     success: boolean;
     imageUrl?: string;
     error?: string;
@@ -1491,7 +1491,7 @@ export const apiService = {
         '/dashboard/strategic-advisor/refine-image',
         { 
           method: 'POST', 
-          body: JSON.stringify({ originalPrompt, refinementPrompt, style }) 
+          body: JSON.stringify({ originalPrompt, refinementPrompt, style, currentImageUrl }) 
         },
         true
       );
@@ -2157,7 +2157,7 @@ export const apiService = {
   // IMAGE REGENERATION
   // ============================================
 
-  regenerateImage: async (data: { prompt?: string; style?: string; campaignId?: string; industry?: string; platform?: string; originalImagePrompt?: string; caption?: string }): Promise<any> => {
+  regenerateImage: async (data: { prompt?: string; style?: string; campaignId?: string; industry?: string; platform?: string; originalImagePrompt?: string; caption?: string; currentImageUrl?: string }): Promise<any> => {
     const response = await apiCall<any>(
       '/content/regenerate-image',
       { method: 'POST', body: JSON.stringify(data) },
