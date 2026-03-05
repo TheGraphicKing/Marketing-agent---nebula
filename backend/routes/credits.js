@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect } = require('../middleware/auth');
 const User = require('../models/User');
 const { CREDIT_COSTS } = require('../middleware/trialGuard');
+const { ensureCreditCycle } = require('../middleware/creditGuard');
 
 /**
  * GET /api/credits
@@ -16,6 +17,9 @@ router.get('/', protect, async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    // Initialize credits + trial if not set yet
+    await ensureCreditCycle(user);
 
     const now = new Date();
     const trialEnd = user.trial?.expiresAt ? new Date(user.trial.expiresAt) : null;

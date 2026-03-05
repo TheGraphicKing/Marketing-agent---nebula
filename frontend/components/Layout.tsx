@@ -42,7 +42,7 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
-const STARTING_CREDITS = 100;
+const STARTING_CREDITS = 100; // Demo trial credits
 
 // Credit action labels & icons for display
 const ACTION_LABELS: Record<string, { label: string; icon: string }> = {

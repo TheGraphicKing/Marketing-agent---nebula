@@ -1,6 +1,7 @@
 /**
- * Credit Guard Middleware (Production)
- * Monthly credit cycle with auto-reset and daily login bonus
+ * Credit Guard Middleware (Demo)
+ * 7-day trial with 100 credits — no auto-reset, no daily bonus.
+ * Whichever runs out first (credits or 7 days) ends the trial.
  * 
  * Credit Costs:
  *   Image generated  → 5
@@ -12,74 +13,40 @@
 
 const User = require('../models/User');
 
-const MONTHLY_ALLOWANCE = 1000;
-const DAILY_LOGIN_BONUS = 10;
+const TRIAL_CREDITS = 100;
+const TRIAL_DAYS = 7;
 
 /**
- * Auto-reset credits if current cycle has ended.
- * Also grants daily login bonus (+10) once per calendar day.
+ * Initialize credits + trial if not set yet.
+ * No auto-reset — once trial expires or credits run out, user must upgrade.
  */
 async function ensureCreditCycle(user) {
   const now = new Date();
   let changed = false;
 
-  // Initialize credits if missing (existing users)
+  // Initialize credits if missing
   if (!user.credits || user.credits.balance === undefined) {
-    const cycleStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const cycleEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     user.credits = {
-      balance: MONTHLY_ALLOWANCE,
-      monthlyAllowance: MONTHLY_ALLOWANCE,
-      cycleStart,
-      cycleEnd,
+      balance: TRIAL_CREDITS,
       totalUsed: 0,
-      lastLoginBonus: null,
       history: [{
-        action: 'cycle_init',
+        action: 'trial_init',
         cost: 0,
-        balanceAfter: MONTHLY_ALLOWANCE,
+        balanceAfter: TRIAL_CREDITS,
         timestamp: now
       }]
     };
     changed = true;
   }
 
-  // Auto-reset if cycle expired
-  if (now >= user.credits.cycleEnd) {
-    const cycleStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const cycleEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    user.credits.balance = MONTHLY_ALLOWANCE;
-    user.credits.monthlyAllowance = MONTHLY_ALLOWANCE;
-    user.credits.cycleStart = cycleStart;
-    user.credits.cycleEnd = cycleEnd;
-    user.credits.totalUsed = 0;
-    user.credits.lastLoginBonus = null;
-    // Keep only last 50 history items, then add reset entry
-    user.credits.history = (user.credits.history || []).slice(-50);
-    user.credits.history.push({
-      action: 'cycle_reset',
-      cost: 0,
-      balanceAfter: MONTHLY_ALLOWANCE,
-      timestamp: now
-    });
-    changed = true;
-  }
-
-  // Daily login bonus: if lastLoginBonus is not today, grant +10
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const lastBonus = user.credits.lastLoginBonus ? new Date(user.credits.lastLoginBonus) : null;
-  const lastBonusDay = lastBonus ? new Date(lastBonus.getFullYear(), lastBonus.getMonth(), lastBonus.getDate()) : null;
-
-  if (!lastBonusDay || lastBonusDay.getTime() < today.getTime()) {
-    user.credits.balance += DAILY_LOGIN_BONUS;
-    user.credits.lastLoginBonus = now;
-    user.credits.history = (user.credits.history || []).slice(-50);
-    user.credits.history.push({
-      action: 'daily_login_bonus',
-      cost: -DAILY_LOGIN_BONUS,
-      balanceAfter: user.credits.balance,
-      timestamp: now
-    });
+  // Initialize trial if missing
+  if (!user.trial || !user.trial.expiresAt) {
+    const trialEnd = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    user.trial = {
+      startDate: now,
+      expiresAt: trialEnd,
+      isExpired: false
+    };
     changed = true;
   }
 
@@ -187,6 +154,6 @@ module.exports = {
   checkCredits,
   deductCredits,
   requireCredits,
-  MONTHLY_ALLOWANCE,
-  DAILY_LOGIN_BONUS
+  TRIAL_CREDITS,
+  TRIAL_DAYS
 };
