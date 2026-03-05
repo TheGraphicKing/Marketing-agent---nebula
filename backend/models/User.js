@@ -115,18 +115,10 @@ const userSchema = new mongoose.Schema({
     }],
     generatedAt: { type: Date }
   },
-  // Credits system (monthly cycle)
+  // Credits system (demo trial)
   credits: {
-    balance: { type: Number, default: 1000 },
-    monthlyAllowance: { type: Number, default: 1000 },
-    cycleStart: { type: Date, default: () => {
-      const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
-    }},
-    cycleEnd: { type: Date, default: () => {
-      const d = new Date(); d.setMonth(d.getMonth() + 1, 1); d.setHours(0,0,0,0); return d;
-    }},
+    balance: { type: Number, default: 100 },
     totalUsed: { type: Number, default: 0 },
-    lastLoginBonus: { type: Date, default: null },
     history: [{
       action: { type: String },
       cost: { type: Number },
@@ -193,11 +185,7 @@ userSchema.methods.toPublicJSON = function() {
     subscription: this.subscription,
     credits: this.credits ? {
       balance: this.credits.balance,
-      monthlyAllowance: this.credits.monthlyAllowance,
-      cycleStart: this.credits.cycleStart,
-      cycleEnd: this.credits.cycleEnd,
-      totalUsed: this.credits.totalUsed,
-      lastLoginBonus: this.credits.lastLoginBonus
+      totalUsed: this.credits.totalUsed
     } : undefined,
     createdAt: this.createdAt
   };

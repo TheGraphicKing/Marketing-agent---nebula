@@ -24,8 +24,8 @@ async function ensureCreditCycle(user) {
   const now = new Date();
   let changed = false;
 
-  // Initialize credits if missing
-  if (!user.credits || user.credits.balance === undefined) {
+  // Initialize credits if missing OR migrate from old monthly-cycle style
+  if (!user.credits || user.credits.balance === undefined || user.credits.monthlyAllowance) {
     user.credits = {
       balance: TRIAL_CREDITS,
       totalUsed: 0,
