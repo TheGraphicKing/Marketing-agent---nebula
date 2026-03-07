@@ -5,6 +5,7 @@ const { generateToken, protect } = require('../middleware/auth');
 const Competitor = require('../models/Competitor');
 const { generateWithLLM } = require('../services/llmRouter');
 const { lookupInstagramHandle } = require('../services/serperLookup');
+const { callClaude, parseClaudeJSON } = require('../services/claudeAI');
 const axios = require('axios');
 const otpService = require('../services/otpService');
 
@@ -141,29 +142,26 @@ BUSINESS:
 - Target Customer: ${businessContext.targetCustomer || 'Not specified'}
 - Location: ${businessContext.location}
 
-FIND 15 REAL COMPETITORS that offer similar products/services.
+FIND EXACTLY 15 REAL COMPETITORS that offer similar products/services.
 
-Include this mix:
-- 4 LOCAL competitors (same region as ${businessContext.location})
+MANDATORY SPLIT (strictly follow this):
+- 5 LOCAL competitors (same city/region as ${businessContext.location})
 - 5 NATIONAL competitors (major players in the country)
-- 3 GLOBAL competitors (international leaders)
-- 3 STARTUPS (emerging players)
+- 5 GLOBAL competitors (international leaders)
 
-CRITICAL INSTAGRAM HANDLE RULES:
-1. Indian telecom/ISP companies often use patterns like:
-   - @vibusinessindia (Vi/Vodafone Idea business)
-   - @actaboroadband (ACT Fibernet)
-   - @airaboroadband (Airtel broadband)
-   - @reliaboroadband or @jiofiberbusiness
-2. B2B companies often use: brandnamebusiness, brandname_business, brandnameindia
-3. Consumer brands: @brandname_india, @brandname_in, @brandname_official
-4. SEARCH the actual Instagram handle before providing - don't guess!
-5. If unsure, provide the company's official website and leave instagram as empty string ""
-6. NEVER use generic handles like @vi_official or @act_official - these are often wrong
-7. Include variations: brandnameindia, brandname_india, brandnamebusiness, brandname_official
+CRITICAL RULES:
+- Competitors must do THE SAME THING as this business (same products/services/business model)
+- All 15 must be REAL companies that currently exist
+- Do NOT include generic big tech companies unless they directly compete
+- Be HYPER-SPECIFIC to the business niche
 
-ALSO INCLUDE LinkedIn company URL for each competitor (used as fallback if Instagram fails).
-Format: https://linkedin.com/company/companyname
+For each competitor, provide:
+- Real company name
+- Real website URL
+- LinkedIn company URL (https://linkedin.com/company/companyname)
+- Brief description of what they do
+- Their location
+- competitorType: must be exactly "local", "national", or "global"
 
 RETURN THIS JSON:
 {
@@ -171,63 +169,31 @@ RETURN THIS JSON:
     {
       "name": "Company Name",
       "website": "https://company.com",
-      "instagram": "exacthandle_india",
       "linkedin": "https://linkedin.com/company/companyname",
-      "twitter": "exacthandle",
       "description": "What they do",
       "location": "City, Country",
-      "competitorType": "local|national|global|startup",
+      "competitorType": "local|national|global",
       "estimatedFollowers": 10000
     }
   ]
 }
 
-All 15 competitors must be REAL companies with VERIFIED handles. Return only valid JSON.`;
+IMPORTANT: Return EXACTLY 15 competitors (5 local + 5 national + 5 global). Return only valid JSON.`;
 
-    const result = await generateWithLLM({ 
-      provider: 'gemini', 
-      prompt, 
-      taskType: 'analysis',
-      maxTokens: 8192  // Increased for 15 competitors
-    });
-    const responseText = typeof result === 'string' ? result : (result?.text || result?.content || '');
+    console.log('📤 Calling Claude Sonnet 4.6 for competitor discovery...');
+    const responseText = await callClaude(prompt);
     
-    // Parse JSON from response with repair logic
     let parsed;
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        let jsonStr = jsonMatch[0];
-        try {
-          parsed = JSON.parse(jsonStr);
-        } catch (parseErr) {
-          // Try to repair truncated JSON
-          if (parseErr.message.includes('Unterminated') || parseErr.message.includes('Unexpected end')) {
-            console.log('Attempting to repair truncated JSON...');
-            const lastComplete = jsonStr.lastIndexOf('},');
-            if (lastComplete > 0) {
-              let repaired = jsonStr.substring(0, lastComplete + 1);
-              const openBrackets = (repaired.match(/\[/g) || []).length;
-              const closeBrackets = (repaired.match(/]/g) || []).length;
-              const openBraces = (repaired.match(/{/g) || []).length;
-              const closeBraces = (repaired.match(/}/g) || []).length;
-              for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']';
-              for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}';
-              parsed = JSON.parse(repaired);
-              console.log('✅ Successfully repaired truncated JSON');
-            }
-          }
-          if (!parsed) throw parseErr;
-        }
-      }
+      parsed = parseClaudeJSON(responseText);
     } catch (e) {
-      console.error('Failed to parse Gemini response:', e.message);
+      console.error('Failed to parse Claude response:', e.message);
       console.log('Response preview:', responseText?.substring(0, 300));
       return;
     }
 
     if (!parsed?.competitors?.length) {
-      console.log('⚠️ No competitors found in Gemini response');
+      console.log('⚠️ No competitors found in Claude response');
       return;
     }
 
@@ -250,7 +216,7 @@ All 15 competitors must be REAL companies with VERIFIED handles. Return only val
     for (const comp of parsed.competitors) {
       if (!comp.name || comp.name.length < 2) continue;
       
-      // Use Serper-verified handle, fall back to Gemini's guess only if Serper found nothing
+      // Use Serper-verified handle, fall back to Claude's guess only if Serper found nothing
       const serperHandle = handleMap[comp.name];
       const instagramHandle = serperHandle || (comp.instagram || '').replace('@', '');
 
@@ -1072,12 +1038,8 @@ router.put('/complete-onboarding', protect, async (req, res) => {
       
       console.log('✅ OnboardingContext saved for AI outreach');
       
-      // START competitor discovery in background (don't wait - would timeout)
-      // Fire and forget - user sees dashboard immediately
-      console.log('🚀 Starting competitor discovery in background...');
-      triggerCompetitorDiscovery(req.user._id, contextData)
-        .then(() => console.log('✅ Competitor discovery completed!'))
-        .catch(err => console.error('Competitor discovery error:', err.message));
+      // Competitor discovery is now handled by brand.js quick-analyze (single flow)
+      // No separate background discovery needed
       
     } catch (contextError) {
       console.error('Failed to save OnboardingContext:', contextError);

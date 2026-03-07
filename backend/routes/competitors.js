@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Competitor Routes
  * Add, fetch, and analyze competitors with REAL web scraping
  */
@@ -9,8 +9,8 @@ const { protect } = require('../middleware/auth');
 const Competitor = require('../models/Competitor');
 const User = require('../models/User');
 const OnboardingContext = require('../models/OnboardingContext');
-const { generateWithLLM } = require('../services/llmRouter');
 const { lookupInstagramHandle } = require('../services/serperLookup');
+const { callClaude, parseClaudeJSON } = require('../services/claudeAI');
 
 // Import real social media API service for fetching actual posts
 const {
@@ -23,24 +23,7 @@ const {
 } = require('../services/socialMediaAPI');
 
 // Try to use the old services if they exist, otherwise use stubs
-let callGemini, parseGeminiJSON, generatePostUrl, generateCompetitorPosts, fetchIndustryTrendingPosts;
-try {
-  const geminiService = require('../services/geminiAI');
-  callGemini = geminiService.callGemini;
-  parseGeminiJSON = geminiService.parseGeminiJSON;
-} catch (e) {
-  callGemini = async (prompt) => {
-    const result = await generateWithLLM({ provider: 'gemini', prompt, taskType: 'analysis' });
-    return result.text;
-  };
-  parseGeminiJSON = (text) => {
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1] || jsonMatch[0]);
-    }
-    return JSON.parse(text);
-  };
-}
+let generatePostUrl, generateCompetitorPosts, fetchIndustryTrendingPosts;
 
 try {
   const fetcher = require('../services/socialMediaFetcher');
@@ -63,10 +46,10 @@ router.post('/auto-discover', protect, async (req, res) => {
     const user = await User.findById(userId);
     const { forceRefresh = false } = req.body;
 
-    console.log('ðŸ” ===========================================');
-    console.log('ðŸ” AUTO-DISCOVER COMPETITORS');
-    console.log('ðŸ” User:', userId);
-    console.log('ðŸ” ===========================================');
+    console.log('🔍 ===========================================');
+    console.log('🔍 AUTO-DISCOVER COMPETITORS');
+    console.log('🔍 User:', userId);
+    console.log('🔍 ===========================================');
 
     // Get business context from OnboardingContext
     const onboardingContext = await OnboardingContext.findOne({ userId });
@@ -84,7 +67,7 @@ router.post('/auto-discover', protect, async (req, res) => {
       website: websiteUrl || ''
     };
 
-    console.log('ðŸ“‹ Business Context:', JSON.stringify(businessContext, null, 2));
+    console.log('📋 Business Context:', JSON.stringify(businessContext, null, 2));
 
     if (!businessContext.industry || businessContext.industry === 'General') {
       return res.status(400).json({
@@ -102,7 +85,7 @@ router.post('/auto-discover', protect, async (req, res) => {
       });
 
       if (existingCompetitors.length >= 10) {
-        console.log('ðŸ“¦ Returning cached competitors:', existingCompetitors.length);
+        console.log('📦 Returning cached competitors:', existingCompetitors.length);
         const posts = await getCompetitorPosts(existingCompetitors);
         return res.json({
           success: true,
@@ -116,9 +99,9 @@ router.post('/auto-discover', protect, async (req, res) => {
 
     // Delete old auto-discovered competitors
     const deleted = await Competitor.deleteMany({ userId, isAutoDiscovered: true });
-    console.log(`ðŸ—‘ï¸ Deleted ${deleted.deletedCount} old competitors`);
+    console.log(`🗑️ Deleted ${deleted.deletedCount} old competitors`);
 
-    // SIMPLE, RELIABLE competitor discovery prompt
+    // Competitor discovery using Claude Sonnet 4.6
     const prompt = `You are a market research expert. Find competitors for this business.
 
 BUSINESS:
@@ -129,22 +112,25 @@ BUSINESS:
 - Location: ${businessContext.location}
 - Website: ${businessContext.website || 'Not provided'}
 
-FIND 15 REAL COMPETITORS that offer similar products/services.
+FIND EXACTLY 15 REAL COMPETITORS that offer similar products/services.
 
-Include this mix:
-- 4 LOCAL competitors (same region as ${businessContext.location})
+MANDATORY SPLIT (strictly follow this):
+- 5 LOCAL competitors (same city/region as ${businessContext.location})
 - 5 NATIONAL competitors (major players in the country)
-- 3 GLOBAL competitors (international leaders)
-- 3 STARTUPS (emerging players)
+- 5 GLOBAL competitors (international leaders)
+
+CRITICAL RULES:
+- Competitors must do THE SAME THING as this business (same products/services/business model)
+- All 15 must be REAL companies that currently exist
+- Do NOT include generic big tech companies unless they directly compete
+- Be HYPER-SPECIFIC to the business niche
 
 For each competitor, provide:
 - Real company name
 - Real website URL
-- Real Instagram handle (without @)
-- Real Twitter handle (without @)
-- Brief description
+- Brief description of what they do
 - Their location
-- Type (local/national/global/startup)
+- competitorType: must be exactly "local", "national", or "global"
 
 RETURN THIS JSON:
 {
@@ -152,25 +138,23 @@ RETURN THIS JSON:
     {
       "name": "Company Name",
       "website": "https://company.com",
-      "instagram": "companyhandle",
-      "twitter": "companyhandle",
       "description": "What they do",
       "location": "City, Country",
-      "competitorType": "local|national|global|startup",
+      "competitorType": "local|national|global",
       "estimatedFollowers": 10000
     }
   ]
 }
 
-IMPORTANT: All 15 competitors must be REAL companies that exist. Return only valid JSON.`;
+IMPORTANT: Return EXACTLY 15 competitors (5 local + 5 national + 5 global). Return only valid JSON.`;
 
-    console.log('ðŸ“¤ Calling Gemini for competitor discovery...');
+    console.log('📤 Calling Claude Sonnet 4.6 for competitor discovery...');
     
-    const response = await callGemini(prompt, { maxTokens: 4000, skipCache: true });
-    const parsed = parseGeminiJSON(response);
+    const response = await callClaude(prompt);
+    const parsed = parseClaudeJSON(response);
 
     if (!parsed || !parsed.competitors || !Array.isArray(parsed.competitors)) {
-      console.error('âŒ Failed to parse Gemini response');
+      console.error('❌ Failed to parse Claude response');
       console.log('Raw response:', response?.substring(0, 500));
       return res.status(500).json({
         success: false,
@@ -178,10 +162,10 @@ IMPORTANT: All 15 competitors must be REAL companies that exist. Return only val
       });
     }
 
-    console.log(`âœ… Gemini returned ${parsed.competitors.length} competitors`);
+    console.log(`✅ Claude returned ${parsed.competitors.length} competitors`);
 
-    // Use Serper to resolve REAL Instagram handles (replaces Gemini's guesses)
-    console.log('🔍 Resolving Instagram handles via Serper...');
+    // Use Serper to resolve REAL Instagram handles (replaces Claude's guesses)
+    console.log('?? Resolving Instagram handles via Serper...');
     const handleMap = {};
     for (const comp of parsed.competitors) {
       if (!comp.name || comp.name.length < 2) continue;
@@ -195,7 +179,7 @@ IMPORTANT: All 15 competitors must be REAL companies that exist. Return only val
     for (const comp of parsed.competitors) {
       if (!comp.name || comp.name.length < 2) continue;
 
-      // Use Serper-verified handle, fall back to Gemini's guess only if Serper found nothing
+      // Use Serper-verified handle, fall back to Claude's guess only if Serper found nothing
       const serperHandle = handleMap[comp.name];
       const instagramHandle = serperHandle || (comp.instagram || '').replace('@', '');
 
@@ -224,13 +208,13 @@ IMPORTANT: All 15 competitors must be REAL companies that exist. Return only val
         });
         await competitor.save();
         savedCompetitors.push(competitor);
-        console.log(`âœ… Saved: ${comp.name}`);
+        console.log(`✅ Saved: ${comp.name}`);
       } catch (saveError) {
-        console.error(`âŒ Error saving ${comp.name}:`, saveError.message);
+        console.error(`❌ Error saving ${comp.name}:`, saveError.message);
       }
     }
 
-    console.log(`ðŸŽ¯ Total competitors saved: ${savedCompetitors.length}`);
+    console.log(`🎯 Total competitors saved: ${savedCompetitors.length}`);
 
     // Fetch posts for competitors (in background, don't wait)
     fetchPostsForCompetitors(savedCompetitors).catch(err => 
@@ -246,7 +230,7 @@ IMPORTANT: All 15 competitors must be REAL companies that exist. Return only val
     });
 
   } catch (error) {
-    console.error('âŒ Competitor auto-discovery error:', error);
+    console.error('❌ Competitor auto-discovery error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to discover competitors',
@@ -299,7 +283,7 @@ function validateProfileMatch(profile, competitor) {
   const compWords = compName.split(/\s+/).filter(w => w.length > 2);
 
   if (profileName && compName && profileName.length > 2 && (profileName.includes(compName) || compName.includes(profileName))) {
-    // Short names (<=5 chars) are more ambiguous — e.g. "Vanta" matches "Vanta Official", "Vanta Clothing"
+    // Short names (<=5 chars) are more ambiguous � e.g. "Vanta" matches "Vanta Official", "Vanta Clothing"
     const nameBonus = compName.length <= 5 ? 5 : 10;
     score += nameBonus;
     reasons.push(nameBonus < 10 ? 'short name match' : 'exact name match');
@@ -307,7 +291,7 @@ function validateProfileMatch(profile, competitor) {
     let nameScore = 0;
     for (const word of compWords) {
       if (profileName.includes(word)) nameScore += 3; // fullName is a strong signal
-      else if (profileUsername.includes(word)) nameScore += 1; // username alone is weak — anyone can register it
+      else if (profileUsername.includes(word)) nameScore += 1; // username alone is weak � anyone can register it
     }
     if (nameScore > 0) {
       score += nameScore;
@@ -358,7 +342,7 @@ function validateProfileMatch(profile, competitor) {
     }
   }
 
-  // 5. Language mismatch penalty — if competitor name is Latin/English but bio is mostly non-Latin
+  // 5. Language mismatch penalty � if competitor name is Latin/English but bio is mostly non-Latin
   if (compWords.length > 0 && compWords.every(w => /^[a-z0-9]+$/.test(w)) && profileBio.length > 20) {
     const latinChars = (profileBio.match(/[a-zA-Z]/g) || []).length;
     const totalChars = profileBio.replace(/[\s\d@#.,!?:;'"()\-]/g, '').length;
@@ -377,7 +361,7 @@ function validateProfileMatch(profile, competitor) {
   const valid = score >= 6;
   const reason = reasons.join(', ') || 'no matching signals';
 
-  console.log(`    🔍 Maker-checker @${profileUsername} vs "${compName}": score=${score} (${reason}) → ${valid ? '✅ PASS' : '❌ REJECT'}`);
+  console.log(`    ?? Maker-checker @${profileUsername} vs "${compName}": score=${score} (${reason}) ? ${valid ? '? PASS' : '? REJECT'}`);
 
   return { valid, score, reason };
 }
@@ -395,7 +379,7 @@ async function findInstagramProfile(competitor) {
   // STEP 1: Try the given handle first (fastest)
   if (givenHandle) {
     try {
-      console.log(`  ðŸ”Ž Trying given handle @${givenHandle} for ${competitor.name}...`);
+      console.log(`  🔎 Trying given handle @${givenHandle} for ${competitor.name}...`);
       const result = await scrapeInstagramProfile(givenHandle);
       if (result?.success && result?.data?.length > 0) {
         const profile = result.data[0];
@@ -403,15 +387,15 @@ async function findInstagramProfile(competitor) {
         if (posts.length > 0) {
           const validation = validateProfileMatch(profile, competitor);
           if (validation.valid) {
-            console.log(`  âœ… @${givenHandle} VERIFIED for ${competitor.name} (${validation.reason})`);
+            console.log(`  ✅ @${givenHandle} VERIFIED for ${competitor.name} (${validation.reason})`);
             return { result, handle: givenHandle };
           } else {
-            console.log(`  âš ï¸ @${givenHandle} has posts but FAILED validation for ${competitor.name} — searching further...`);
+            console.log(`  � � @${givenHandle} has posts but FAILED validation for ${competitor.name} � searching further...`);
           }
         }
       }
     } catch (err) {
-      console.log(`  âš ï¸ @${givenHandle} failed: ${err.message}`);
+      console.log(`  ⚠️ @${givenHandle} failed: ${err.message}`);
     }
   }
 
@@ -424,7 +408,7 @@ async function findInstagramProfile(competitor) {
     });
     if (searchResult?.success && searchResult?.username) {
       const foundHandle = searchResult.username;
-      console.log(`  ðŸ” Search found @${foundHandle} for ${competitor.name}, fetching profile...`);
+      console.log(`  🔍 Search found @${foundHandle} for ${competitor.name}, fetching profile...`);
       
       const result = await scrapeInstagramProfile(foundHandle);
       if (result?.success && result?.data?.length > 0) {
@@ -433,19 +417,19 @@ async function findInstagramProfile(competitor) {
         if (posts.length > 0) {
           const validation = validateProfileMatch(profile, competitor);
           if (validation.valid) {
-            console.log(`  âœ… @${foundHandle} VERIFIED! ${posts.length} posts. Updating DB handle.`);
+            console.log(`  ✅ @${foundHandle} VERIFIED! ${posts.length} posts. Updating DB handle.`);
             await Competitor.findByIdAndUpdate(competitor._id, {
               'socialHandles.instagram': foundHandle
             });
             return { result, handle: foundHandle };
           } else {
-            console.log(`  âš ï¸ @${foundHandle} FAILED validation for ${competitor.name}`);
+            console.log(`  � � @${foundHandle} FAILED validation for ${competitor.name}`);
           }
         }
       }
     }
   } catch (err) {
-    console.log(`  âš ï¸ Instagram search failed for ${competitor.name}: ${err.message}`);
+    console.log(`  ⚠️ Instagram search failed for ${competitor.name}: ${err.message}`);
   }
 
   // STEP 3: Quick name-based variations as last resort
@@ -458,7 +442,7 @@ async function findInstagramProfile(competitor) {
 
   for (const handle of quickVariations.slice(0, 2)) {
     try {
-      console.log(`  ðŸ”Ž Trying variation @${handle}...`);
+      console.log(`  🔎 Trying variation @${handle}...`);
       const result = await scrapeInstagramProfile(handle);
       if (result?.success && result?.data?.length > 0) {
         const profile = result.data[0];
@@ -466,20 +450,20 @@ async function findInstagramProfile(competitor) {
         if (posts.length > 0) {
           const validation = validateProfileMatch(profile, competitor);
           if (validation.valid) {
-            console.log(`  âœ… @${handle} VERIFIED! Updating DB handle.`);
+            console.log(`  ✅ @${handle} VERIFIED! Updating DB handle.`);
             await Competitor.findByIdAndUpdate(competitor._id, {
               'socialHandles.instagram': handle
             });
             return { result, handle };
           } else {
-            console.log(`  âš ï¸ @${handle} FAILED validation for ${competitor.name}`);
+            console.log(`  � � @${handle} FAILED validation for ${competitor.name}`);
           }
         }
       }
     } catch (err) { /* skip */ }
   }
 
-  console.log(`  âŒ No VERIFIED Instagram found for ${competitor.name}`);
+  console.log(`  � No VERIFIED Instagram found for ${competitor.name}`);
   return null;
 }
 
@@ -491,11 +475,11 @@ async function findInstagramProfile(competitor) {
 async function fetchPostsForCompetitors(competitors) {
   const allPosts = [];
   const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
-  console.log(`📅 1-month threshold: ${new Date(threeMonthsAgo).toLocaleDateString()}`);
+  console.log(`?? 1-month threshold: ${new Date(threeMonthsAgo).toLocaleDateString()}`);
 
   for (const competitor of competitors.slice(0, 5)) {
     try {
-      console.log(`ðŸ“¸ Finding Instagram for ${competitor.name}...`);
+      console.log(`📸 Finding Instagram for ${competitor.name}...`);
       const found = await findInstagramProfile(competitor);
       
       if (!found) continue;
@@ -507,7 +491,7 @@ async function fetchPostsForCompetitors(competitors) {
       if (posts.length > 0) {
         await Competitor.findByIdAndUpdate(competitor._id, { posts });
         allPosts.push(...posts);
-        console.log(`âœ… Saved ${posts.length} REAL posts for ${competitor.name}`);
+        console.log(`✅ Saved ${posts.length} REAL posts for ${competitor.name}`);
       }
     } catch (fetchError) {
       console.error(`Failed for ${competitor.name}:`, fetchError.message);
@@ -538,7 +522,7 @@ function processAndSavePosts(latestPosts, competitor, threeMonthsAgo) {
 
     // If no valid timestamp found, SKIP this post entirely
     if (!rawTs) {
-      console.log(`  ⚠️ Skipping post (no timestamp): ${(post.caption || '').substring(0, 40)}...`);
+      console.log(`  ?? Skipping post (no timestamp): ${(post.caption || '').substring(0, 40)}...`);
       return null;
     }
 
@@ -616,7 +600,7 @@ router.put('/:id/ignore', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Competitor not found' });
     }
     
-    console.log(`ðŸš« Ignored competitor: ${competitor.name}`);
+    console.log(`🚫 Ignored competitor: ${competitor.name}`);
     res.json({ success: true, message: `${competitor.name} has been ignored`, competitor });
   } catch (error) {
     console.error('Error ignoring competitor:', error);
@@ -641,7 +625,7 @@ router.put('/:id/unignore', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Competitor not found' });
     }
     
-    console.log(`âœ… Unignored competitor: ${competitor.name}`);
+    console.log(`✅ Unignored competitor: ${competitor.name}`);
     res.json({ success: true, message: `${competitor.name} is now visible`, competitor });
   } catch (error) {
     console.error('Error unignoring competitor:', error);
@@ -680,7 +664,7 @@ router.post('/scrape-by-type', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'competitorType is required' });
     }
 
-    console.log(`ðŸ” Scraping posts for ${competitorType} competitors...`);
+    console.log(`🔍 Scraping posts for ${competitorType} competitors...`);
     
     const oneMonthAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
 
@@ -709,7 +693,7 @@ router.post('/scrape-by-type', protect, async (req, res) => {
     });
 
     if (competitors.length === 0) {
-      // All competitors have valid recent posts — return them filtered
+      // All competitors have valid recent posts � return them filtered
       const posts = [];
       allOfType.forEach(c => {
         if (c.posts && c.posts.length > 0) {
@@ -728,14 +712,14 @@ router.post('/scrape-by-type', protect, async (req, res) => {
       return res.json({ success: true, posts, scraped: 0, message: 'All competitors already have posts' });
     }
 
-    console.log(`ðŸ“‹ Found ${competitors.length} ${competitorType} competitors without posts`);
+    console.log(`📋 Found ${competitors.length} ${competitorType} competitors without posts`);
 
     const results = [];
     const threeMonthsAgo = Date.now() - (30 * 24 * 60 * 60 * 1000); // 1 month filter
 
     for (const competitor of competitors.slice(0, 7)) {
       try {
-        console.log(`ðŸ“¸ Finding Instagram for ${competitor.name}...`);
+        console.log(`📸 Finding Instagram for ${competitor.name}...`);
         const found = await findInstagramProfile(competitor);
         
         if (found) {
@@ -746,9 +730,9 @@ router.post('/scrape-by-type', protect, async (req, res) => {
           if (posts.length > 0) {
             await Competitor.findByIdAndUpdate(competitor._id, { posts });
             results.push({ name: competitor.name, success: true, postsCount: posts.length, handle: found.handle });
-            console.log(`âœ… Saved ${posts.length} REAL posts for ${competitor.name} (@${found.handle})`);
+            console.log(`✅ Saved ${posts.length} REAL posts for ${competitor.name} (@${found.handle})`);
           } else {
-            // Clear old bad posts — no recent content for this competitor
+            // Clear old bad posts � no recent content for this competitor
             await Competitor.findByIdAndUpdate(competitor._id, { posts: [] });
             results.push({ name: competitor.name, success: false, error: 'No posts within last month' });
           }
@@ -758,7 +742,7 @@ router.post('/scrape-by-type', protect, async (req, res) => {
         }
       } catch (err) {
         results.push({ name: competitor.name, success: false, error: err.message });
-        console.error(`âŒ Failed for ${competitor.name}:`, err.message);
+        console.error(`❌ Failed for ${competitor.name}:`, err.message);
       }
       
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -920,3 +904,4 @@ function formatTimeAgo(date) {
 }
 
 module.exports = router;
+module.exports.fetchPostsForCompetitors = fetchPostsForCompetitors;
