@@ -20,7 +20,10 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-const PLAN_AMOUNT = 1000000; // ₹10,000 in paise
+const PLANS = {
+  gravity: { amount: 500000, label: 'Gravity', description: 'Gravity Plan — ₹5,000/month' },
+  gravity_pulsar: { amount: 1000000, label: 'Gravity + Pulsar', description: 'Gravity + Pulsar Plan — ₹10,000/month' }
+};
 const PLAN_CURRENCY = 'INR';
 
 /**
@@ -29,6 +32,12 @@ const PLAN_CURRENCY = 'INR';
  */
 router.post('/create-order', protect, async (req, res) => {
   try {
+    const { plan } = req.body;
+    const selectedPlan = PLANS[plan];
+    if (!selectedPlan) {
+      return res.status(400).json({ success: false, message: 'Invalid plan. Choose gravity or gravity_pulsar.' });
+    }
+
     const userId = req.user?.userId || req.user?.id || req.user?._id;
     const user = await User.findById(userId);
 
@@ -45,13 +54,13 @@ router.post('/create-order', protect, async (req, res) => {
     }
 
     const options = {
-      amount: PLAN_AMOUNT,
+      amount: selectedPlan.amount,
       currency: PLAN_CURRENCY,
       receipt: `neb_${userId.toString().slice(-8)}_${Date.now().toString(36)}`,
       notes: {
         userId: userId.toString(),
         email: user.email,
-        plan: 'pro_monthly'
+        plan: plan
       }
     };
 
@@ -65,6 +74,7 @@ router.post('/create-order', protect, async (req, res) => {
         currency: order.currency
       },
       key: process.env.RAZORPAY_KEY_ID,
+      plan: { key: plan, label: selectedPlan.label, description: selectedPlan.description },
       prefill: {
         name: `${user.firstName} ${user.lastName || ''}`.trim(),
         email: user.email,
@@ -111,10 +121,11 @@ router.post('/verify', protect, async (req, res) => {
     }
 
     // Store payment info on demo user before migration
+    const paidAmount = (await razorpay.orders.fetch(razorpay_order_id))?.amount;
     user.payment = {
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
-      amount: PLAN_AMOUNT / 100,
+      amount: paidAmount ? paidAmount / 100 : 0,
       currency: PLAN_CURRENCY,
       status: 'paid',
       paidAt: new Date()
