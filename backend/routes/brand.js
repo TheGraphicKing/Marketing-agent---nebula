@@ -7,7 +7,10 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { deepScrapeWebsite } = require('../services/scraper');
-const { generateWithLLM } = require('../services/llmRouter');
+const { callClaude, parseClaudeJSON } = require('../services/claudeAI');
+const { lookupInstagramHandle } = require('../services/serperLookup');
+const { fetchPostsForCompetitors } = require('./competitors');
+const Competitor = require('../models/Competitor');
 
 /**
  * POST /api/brand/quick-analyze
@@ -79,7 +82,7 @@ router.post('/quick-analyze', protect, async (req, res) => {
       console.log('âš ï¸ Not enough content scraped, will rely more on URL inference');
     }
     
-    // Use Gemini to deeply analyze the website content and discover PRECISE competitors
+    // Use Claude to deeply analyze the website content and discover PRECISE competitors
     const analysisPrompt = `You are a senior market research analyst at McKinsey with 15 years of experience in competitive intelligence. Your job is to DEEPLY understand this business and find their EXACT competitors.
 
 ðŸŒ WEBSITE TO ANALYZE:
@@ -113,9 +116,9 @@ DON'T just say "Edtech" or "SaaS". Be HYPER-SPECIFIC:
 ðŸ”¥ STEP 3: FIND EXACT COMPETITORS (MOST IMPORTANT!)
 â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 
-ðŸš¨ðŸš¨ðŸš¨ MANDATORY: YOU MUST RETURN EXACTLY 8 COMPETITORS ðŸš¨ðŸš¨ðŸš¨
-This is a HARD requirement. Not 2, not 3, EXACTLY 8 real competitors.
-I will reject any response with fewer than 8 competitors.
+ðŸš¨ðŸš¨ðŸš¨ MANDATORY: YOU MUST RETURN EXACTLY 15 COMPETITORS ðŸš¨ðŸš¨ðŸš¨
+This is a HARD requirement. EXACTLY 15 real competitors.
+
 
 Find competitors who do THE SAME THING, not just same industry.
 
@@ -127,9 +130,9 @@ Find competitors who do THE SAME THING, not just same industry.
 - If business is "K-12 Tutoring" â†’ Competitors are: BYJU'S, Vedantu, Physics Wallah, Unacademy, Toppr
 
 ðŸ“ GEOGRAPHY DISTRIBUTION (MANDATORY - ALL 3 LEVELS):
-1. REGIONAL (same state/city): EXACTLY 2 competitors from the same state/city
-2. NATIONAL (India/country leaders): EXACTLY 4 national competitors 
-3. GLOBAL (aspirational): EXACTLY 2 global leaders
+1. LOCAL (same city/region): EXACTLY 5 competitors from the same city/region
+2. NATIONAL (country leaders): EXACTLY 5 national competitors 
+3. GLOBAL (international): EXACTLY 5 global leaders
 
 â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 ðŸ“‹ RETURN THIS JSON STRUCTURE:
@@ -147,56 +150,21 @@ Find competitors who do THE SAME THING, not just same industry.
   "suggestedGoals": ["3-4 specific marketing goals"],
   "keyProducts": ["List of main products/services with specifics"],
   "competitors": [
-    {
-      "name": "Regional Competitor 1 (same city/state)",
-      "type": "regional",
-      "reason": "Why they compete (be specific)",
-      "instagram": "@actual_real_handle",
-      "twitter": "@handle",
-      "website": "https://..."
-    },
-    {
-      "name": "Regional Competitor 2 (same city/state)",
-      "type": "regional",
-      "reason": "Why they compete",
-      "instagram": "@handle"
-    },
-    {
-      "name": "National Competitor 1 (MARKET LEADER in country)",
-      "type": "national",
-      "reason": "Why they compete",
-      "instagram": "@handle"
-    },
-    {
-      "name": "National Competitor 2",
-      "type": "national",
-      "reason": "Why they compete",
-      "instagram": "@handle"
-    },
-    {
-      "name": "National Competitor 3",
-      "type": "national",
-      "reason": "Why they compete",
-      "instagram": "@handle"
-    },
-    {
-      "name": "National Competitor 4",
-      "type": "national",
-      "reason": "Why they compete",
-      "instagram": "@handle"
-    },
-    {
-      "name": "Global Leader 1 (aspirational)",
-      "type": "global",
-      "reason": "Why they're aspirational",
-      "instagram": "@handle"
-    },
-    {
-      "name": "Global Leader 2 (aspirational)",
-      "type": "global",
-      "reason": "Why they're aspirational",
-      "instagram": "@handle"
-    }
+    { "name": "Local Competitor 1", "type": "local", "reason": "Why they compete", "website": "https://..." },
+    { "name": "Local Competitor 2", "type": "local", "reason": "Why they compete", "website": "https://..." },
+    { "name": "Local Competitor 3", "type": "local", "reason": "Why they compete", "website": "https://..." },
+    { "name": "Local Competitor 4", "type": "local", "reason": "Why they compete", "website": "https://..." },
+    { "name": "Local Competitor 5", "type": "local", "reason": "Why they compete", "website": "https://..." },
+    { "name": "National Competitor 1", "type": "national", "reason": "Why they compete", "website": "https://..." },
+    { "name": "National Competitor 2", "type": "national", "reason": "Why they compete", "website": "https://..." },
+    { "name": "National Competitor 3", "type": "national", "reason": "Why they compete", "website": "https://..." },
+    { "name": "National Competitor 4", "type": "national", "reason": "Why they compete", "website": "https://..." },
+    { "name": "National Competitor 5", "type": "national", "reason": "Why they compete", "website": "https://..." },
+    { "name": "Global Leader 1", "type": "global", "reason": "Why aspirational", "website": "https://..." },
+    { "name": "Global Leader 2", "type": "global", "reason": "Why aspirational", "website": "https://..." },
+    { "name": "Global Leader 3", "type": "global", "reason": "Why aspirational", "website": "https://..." },
+    { "name": "Global Leader 4", "type": "global", "reason": "Why aspirational", "website": "https://..." },
+    { "name": "Global Leader 5", "type": "global", "reason": "Why aspirational", "website": "https://..." }
   ],
   "socialMediaHints": ["any social handles found on site"],
   "uniqueSellingPoints": ["what makes them unique"],
@@ -204,21 +172,16 @@ Find competitors who do THE SAME THING, not just same industry.
 }
 
 ðŸš¨ VALIDATION RULES:
-1. You MUST return EXACTLY 8 competitors (2 regional + 4 national + 2 global)
+1. You MUST return EXACTLY 15 competitors (5 local + 5 national + 5 global)
 2. All competitors MUST be REAL companies that CURRENTLY EXIST
 3. Competitors MUST do the SAME THING as this business (same business model)
-4. Instagram handles MUST be real verified handles
+4. Each competitor MUST have a real website URL
 5. Do NOT include upGrad/Unacademy/BYJU'S for startup accelerators!
-- Do competitors have active social media presence?
 
 Return ONLY valid JSON, no other text.`;
 
-    const analysis = await generateWithLLM({
-      provider: 'gemini',
-      prompt: analysisPrompt,
-      taskType: 'analysis',
-      jsonSchema: { type: 'object' }
-    });
+    console.log('📤 Calling Claude Sonnet 4.6 for website analysis...');
+    const claudeResponse = await callClaude(analysisPrompt);
     
     let extractedData = {
       companyName: validUrl.hostname.replace('www.', '').split('.')[0],
@@ -237,31 +200,12 @@ Return ONLY valid JSON, no other text.`;
       confidence: 0.5
     };
     
-    console.log('ðŸ¤– LLM analysis result:', {
-      type: typeof analysis,
-      isObject: typeof analysis === 'object',
-      keys: typeof analysis === 'object' ? Object.keys(analysis) : 'N/A',
-      preview: JSON.stringify(analysis).substring(0, 500)
-    });
-    
-    // generateWithLLM returns the parsed JSON directly when jsonSchema is provided
-    if (analysis && typeof analysis === 'object') {
-      extractedData = { ...extractedData, ...analysis };
-      console.log('âœ… Extracted data:', JSON.stringify(extractedData, null, 2));
-    } else if (typeof analysis === 'string') {
-      // Try to parse JSON from text response (fallback)
-      try {
-        const jsonMatch = analysis.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          extractedData = { ...extractedData, ...parsed };
-          console.log('âœ… Parsed JSON from text:', JSON.stringify(extractedData, null, 2));
-        }
-      } catch (e) {
-        console.log('âš ï¸ Could not parse JSON from text response:', e.message);
-      }
-    } else {
-      console.log('âš ï¸ Unexpected analysis result type:', typeof analysis);
+    try {
+      const claudeParsed = parseClaudeJSON(claudeResponse);
+      extractedData = { ...extractedData, ...claudeParsed };
+      console.log('Claude analysis parsed successfully');
+    } catch (e) {
+      console.log('Could not parse Claude response:', e.message);
     }
     
     // Capitalize company name
@@ -284,20 +228,31 @@ Return ONLY valid JSON, no other text.`;
       }
     }
     
-    // Save discovered competitors to database for Competitor Radar
+    // Save discovered competitors to database with Serper-verified Instagram handles
     const userId = req.user.userId || req.user.id;
-    if (extractedData.competitors && extractedData.competitors.length >= 6) {
-      console.log(`ðŸ’¾ Saving ${extractedData.competitors.length} discovered competitors to database...`);
+    if (extractedData.competitors && extractedData.competitors.length > 0) {
+      console.log('Saving ' + extractedData.competitors.length + ' competitors with Serper handle lookup...');
       
       try {
-        const Competitor = require('../models/Competitor');
-        
-        // Only delete old auto-discovered competitors if we have at least 6 new ones
-        // This prevents data loss if AI returns fewer competitors
+        // Delete old auto-discovered competitors
         await Competitor.deleteMany({ userId, isAutoDiscovered: true });
-        
-        // Save new competitors
+
+        // Serper handle lookup for each competitor
+        console.log('Resolving Instagram handles via Serper...');
+        const handleMap = {};
         for (const comp of extractedData.competitors) {
+          if (!comp.name || comp.name.length < 2) continue;
+          const lookup = await lookupInstagramHandle(comp.name, comp.reason || comp.description || '');
+          handleMap[comp.name] = lookup.handle;
+          await new Promise(r => setTimeout(r, 300));
+        }
+
+        // Save competitors to DB with Serper-verified handles
+        const savedCompetitors = [];
+        for (const comp of extractedData.competitors) {
+          if (!comp.name || comp.name.length < 2) continue;
+          const serperHandle = handleMap[comp.name];
+
           try {
             const competitor = new Competitor({
               userId,
@@ -305,74 +260,37 @@ Return ONLY valid JSON, no other text.`;
               website: comp.website || '',
               description: comp.reason || comp.description || '',
               industry: extractedData.industry || '',
-              competitorType: comp.type || 'unknown', // regional, national, or global
+              competitorType: comp.type || 'unknown',
               socialHandles: {
-                instagram: comp.instagram?.replace('@', '') || '',
-                twitter: comp.twitter?.replace('@', '') || '',
-                facebook: comp.facebook || '',
-                linkedin: comp.linkedin || ''
+                instagram: serperHandle || '',
+                twitter: '',
+                facebook: '',
+                linkedin: ''
               },
               location: comp.location || extractedData.businessLocation || '',
               isActive: true,
               isAutoDiscovered: true,
               posts: [],
-              metrics: {
-                followers: 0,
-                lastFetched: new Date()
-              }
+              metrics: { followers: 0, lastFetched: new Date() }
             });
             await competitor.save();
-            console.log(`âœ… Saved competitor: ${comp.name} (${comp.type || 'unknown'})`);
+            savedCompetitors.push(competitor);
+            console.log('Saved competitor: ' + comp.name + ' (' + (comp.type || 'unknown') + ') @' + (serperHandle || 'no-handle'));
           } catch (saveError) {
-            console.error(`âš ï¸ Error saving competitor ${comp.name}:`, saveError.message);
+            console.error('Error saving competitor ' + comp.name + ':', saveError.message);
           }
         }
-        
-        console.log('âœ… Competitors saved successfully');
-      } catch (dbError) {
-        console.error('âš ï¸ Error saving competitors to database:', dbError.message);
-      }
-    } else if (extractedData.competitors && extractedData.competitors.length > 0 && extractedData.competitors.length < 6) {
-      // AI returned fewer than 6 competitors - log warning but still save what we have
-      console.log(`âš ï¸ AI returned only ${extractedData.competitors.length} competitors (expected 8). Saving anyway...`);
-      
-      try {
-        const Competitor = require('../models/Competitor');
-        
-        // Save these competitors without deleting old ones (merge approach)
-        for (const comp of extractedData.competitors) {
-          try {
-            // Check if competitor already exists
-            const existing = await Competitor.findOne({ userId, name: comp.name });
-            if (!existing) {
-              const competitor = new Competitor({
-                userId,
-                name: comp.name,
-                website: comp.website || '',
-                description: comp.reason || comp.description || '',
-                industry: extractedData.industry || '',
-                competitorType: comp.type || 'unknown',
-                socialHandles: {
-                  instagram: comp.instagram?.replace('@', '') || '',
-                  twitter: comp.twitter?.replace('@', '') || '',
-                  facebook: comp.facebook || '',
-                  linkedin: comp.linkedin || ''
-                },
-                location: comp.location || extractedData.businessLocation || '',
-                isActive: true,
-                isAutoDiscovered: true,
-                posts: [],
-                metrics: { followers: 0, lastFetched: new Date() }
-              });
-              await competitor.save();
-              console.log(`âœ… Added competitor: ${comp.name} (${comp.type || 'unknown'})`);
-            }
-          } catch (saveError) {
-            console.error(`âš ï¸ Error saving competitor ${comp.name}:`, saveError.message);
-          }
+
+        console.log('Total competitors saved: ' + savedCompetitors.length);
+
+        // Fire-and-forget: Apify scrapes Instagram posts in background
+        if (savedCompetitors.length > 0) {
+          fetchPostsForCompetitors(savedCompetitors).catch(err =>
+            console.error('Background post fetch error:', err.message)
+          );
         }
       } catch (dbError) {
-        console.error('âš ï¸ Error saving competitors:', dbError.message);
+        console.error('Error saving competitors to database:', dbError.message);
       }
     }
     
