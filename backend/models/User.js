@@ -125,8 +125,11 @@ const userSchema = new mongoose.Schema({
     totalUsed: { type: Number, default: 0 },
     history: [{
       action: { type: String },
+      amount: { type: Number },
       cost: { type: Number },
+      description: { type: String },
       balanceAfter: { type: Number },
+      createdAt: { type: Date, default: Date.now },
       timestamp: { type: Date, default: Date.now }
     }]
   },

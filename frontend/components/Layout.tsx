@@ -462,7 +462,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                             {trialInfo.daysLeft} day{trialInfo.daysLeft !== 1 ? 's' : ''} left in trial
                           </span>
                         </div>
-                        <button className="text-xs font-medium text-[#ffcc29] hover:text-[#e6b800] transition-colors">
+                        <button 
+                          onClick={() => navigate('/trial-expired')}
+                          className="text-xs font-medium text-[#ffcc29] hover:text-[#e6b800] transition-colors"
+                        >
                           Upgrade
                         </button>
                       </div>

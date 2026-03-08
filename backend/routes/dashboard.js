@@ -829,9 +829,8 @@ router.get('/campaign-suggestions', protect, async (req, res) => {
     let creditsRemaining = user.credits.balance;
     if (generatedCount > 0) {
       if (!isFirstGeneration) {
-        const actualCost = generatedCount * 7;
-        const result = await deductCredits(user._id, actualCost, `campaign_suggestions_${generatedCount}`);
-        creditsRemaining = result.balance;
+        const result = await deductCredits(user._id, 'campaign_text', generatedCount, `AI campaign suggestions x${generatedCount}`);
+        creditsRemaining = result.creditsRemaining;
       } else {
         console.log(`🎁 Skipping credit deduction for ${generatedCount} initial campaigns`);
         await User.findByIdAndUpdate(user._id, { $set: { initialCampaignsGenerated: true } });
@@ -993,9 +992,8 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
       // Deduct credits for all generated campaigns (skip for first-time onboarding)
       try {
         if (!isFirstStreamGen) {
-          const actualCost = generatedCampaigns.length * 7;
-          const result = await deductCredits(user._id, actualCost, `campaign_stream_${generatedCampaigns.length}`);
-          res.write(`data: ${JSON.stringify({ type: 'credits_update', creditsRemaining: result.balance })}\n\n`);
+          const result = await deductCredits(user._id, 'campaign_text', generatedCampaigns.length, `AI streamed campaigns x${generatedCampaigns.length}`);
+          res.write(`data: ${JSON.stringify({ type: 'credits_update', creditsRemaining: result.creditsRemaining })}\n\n`);
         } else {
           console.log(`🎁 Skipping credit deduction for ${generatedCampaigns.length} initial streamed campaigns`);
           await User.findByIdAndUpdate(user._id, { $set: { initialCampaignsGenerated: true } });
