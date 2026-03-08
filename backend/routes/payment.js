@@ -21,8 +21,8 @@ const razorpay = new Razorpay({
 });
 
 const PLANS = {
-  gravity: { amount: 499900, label: 'Gravity', description: 'Gravity Plan — ₹4,999/month' },
-  gravity_pulsar: { amount: 799900, label: 'Gravity + Pulsar', description: 'Gravity + Pulsar Plan — ₹7,999/month' }
+  gravity: { amount: 699900, label: 'Gravity', description: 'Gravity Plan — ₹6,999/month' },
+  gravity_pulsar: { amount: 999900, label: 'Gravity + Pulsar', description: 'Gravity + Pulsar Plan — ₹9,999/month' }
 };
 const PLAN_CURRENCY = 'INR';
 
