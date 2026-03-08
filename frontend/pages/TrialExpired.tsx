@@ -305,8 +305,8 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
             <div className="p-7 md:p-8 flex flex-col h-full">
               {/* Header */}
               <div className="flex items-center gap-3.5 mb-5">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#ffcc29]/15 to-[#ffcc29]/5 flex items-center justify-center ring-1 ring-[#ffcc29]/10">
-                  <img src="/assets/logo.png" alt="" className="w-6 h-6" />
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#ffcc29]/15 to-[#ffcc29]/5 flex items-center justify-center ring-1 ring-[#ffcc29]/10 overflow-hidden">
+                  <img src="/assets/gravity-logo.png" alt="" className="w-7 h-7 object-contain" />
                 </div>
                 <div>
                   <h3 className="text-[17px] font-bold text-white">Gravity</h3>
@@ -316,7 +316,10 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
 
               {/* Price */}
               <div className="mb-6 pb-5 border-b border-white/[0.06]">
-                <span className="text-[42px] font-extrabold text-white leading-none">₹5,000</span>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-[#ededed]/30 text-lg line-through">₹5,000</span>
+                </div>
+                <span className="text-[42px] font-extrabold text-white leading-none">₹4,999</span>
                 <span className="text-[#ededed]/30 text-sm ml-1.5">/month</span>
               </div>
 
@@ -356,8 +359,8 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
 
               {/* Header */}
               <div className="flex items-center gap-3.5 mb-5 mt-1">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#ffcc29]/20 to-[#ffcc29]/5 flex items-center justify-center ring-1 ring-[#ffcc29]/20">
-                  <img src="/assets/logo.png" alt="" className="w-6 h-6" />
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#ffcc29]/20 to-[#ffcc29]/5 flex items-center justify-center ring-1 ring-[#ffcc29]/20 overflow-hidden">
+                  <img src="/assets/gravity-logo.png" alt="" className="w-7 h-7 object-contain" />
                 </div>
                 <div>
                   <h3 className="text-[17px] font-bold text-white">Gravity + Pulsar</h3>
@@ -367,7 +370,11 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
 
               {/* Price */}
               <div className="mb-6 pb-5 border-b border-[#ffcc29]/[0.08]">
-                <span className="text-[42px] font-extrabold text-white leading-none">₹10,000</span>
+                <div className="flex items-baseline gap-2.5 mb-1">
+                  <span className="text-[#ededed]/30 text-lg line-through">₹10,000</span>
+                  <span className="bg-green-500/15 text-green-400 text-[11px] font-bold px-2 py-0.5 rounded-md">20% OFF</span>
+                </div>
+                <span className="text-[42px] font-extrabold text-white leading-none">₹7,999</span>
                 <span className="text-[#ededed]/30 text-sm ml-1.5">/month</span>
               </div>
 
