@@ -316,9 +316,6 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
 
               {/* Price */}
               <div className="mb-6 pb-5 border-b border-white/[0.06]">
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-[#ededed]/30 text-lg line-through">₹5,000</span>
-                </div>
                 <span className="text-[42px] font-extrabold text-white leading-none">₹4,999</span>
                 <span className="text-[#ededed]/30 text-sm ml-1.5">/month</span>
               </div>
