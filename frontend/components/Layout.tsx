@@ -440,7 +440,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                             }`}>
                               <span className="truncate mr-2">
                                 {ACTION_LABELS[entry.action]?.icon || '⚡'}{' '}
-                                {entry.description || ACTION_LABELS[entry.action]?.label || entry.action}
+                                {entry.description || ACTION_LABELS[entry.action]?.label || (typeof entry.action === 'string' && entry.action.includes('campaign') ? 'Campaign Ideas' : null) || (typeof entry.action === 'number' || (!isNaN(Number(entry.action)) && entry.action) ? 'Campaign Ideas' : null) || entry.action || 'Credit usage'}
                               </span>
                               <span className={`font-medium tabular-nums flex-shrink-0 ${
                                 entry.amount < 0 ? (isDarkMode ? 'text-red-400' : 'text-red-500') : (isDarkMode ? 'text-green-400' : 'text-green-500')

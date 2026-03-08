@@ -126,6 +126,23 @@ const App: React.FC = () => {
             }
         />
 
+        {/* Upgrade / Payment page — accessible even if trial isn't expired */}
+        <Route
+          path="/trial-expired"
+          element={
+            user ? (
+              <TrialExpired
+                reason={'time'}
+                daysUsed={7 - (user.trial?.expiresAt ? Math.max(0, Math.ceil((new Date(user.trial.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0)}
+                creditsUsed={user.credits?.totalUsed ?? 0}
+                onLogout={handleLogout}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
         {/* Protected Routes wrapped in Layout */}
         <Route
           path="/*"
