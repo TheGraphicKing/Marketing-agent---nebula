@@ -20,44 +20,12 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const theme: 'dark' | 'light' = isDarkMode ? 'dark' : 'light';
+  const isDarkMode = false;
+  const theme: 'dark' | 'light' = 'light';
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    } else {
-      setIsDarkMode(false);
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
+  const toggleTheme = () => {};
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    if (isDarkMode) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    } else {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    }
-  };
-
-  const colors = isDarkMode
-    ? {
-        bg: '#070A12',
-        bgSecondary: '#0d1117',
-        bgCard: '#0f1419',
-        text: '#ededed',
-        textSecondary: 'rgba(237, 237, 237, 0.7)',
-        accent: '#ffcc29',
-        accentHover: '#e6b825',
-        border: 'rgba(255, 255, 255, 0.08)',
-        borderAccent: '#ffcc29',
-      }
-    : {
+  const colors = {
         bg: '#f5f5f5',
         bgSecondary: '#ffffff',
         bgCard: '#ffffff',

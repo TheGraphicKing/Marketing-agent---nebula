@@ -355,9 +355,6 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   if (forgotPasswordStep !== 'idle') {
     return (
       <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#070A12]' : 'bg-gray-100'}`}>
-        <button onClick={toggleTheme} className={`fixed top-4 right-4 p-3 rounded-full transition-all duration-300 z-50 ${theme === 'dark' ? 'bg-[#1a1f2e] hover:bg-[#252b3d] text-yellow-400' : 'bg-white hover:bg-gray-100 text-gray-700 shadow-md'}`}>
-          {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
         <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ${theme === 'dark' ? 'bg-[#0d1117] border border-slate-700/50' : 'bg-white border border-gray-200'}`}>
           {/* Header */}
           <div className="bg-gradient-to-r from-[#ffcc29] to-[#e6b825] p-8 text-center relative">
@@ -517,16 +514,6 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   if (showOtpScreen) {
     return (
       <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#070A12]' : 'bg-gray-100'}`}>
-        <button
-          onClick={toggleTheme}
-          className={`fixed top-4 right-4 p-3 rounded-full transition-all duration-300 z-50 ${
-            theme === 'dark' 
-              ? 'bg-[#1a1f2e] hover:bg-[#252b3d] text-yellow-400' 
-              : 'bg-white hover:bg-gray-100 text-gray-700 shadow-md'
-          }`}
-        >
-          {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
 
         <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ${
           theme === 'dark' 
@@ -643,18 +630,6 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   // ========================
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-[#070A12]' : 'bg-gray-100'}`}>
-      {/* Theme Toggle Button */}
-      <button
-        onClick={toggleTheme}
-        className={`fixed top-4 right-4 p-3 rounded-full transition-all duration-300 z-50 ${
-          theme === 'dark' 
-            ? 'bg-[#1a1f2e] hover:bg-[#252b3d] text-yellow-400' 
-            : 'bg-white hover:bg-gray-100 text-gray-700 shadow-md'
-        }`}
-        title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-      >
-        {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-      </button>
 
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 ${
         theme === 'dark' 

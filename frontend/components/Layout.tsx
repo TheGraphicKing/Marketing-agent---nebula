@@ -127,16 +127,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     }
   }, []);
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    if (isDarkMode) {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    } else {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    }
-  };
+
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -219,18 +210,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
             </div>
 
             <div className={`mt-auto p-6 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-[#070A12]/20'}`}>
-                {/* Theme Toggle */}
-                <button
-                  onClick={toggleTheme}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full mb-2 ${
-                    isDarkMode 
-                      ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]' 
-                      : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
-                  }`}
-                >
-                  {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                  <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                </button>
                 
                 <nav className="space-y-1 mb-4">
                     <Link
@@ -289,9 +268,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
               </div>
             )}
             <NotificationBell />
-            <button onClick={toggleTheme} className={isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}>
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
           </div>
         </header>
 
