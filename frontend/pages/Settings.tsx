@@ -166,7 +166,7 @@ const Settings: React.FC<SettingsProps> = ({ user, onUserUpdate }) => {
              <div className={`rounded-xl shadow-sm border p-2 space-y-1 ${theme.bgCard} ${
                isDarkMode ? 'border-slate-700/50' : 'border-slate-200'
              }`}>
-                {['Profile', 'Integrations', 'Notifications', 'Security', 'Billing'].map(tab => (
+                {['Profile', 'Notifications', 'Security', 'Billing'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -430,140 +430,6 @@ const Settings: React.FC<SettingsProps> = ({ user, onUserUpdate }) => {
                                   <><Save className="w-4 h-4" /> Change Password</>
                               )}
                           </button>
-                      </div>
-                  )}
-
-                  {activeTab === 'Integrations' && (
-                      <div className="animate-in fade-in duration-300">
-                          <div className="flex items-center justify-between mb-6">
-                              <div className="flex items-center gap-2">
-                                  <Zap className="w-5 h-5 text-[#ffcc29]" />
-                                  <h2 className={`text-lg font-bold ${theme.text}`}>API Integrations</h2>
-                              </div>
-                              <button
-                                onClick={async () => {
-                                  setLoadingApiStatus(true);
-                                  try {
-                                    const status = await apiService.checkApiStatus();
-                                    setApiStatus(status.apis);
-                                  } catch (e) {
-                                    console.error('Failed to check API status:', e);
-                                  }
-                                  setLoadingApiStatus(false);
-                                }}
-                                disabled={loadingApiStatus}
-                                className="px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 bg-[#ffcc29] text-black hover:bg-[#e6b825] transition-colors disabled:opacity-50"
-                              >
-                                {loadingApiStatus ? (
-                                  <><Loader2 className="w-4 h-4 animate-spin" /> Checking...</>
-                                ) : (
-                                  <><RefreshCw className="w-4 h-4" /> Check Status</>
-                                )}
-                              </button>
-                          </div>
-
-                          <p className={`text-sm mb-6 ${theme.textSecondary}`}>
-                            These APIs power real-time data fetching for competitor tracking, social media posting, and trend analysis.
-                          </p>
-
-                          <div className="space-y-4">
-                            {/* Ayrshare */}
-                            <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'}`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">A</div>
-                                  <div>
-                                    <p className={`font-semibold ${theme.text}`}>Ayrshare</p>
-                                    <p className={`text-xs ${theme.textMuted}`}>Social media posting & scheduling</p>
-                                  </div>
-                                </div>
-                                <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                  apiStatus?.ayrshare?.connected 
-                                    ? 'bg-emerald-100 text-emerald-700' 
-                                    : apiStatus?.ayrshare 
-                                      ? 'bg-red-100 text-red-700'
-                                      : 'bg-slate-100 text-slate-500'
-                                }`}>
-                                  {apiStatus?.ayrshare?.connected ? '● Connected' : apiStatus?.ayrshare ? '○ Error' : '○ Not Checked'}
-                                </div>
-                              </div>
-                              {apiStatus?.ayrshare?.error && (
-                                <p className="text-xs text-red-500 mt-2">{apiStatus.ayrshare.error}</p>
-                              )}
-                            </div>
-
-                            {/* Apify */}
-                            <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'}`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">AP</div>
-                                  <div>
-                                    <p className={`font-semibold ${theme.text}`}>Apify</p>
-                                    <p className={`text-xs ${theme.textMuted}`}>Web scraping for Instagram, Twitter, Facebook</p>
-                                  </div>
-                                </div>
-                                <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                  apiStatus?.apify?.connected 
-                                    ? 'bg-emerald-100 text-emerald-700' 
-                                    : apiStatus?.apify 
-                                      ? 'bg-red-100 text-red-700'
-                                      : 'bg-slate-100 text-slate-500'
-                                }`}>
-                                  {apiStatus?.apify?.connected ? '● Connected' : apiStatus?.apify ? '○ Error' : '○ Not Checked'}
-                                </div>
-                              </div>
-                              {apiStatus?.apify?.error && (
-                                <p className="text-xs text-red-500 mt-2">{apiStatus.apify.error}</p>
-                              )}
-                            </div>
-
-                            {/* SearchAPI */}
-                            <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'}`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm">S</div>
-                                  <div>
-                                    <p className={`font-semibold ${theme.text}`}>SearchAPI</p>
-                                    <p className={`text-xs ${theme.textMuted}`}>Google trends & search results</p>
-                                  </div>
-                                </div>
-                                <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                  apiStatus?.searchapi?.connected 
-                                    ? 'bg-emerald-100 text-emerald-700' 
-                                    : apiStatus?.searchapi 
-                                      ? 'bg-red-100 text-red-700'
-                                      : 'bg-slate-100 text-slate-500'
-                                }`}>
-                                  {apiStatus?.searchapi?.connected ? '● Connected' : apiStatus?.searchapi ? '○ Error' : '○ Not Checked'}
-                                </div>
-                              </div>
-                              {apiStatus?.searchapi?.error && (
-                                <p className="text-xs text-red-500 mt-2">{apiStatus.searchapi.error}</p>
-                              )}
-                            </div>
-
-                            {/* Gemini AI */}
-                            <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'}`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">G</div>
-                                  <div>
-                                    <p className={`font-semibold ${theme.text}`}>Google Gemini AI</p>
-                                    <p className={`text-xs ${theme.textMuted}`}>Content generation & analysis</p>
-                                  </div>
-                                </div>
-                                <div className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
-                                  ● Active
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={`mt-6 p-4 rounded-lg ${isDarkMode ? 'bg-[#ffcc29]/10' : 'bg-[#ffcc29]/10'}`}>
-                            <p className={`text-sm ${theme.text}`}>
-                              <strong>💡 Tip:</strong> Click "Check Status" to verify all API connections are working. If any API shows an error, the system will fall back to AI-generated data.
-                            </p>
-                          </div>
                       </div>
                   )}
 
