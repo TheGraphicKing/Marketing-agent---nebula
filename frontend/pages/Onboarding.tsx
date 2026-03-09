@@ -461,6 +461,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         localStorage.removeItem('nebulaa_token');
         sessionStorage.removeItem(ONBOARDING_STATE_KEY);
         window.location.href = '/#/login';
+        window.location.reload();
     };
 
     const steps = [
