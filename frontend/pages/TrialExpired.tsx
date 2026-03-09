@@ -316,6 +316,57 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
 
             {/* Slider */}
             <div className="mb-8 px-2">
+              <style>{`
+                .credit-slider {
+                  -webkit-appearance: none;
+                  appearance: none;
+                  width: 100%;
+                  height: 8px;
+                  border-radius: 9999px;
+                  outline: none;
+                  cursor: pointer;
+                }
+                .credit-slider::-webkit-slider-runnable-track {
+                  height: 8px;
+                  border-radius: 9999px;
+                }
+                .credit-slider::-webkit-slider-thumb {
+                  -webkit-appearance: none;
+                  appearance: none;
+                  width: 28px;
+                  height: 28px;
+                  border-radius: 50%;
+                  background: #ffcc29;
+                  cursor: grab;
+                  margin-top: -10px;
+                  box-shadow: 0 0 12px rgba(255, 204, 41, 0.4), 0 2px 6px rgba(0,0,0,0.3);
+                  border: 3px solid #070A12;
+                  position: relative;
+                  z-index: 2;
+                }
+                .credit-slider::-webkit-slider-thumb:active {
+                  cursor: grabbing;
+                  transform: scale(1.15);
+                }
+                .credit-slider::-moz-range-track {
+                  height: 8px;
+                  border-radius: 9999px;
+                  border: none;
+                }
+                .credit-slider::-moz-range-thumb {
+                  width: 28px;
+                  height: 28px;
+                  border-radius: 50%;
+                  background: #ffcc29;
+                  cursor: grab;
+                  box-shadow: 0 0 12px rgba(255, 204, 41, 0.4), 0 2px 6px rgba(0,0,0,0.3);
+                  border: 3px solid #070A12;
+                }
+                .credit-slider::-moz-range-thumb:active {
+                  cursor: grabbing;
+                  transform: scale(1.15);
+                }
+              `}</style>
               <input
                 type="range"
                 min={1000}
@@ -323,33 +374,11 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
                 step={1000}
                 value={sliderValue}
                 onChange={(e) => setSliderValue(Number(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                className="credit-slider"
                 style={{
                   background: `linear-gradient(to right, #ffcc29 ${((sliderValue - 1000) / 19000) * 100}%, rgba(255,255,255,0.08) ${((sliderValue - 1000) / 19000) * 100}%)`,
                 }}
               />
-              <style>{`
-                input[type="range"]::-webkit-slider-thumb {
-                  -webkit-appearance: none;
-                  appearance: none;
-                  width: 24px;
-                  height: 24px;
-                  border-radius: 50%;
-                  background: #ffcc29;
-                  cursor: pointer;
-                  box-shadow: 0 0 12px rgba(255, 204, 41, 0.4), 0 2px 6px rgba(0,0,0,0.3);
-                  border: 3px solid #070A12;
-                }
-                input[type="range"]::-moz-range-thumb {
-                  width: 24px;
-                  height: 24px;
-                  border-radius: 50%;
-                  background: #ffcc29;
-                  cursor: pointer;
-                  box-shadow: 0 0 12px rgba(255, 204, 41, 0.4), 0 2px 6px rgba(0,0,0,0.3);
-                  border: 3px solid #070A12;
-                }
-              `}</style>
               <div className="flex justify-between text-[11px] text-[#ededed]/25 mt-2 px-0.5">
                 <span>₹1,000</span>
                 <span>₹5,000</span>
