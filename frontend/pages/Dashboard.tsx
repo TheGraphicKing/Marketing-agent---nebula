@@ -1451,6 +1451,7 @@ const Dashboard: React.FC = () => {
                                   >
                                     <Swords className="w-3.5 h-3.5" />
                                     Create Rival Post
+                                    <span className="flex items-center gap-0.5 text-[10px] bg-black/10 px-1 py-0.5 rounded-full"><Zap className="w-2.5 h-2.5" />7</span>
                                   </button>
                                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
                                       currentCompetitor.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700' : 
@@ -1638,6 +1639,7 @@ const Dashboard: React.FC = () => {
                               >
                                 <PenTool className="w-3.5 h-3.5" />
                                 Create Post
+                                <span className="flex items-center gap-0.5 text-[10px] bg-black/10 px-1 py-0.5 rounded"><Zap className="w-2.5 h-2.5" />7</span>
                               </button>
                             </div>
                         </div>
@@ -4403,6 +4405,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                             >
                               <Sparkles className="w-5 h-5" />
                               Create Post for This Event
+                              <span className="flex items-center gap-0.5 text-xs bg-black/10 px-1.5 py-0.5 rounded-full"><Zap className="w-3 h-3" />7</span>
                             </button>
                             <button 
                               onClick={() => setSelectedHoliday(null)} 
