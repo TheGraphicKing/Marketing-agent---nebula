@@ -751,6 +751,7 @@ router.get('/campaign-suggestions', protect, async (req, res) => {
     const forceRefresh = req.query.refresh === 'true';
     // Parse platforms filter (comma-separated, exclude YouTube)
     const platformsParam = req.query.platforms ? decodeURIComponent(req.query.platforms).split(',').filter(p => p && p !== 'YouTube') : null;
+    const excludeTitles = req.query.excludeTitles ? decodeURIComponent(req.query.excludeTitles).split('|||').filter(Boolean) : [];
     
     // Generate profile hash for cache invalidation
     const profileHash = CachedCampaign.createProfileHash(user.businessProfile);
@@ -823,7 +824,7 @@ router.get('/campaign-suggestions', protect, async (req, res) => {
       console.log('🎁 First-time campaign generation — skipping credit check');
     }
     
-    const suggestions = await generateCampaignSuggestions(user.businessProfile, count, platformsParam);
+    const suggestions = await generateCampaignSuggestions(user.businessProfile, count, platformsParam, excludeTitles);
     
     // Deduct credits after successful generation (skip for first-time onboarding)
     const generatedCount = suggestions.campaigns?.length || 0;

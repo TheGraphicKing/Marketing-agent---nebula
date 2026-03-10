@@ -938,7 +938,12 @@ const Campaigns: React.FC = () => {
     }
     setRegeneratingIndex(idx);
     try {
-      const response = await apiService.getCampaignSuggestions(1, true);
+      // Collect existing campaign titles to avoid duplicates
+      const existingTitles = suggestedCampaigns
+        .filter((_, i) => i !== idx && !dismissedIndices.has(i))
+        .map(c => c.title)
+        .filter(Boolean);
+      const response = await apiService.getCampaignSuggestions(1, true, undefined, existingTitles);
       if (response?.campaigns?.length > 0) {
         const camp = response.campaigns[0];
         const newCampaign: SuggestedCampaign = {

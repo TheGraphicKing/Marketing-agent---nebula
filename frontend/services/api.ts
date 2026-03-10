@@ -495,11 +495,14 @@ export const apiService = {
     }
   },
 
-  getCampaignSuggestions: async (count: number = 3, forceRefresh: boolean = false, platforms?: string[]): Promise<any> => {
+  getCampaignSuggestions: async (count: number = 3, forceRefresh: boolean = false, platforms?: string[], excludeTitles?: string[]): Promise<any> => {
     try {
       let url = `/dashboard/campaign-suggestions?count=${count}${forceRefresh ? '&refresh=true' : ''}`;
       if (platforms && platforms.length > 0) {
         url += `&platforms=${encodeURIComponent(platforms.join(','))}`;
+      }
+      if (excludeTitles && excludeTitles.length > 0) {
+        url += `&excludeTitles=${encodeURIComponent(excludeTitles.join('|||'))}`;
       }
       const response = await apiCall<{ success: boolean; data: any; cached?: boolean }>(
         url,

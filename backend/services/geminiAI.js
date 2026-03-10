@@ -346,7 +346,7 @@ function getPlatformCaptionRules(platform) {
   return rules[platform.toLowerCase()] || rules['instagram'];
 }
 
-async function generateCampaignSuggestions(businessProfile, count = 6, allowedPlatforms = null) {
+async function generateCampaignSuggestions(businessProfile, count = 6, allowedPlatforms = null, excludeTitles = []) {
   // Build a comprehensive context from the business profile
   const companyName = businessProfile.name || 'Your Company';
   const industry = businessProfile.industry || 'General';
@@ -408,7 +408,11 @@ ${logoUrl ? `Logo Available: Yes (brand visual identity is important)` : ''}
 6. Each campaign should have a different objective to cover various marketing needs
 7. Provide an image search query that would find the PERFECT stock image for this specific campaign
 ${brandColors ? `8. Image prompts should mention brand colors: ${brandColors}` : ''}
-
+${excludeTitles.length > 0 ? `
+=== ALREADY USED TITLES (DO NOT REPEAT OR USE SIMILAR) ===
+${excludeTitles.map((t, i) => `${i + 1}. "${t}"`).join('\n')}
+IMPORTANT: Generate completely DIFFERENT campaign names/titles. Do NOT reuse any of the above titles or create variations of them.
+` : ''}
 === BRAND VOICE GUIDELINES ===
 ${brandVoice === 'Professional' ? '- Use formal language, industry terminology, focus on expertise and credibility' : ''}
 ${brandVoice === 'Friendly' ? '- Use warm, conversational tone, personal pronouns (we, you), feel approachable' : ''}
