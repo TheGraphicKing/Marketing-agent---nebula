@@ -1169,9 +1169,15 @@ router.post('/generate-rival-post', protect, async (req, res) => {
       user.businessProfile
     );
 
+    // Don't deduct credits if client disconnected
+    if (req.socket.destroyed) {
+      console.log('⚠️ Client disconnected before rival post response, skipping credit deduction');
+      return;
+    }
+
     console.log('✅ Rival post generated successfully');
 
-    // Deduct credits (5 image + 2 caption = 7)
+    // Deduct credits
     const creditResult = await deductCredits(user._id, 'rival_post', 1, 'Create rival post');
 
     res.json({

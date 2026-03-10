@@ -669,7 +669,7 @@ export const apiService = {
     sentiment?: string;
     likes?: number;
     comments?: number;
-  }): Promise<{ caption: string; hashtags: string[]; imageUrl: string; imagePrompt?: string }> => {
+  }, signal?: AbortSignal): Promise<{ caption: string; hashtags: string[]; imageUrl: string; imagePrompt?: string }> => {
     try {
       const response = await apiCall<{ 
         success: boolean; 
@@ -679,7 +679,7 @@ export const apiService = {
         imagePrompt?: string 
       }>(
         '/dashboard/generate-rival-post',
-        { method: 'POST', body: JSON.stringify(data) },
+        { method: 'POST', body: JSON.stringify(data), signal },
         true
       );
       return {
