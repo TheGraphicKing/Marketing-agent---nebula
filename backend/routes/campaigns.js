@@ -549,8 +549,8 @@ router.post('/generate-campaign-posts', protect, checkTrial, async (req, res) =>
     const user = await User.findById(userId);
     const bp = user?.businessProfile || {};
 
-    // Check credits upfront for campaign text generation (2 credits)
-    const textCreditResult = await deductCredits(userId, 'campaign_text', 1, 'AI campaign generation');
+    // Deduct flat 7 credits for campaign post generation (text only, no bulk images)
+    const textCreditResult = await deductCredits(userId, 'campaign_full', 1, 'AI campaign generation');
     if (!textCreditResult.success) {
       return res.status(403).json({
         success: false,
@@ -694,49 +694,31 @@ Return ONLY valid JSON (no markdown, no code blocks):
       throw new Error('Invalid response format from AI');
     }
 
-    // Import image generation function and logo overlay
-    const { getRelevantImage } = require('../services/geminiAI');
-    const { uploadLogo, uploadImageWithLogoOverlay, isBase64DataUrl } = require('../services/imageUploader');
+    // Use stock placeholder images — NO bulk AI image generation
+    // Users can generate images individually per post if they want
+    const stockImages = [
+      'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1551434678-e076c223a692?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1553877522-43269d4ea984?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1553028826-f4804a6dba3b?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1556155092-490a1ba16284?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1553729459-afe8f2e2ed65?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1554200876-56c2f25224fa?w=800&h=600&fit=crop',
+      'https://images.unsplash.com/photo-1543286386-713bdd548da4?w=800&h=600&fit=crop',
+    ];
 
-    // Build rich brand context for image generation
-    const brandContext = {
-      companyName: bp.companyName || bp.name || 'Brand',
-      industry: bp.industry || 'business',
-      description: bp.description || campaignDescription || '',
-      products: bp.products?.map(p => p.name).join(', ') || '',
-      services: bp.services?.map(s => s.name).join(', ') || '',
-      usps: bp.uniqueSellingPoints?.join(', ') || bp.valuePropositions?.join(', ') || '',
-      niche: bp.niche || '',
-      targetAudience: targetAudience?.description || '',
-      brandVoice: bp.brandVoice || content?.tone || 'professional',
-      productLogo: productLogo, // Pass the product logo for image generation
-      hasLogo: !!productLogo // Flag to indicate logo is available
-    };
-
-    // Upload logo to Cloudinary if provided (for overlay)
-    let logoPublicId = null;
-    if (productLogo) {
-      console.log('📤 Uploading product logo for overlay...');
-      try {
-        const logoResult = await uploadLogo(productLogo, true);
-        if (logoResult.success) {
-          logoPublicId = logoResult.publicId;
-          console.log('✅ Logo uploaded, public ID:', logoPublicId);
-        } else {
-          console.error('❌ Logo upload failed:', logoResult.error);
-        }
-      } catch (logoErr) {
-        console.error('❌ Logo upload error:', logoErr.message);
-      }
-    }
-
-    // Helper function for delay (rate limiting for Imagen API - 5 RPM limit)
-    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-    // Generate images for each post SEQUENTIALLY with delay to avoid rate limiting
-    // Imagen 4 Ultra has 5 RPM limit, so we wait 15 seconds between requests
-    console.log(`🎨 Generating ${Math.min(parsed.posts.length, totalPosts)} images (with rate limiting)...`);
-    
     const postsWithImages = [];
     const postsToProcess = parsed.posts.slice(0, totalPosts);
     
@@ -744,55 +726,6 @@ Return ONLY valid JSON (no markdown, no code blocks):
       const post = postsToProcess[index];
       const schedule = scheduleDates[index] || { date: startDate, time: '10:00' };
       
-      // Generate image based on the description + brand context
-      let imageUrl;
-      try {
-        // Enhanced image description with brand context
-        const enhancedImageDesc = `${post.imageDescription || post.caption.substring(0, 100)}. Brand: ${brandContext.companyName}, Industry: ${brandContext.industry}. ${brandContext.products ? 'Products: ' + brandContext.products + '.' : ''} ${brandContext.usps ? 'Focus on: ' + brandContext.usps : ''}`;
-        
-        console.log(`🎨 Generating image ${index + 1}/${postsToProcess.length}...`);
-        
-        imageUrl = await getRelevantImage(
-          enhancedImageDesc,
-          brandContext.industry,
-          objective,
-          campaignName,
-          post.platform,
-          brandContext
-        );
-        
-        // If logo is available, overlay it on the generated image
-        if (logoPublicId && imageUrl) {
-          console.log(`🏷️ Overlaying logo on image ${index + 1}...`);
-          try {
-            const overlayResult = await uploadImageWithLogoOverlay(imageUrl, logoPublicId, {
-              position: 'south_east',
-              width: 180,
-              opacity: 95,
-              margin: 25
-            });
-            
-            if (overlayResult.success) {
-              imageUrl = overlayResult.url;
-              console.log(`✅ Logo overlay applied to image ${index + 1}`);
-            } else {
-              console.error(`❌ Logo overlay failed for image ${index + 1}:`, overlayResult.error);
-            }
-          } catch (overlayErr) {
-            console.error(`❌ Logo overlay error for image ${index + 1}:`, overlayErr.message);
-          }
-        }
-        
-        console.log(`✅ Image ${index + 1}/${postsToProcess.length} generated`);
-
-        // Deduct 5 credits per successfully generated image
-        await deductCredits(userId, 'image_generated', 1, `Image ${index + 1} for campaign: ${campaignName}`);
-      } catch (imgError) {
-        console.error(`Error generating image for post ${index}:`, imgError);
-        // Fallback image
-        imageUrl = `https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop&seed=${Date.now() + index}`;
-      }
-
       postsWithImages.push({
         id: `post-${index + 1}`,
         platform: post.platform?.toLowerCase() || platforms[index % platforms.length],
@@ -800,22 +733,16 @@ Return ONLY valid JSON (no markdown, no code blocks):
         hashtags: Array.isArray(post.hashtags) 
           ? post.hashtags.map(h => h.startsWith('#') ? h : `#${h}`)
           : ['#marketing', '#brand'],
-        imageUrl,
+        imageUrl: stockImages[index % stockImages.length],
+        imageDescription: post.imageDescription || '',
         suggestedDate: schedule.date,
         suggestedTime: schedule.time,
         contentTheme: post.contentTheme || 'promotional',
         callToAction: post.callToAction || content?.callToAction || 'Learn more'
       });
-      
-      // Wait 15 seconds before next image request to stay under 5 RPM limit
-      // (except for the last image)
-      if (index < postsToProcess.length - 1) {
-        console.log(`⏳ Waiting 15s before next image (rate limiting)...`);
-        await delay(15000);
-      }
     }
 
-    console.log(`✅ Generated ${postsWithImages.length} posts with images for campaign: ${campaignName}`);
+    console.log(`✅ Generated ${postsWithImages.length} text-only posts for campaign: ${campaignName}`);
 
     // Fetch latest credit balance for frontend update
     const updatedUser = await User.findById(userId).select('credits.balance');

@@ -2714,6 +2714,18 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
 
     // Generate AI posts based on campaign details
     const handleGeneratePosts = async () => {
+      // Flat 7 credits for campaign text generation (no bulk images)
+      try {
+        const creditData = await apiService.getCredits();
+        const balance = creditData?.credits?.balance ?? 0;
+        if (balance < 7) {
+          alert(`⚠️ Insufficient credits. You have ${balance} credits but need 7.`);
+          return;
+        }
+      } catch (err) {
+        console.error('Credit check failed:', err);
+      }
+
       setIsGenerating(true);
       setGeneratedPosts([]);
       
@@ -3581,6 +3593,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                     >
                                       <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
                                       Regenerate All
+                                      <span className="flex items-center gap-0.5 text-xs opacity-70"><Zap className="w-3 h-3" />7</span>
                                     </button>
                                   </div>
                                 </div>
@@ -3791,6 +3804,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                               <>
                                 <Sparkles className="w-4 h-4" />
                                 Generate AI Posts
+                                <span className="flex items-center gap-0.5 text-xs opacity-80"><Zap className="w-3 h-3" />7</span>
                               </>
                             )}
                           </button>
