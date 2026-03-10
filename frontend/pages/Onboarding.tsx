@@ -457,7 +457,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     // Handle "Switch account" from duplicate modal
     const handleSwitchAccount = () => {
-        localStorage.removeItem('nebulaa_token');
+        localStorage.removeItem('authToken');
         sessionStorage.removeItem(ONBOARDING_STATE_KEY);
         window.location.href = '/#/login';
         window.location.reload();
