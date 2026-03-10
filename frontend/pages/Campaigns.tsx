@@ -808,7 +808,7 @@ const Campaigns: React.FC = () => {
         // On each campaign received
         (campaign, index, total, cached) => {
           const transformed: SuggestedCampaign = {
-            id: campaign.id || `ai-${index}-${regenerationCount}`,
+            id: `${campaign.id || 'ai'}-${index}-${Date.now()}`,
             title: campaign.name || campaign.title || 'Campaign Idea',
             caption: campaign.caption || campaign.description || 'AI-generated campaign content',
             imageUrl: campaign.imageUrl || getImageForObjective(campaign.objective || 'awareness'),
@@ -882,7 +882,7 @@ const Campaigns: React.FC = () => {
       
       if (response.campaigns && response.campaigns.length > 0) {
         const aiSuggestions: SuggestedCampaign[] = response.campaigns.map((camp: any, index: number) => ({
-          id: camp.id || `ai-${index}-${regenerationCount}`,
+          id: `${camp.id || 'ai'}-${index}-${Date.now()}`,
           title: camp.name || camp.title || 'Campaign Idea',
           caption: camp.caption || camp.description || camp.contentIdeas?.join('\n\n') || 'AI-generated campaign content',
           imageUrl: camp.imageUrl || getImageForObjective(camp.objective || 'awareness'),
@@ -938,16 +938,19 @@ const Campaigns: React.FC = () => {
     }
     setRegeneratingId(dismissedId);
     try {
-      // Collect existing campaign titles to avoid duplicates
+      // Collect ALL existing campaign titles (including dismissed ones) to avoid duplicates
       const existingTitles = suggestedCampaigns
-        .filter(c => c.id !== dismissedId && !dismissedIds.has(c.id))
         .map(c => c.title)
         .filter(Boolean);
-      const response = await apiService.getCampaignSuggestions(1, true, undefined, existingTitles);
+      // Also include captions to further differentiate
+      const existingCaptions = suggestedCampaigns
+        .map(c => c.caption?.slice(0, 50))
+        .filter(Boolean);
+      const response = await apiService.getCampaignSuggestions(1, true, undefined, [...existingTitles, ...existingCaptions]);
       if (response?.campaigns?.length > 0) {
         const camp = response.campaigns[0];
         const newCampaign: SuggestedCampaign = {
-          id: camp.id || `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           title: camp.name || camp.title || 'Campaign Idea',
           caption: camp.caption || camp.description || '',
           imageUrl: camp.imageUrl || '',
