@@ -188,6 +188,276 @@ interface SuggestedCampaign {
     estimatedReach: string;
 }
 
+// ============================================
+// INDEPENDENT SUGGESTION CARD COMPONENT
+// Each card manages its own dismiss/regenerate state
+// ============================================
+const SuggestionCard: React.FC<{
+  initialSuggestion: SuggestedCampaign;
+  index: number;
+  isDarkMode: boolean;
+  theme: any;
+  usedStatus?: string;
+  downloadingImage: string | null;
+  onEdit: (s: SuggestedCampaign) => void;
+  onUse: (s: SuggestedCampaign) => void;
+  onDownloadImage: (s: SuggestedCampaign) => void;
+  onDownloadText: (s: SuggestedCampaign) => void;
+  getAllTitles: () => string[];
+  getPlatformIcon: (p: string) => React.ReactNode;
+  getPlatformColor: (p: string) => string;
+}> = ({ initialSuggestion, index, isDarkMode, theme, usedStatus, downloadingImage, onEdit, onUse, onDownloadImage, onDownloadText, getAllTitles, getPlatformIcon, getPlatformColor }) => {
+  const [suggestion, setSuggestion] = useState<SuggestedCampaign>(initialSuggestion);
+  const [dismissed, setDismissed] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // Update suggestion when parent passes new initial data (e.g. streaming load)
+  useEffect(() => {
+    setSuggestion(initialSuggestion);
+    setDismissed(false);
+  }, [initialSuggestion.id]);
+
+  const handleDismiss = () => {
+    setDismissed(true);
+  };
+
+  const handleRegenerate = async () => {
+    if (regenerating) return;
+    try {
+      const creditData = await apiService.getCredits();
+      const balance = creditData?.credits?.balance ?? 0;
+      if (balance < 7) {
+        alert(`⚠️ Insufficient credits. You have ${balance} credits but need 7.`);
+        return;
+      }
+    } catch (err) {
+      console.error('Credit check failed:', err);
+      return;
+    }
+    setRegenerating(true);
+    try {
+      const existingTitles = getAllTitles();
+      const response = await apiService.getCampaignSuggestions(1, true, undefined, existingTitles);
+      if (response?.campaigns?.length > 0) {
+        const camp = response.campaigns[0];
+        const newCampaign: SuggestedCampaign = {
+          id: `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title: camp.name || camp.title || 'Campaign Idea',
+          caption: camp.caption || camp.description || '',
+          imageUrl: camp.imageUrl || '',
+          platform: camp.platforms?.[0] || camp.platform || 'Instagram',
+          objective: camp.objective || 'Awareness',
+          hashtags: camp.hashtags || ['#Marketing'],
+          bestTime: camp.bestPostTime || '10:00 AM',
+          estimatedReach: camp.estimatedReach || camp.expectedReach || '10K - 25K'
+        };
+        setSuggestion(newCampaign);
+        setDismissed(false);
+      }
+    } catch (err) {
+      console.error('Failed to regenerate:', err);
+      alert('Failed to regenerate. Please try again.');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const isUsed = !!usedStatus;
+
+  // Dismissed placeholder
+  if (dismissed) {
+    return (
+      <div
+        className={`rounded-xl border-2 border-dashed overflow-hidden flex flex-col items-center justify-center min-h-[420px] ${
+          isDarkMode ? 'border-slate-700 bg-slate-900/50' : 'border-slate-300 bg-slate-50'
+        }`}
+      >
+        <div className={`p-3 rounded-full mb-4 ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
+          <RefreshCw className={`w-8 h-8 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'} ${regenerating ? 'animate-spin' : ''}`} />
+        </div>
+        <p className={`text-sm mb-4 ${theme.textSecondary}`}>Campaign dismissed</p>
+        <button
+          onClick={handleRegenerate}
+          disabled={regenerating}
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#ffcc29] text-black rounded-lg font-semibold text-sm hover:bg-[#e6b825] transition-colors disabled:opacity-50"
+        >
+          {regenerating ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+          Regenerate
+          <span className="flex items-center gap-0.5 text-xs bg-black/10 px-1.5 py-0.5 rounded-full">
+            <Zap className="w-3 h-3" />7
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  // Normal card
+  return (
+    <div
+      className={`rounded-xl shadow-sm border overflow-hidden transition-all duration-300 ${theme.bgCard} ${
+        isUsed
+          ? (isDarkMode ? 'border-green-800/50 opacity-60' : 'border-green-300 opacity-60')
+          : (isDarkMode ? 'border-slate-700/50 hover:border-slate-600' : 'border-slate-200 hover:border-[#ffcc29]/30')
+      } ${isUsed ? '' : 'group hover:shadow-lg'}`}
+    >
+      {/* Image */}
+      <div className="relative h-48 overflow-hidden">
+        <img
+          src={suggestion.imageUrl}
+          alt={suggestion.title}
+          className={`w-full h-full object-cover transition-all duration-500 ${isUsed ? 'grayscale brightness-75' : 'group-hover:scale-105'}`}
+          loading="lazy"
+        />
+        {/* X dismiss button */}
+        {!isUsed && (
+          <button
+            onClick={handleDismiss}
+            className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-500/80 text-white transition-colors backdrop-blur-sm"
+            title="Dismiss this campaign"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+        {/* Used status overlay */}
+        {isUsed && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+            <div className="bg-green-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg">
+              {usedStatus === 'Saving to drafts...' ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              {usedStatus}
+            </div>
+          </div>
+        )}
+        {/* Overlay with actions on hover */}
+        {!isUsed && (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-4 gap-2">
+            <button
+              onClick={() => onEdit(suggestion)}
+              className="px-3 py-2 bg-white text-slate-800 rounded-lg font-semibold text-sm flex items-center gap-1.5 hover:bg-slate-100 transition-colors shadow-lg"
+            >
+              <Edit3 className="w-3.5 h-3.5" /> Edit
+            </button>
+            <button
+              onClick={() => onUse(suggestion)}
+              className="px-3 py-2 bg-[#ffcc29] text-black rounded-lg font-semibold text-sm flex items-center gap-1.5 hover:bg-[#e6b825] transition-colors shadow-lg"
+            >
+              <Send className="w-3.5 h-3.5" /> Use
+            </button>
+          </div>
+        )}
+        {/* Platform badge */}
+        <div className={`absolute top-3 left-3 ${getPlatformColor(suggestion.platform)} text-white px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5`}>
+          {getPlatformIcon(suggestion.platform)}
+          {suggestion.platform}
+        </div>
+        {/* Objective badge */}
+        <div className="absolute top-3 right-12 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-slate-800">
+          {suggestion.objective}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-4">
+        <h3 className={`font-bold mb-2 ${theme.text}`}>{suggestion.title}</h3>
+        <p className={`text-sm line-clamp-3 mb-3 whitespace-pre-line ${theme.textSecondary}`}>{suggestion.caption}</p>
+
+        {/* Hashtags */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {suggestion.hashtags.slice(0, 3).map((tag, i) => (
+            <span key={i} className="text-xs bg-[#ffcc29]/20 text-[#ffcc29] px-2 py-0.5 rounded-full">
+              {tag}
+            </span>
+          ))}
+          {suggestion.hashtags.length > 3 && (
+            <span className={`text-xs ${theme.textSecondary}`}>+{suggestion.hashtags.length - 3}</span>
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className={`flex items-center justify-between text-xs pt-3 border-t ${theme.textSecondary} ${
+          isDarkMode ? 'border-slate-700/50' : 'border-slate-200'
+        }`}>
+          <div className="flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Best at {suggestion.bestTime}{(() => {
+              const m = suggestion.bestTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+              if (!m) return '';
+              let h = parseInt(m[1]); const ap = m[3].toUpperCase();
+              if (ap === 'PM' && h !== 12) h += 12;
+              if (ap === 'AM' && h === 12) h = 0;
+              const best = new Date(); best.setHours(h, parseInt(m[2]), 0, 0);
+              return best <= new Date() ? ' (tomorrow)' : ' (today)';
+            })()}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Eye className="w-3.5 h-3.5" />
+            <span>{suggestion.estimatedReach}</span>
+          </div>
+        </div>
+
+        {/* Download Buttons */}
+        <div className={`flex items-center gap-2 mt-3 pt-3 border-t ${
+          isDarkMode ? 'border-slate-700/50' : 'border-slate-200'
+        }`}>
+          <button
+            onClick={() => onDownloadImage(suggestion)}
+            disabled={downloadingImage === suggestion.id || isUsed}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              isDarkMode
+                ? 'bg-slate-800 hover:bg-slate-700 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            } ${(downloadingImage === suggestion.id || isUsed) ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {downloadingImage === suggestion.id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ImageDown className="w-3.5 h-3.5" />
+            )}
+            Image
+          </button>
+          <button
+            onClick={() => onDownloadText(suggestion)}
+            disabled={isUsed}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              isDarkMode
+                ? 'bg-slate-800 hover:bg-slate-700 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            } ${isUsed ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Text
+          </button>
+          <button
+            onClick={() => {
+              onDownloadImage(suggestion);
+              onDownloadText(suggestion);
+            }}
+            disabled={isUsed}
+            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              isUsed
+                ? 'bg-green-600/30 text-green-400 cursor-not-allowed'
+                : 'bg-[#ffcc29] text-black hover:bg-[#e6b825]'
+            }`}
+          >
+            {isUsed ? (
+              <><Check className="w-3.5 h-3.5" /> Used</>
+            ) : (
+              <><Download className="w-3.5 h-3.5" /> All</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Campaigns: React.FC = () => {
   const { isDarkMode } = useTheme();
   const theme = getThemeClasses(isDarkMode);
@@ -198,8 +468,6 @@ const Campaigns: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [suggestedCampaigns, setSuggestedCampaigns] = useState<SuggestedCampaign[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<SuggestedCampaign | null>(null);
   const [regenerationCount, setRegenerationCount] = useState(0);
   const [streamingProgress, setStreamingProgress] = useState<{ current: number; total: number } | null>(null);
@@ -917,65 +1185,10 @@ const Campaigns: React.FC = () => {
     generateSuggestionsStreaming(false);
   };
   
-  // Dismiss a suggestion card — show regenerate placeholder in its place
-  const handleDismissSuggestion = (id: string) => {
-    setDismissedIds(prev => new Set(prev).add(id));
-  };
-
-  // Regenerate a single campaign in a dismissed slot
-  const handleRegenerateSingle = async (dismissedId: string) => {
-    if (regeneratingId !== null) return;
-    try {
-      const creditData = await apiService.getCredits();
-      const balance = creditData?.credits?.balance ?? 0;
-      if (balance < 7) {
-        alert(`⚠️ Insufficient credits. You have ${balance} credits but need 7.`);
-        return;
-      }
-    } catch (err) {
-      console.error('Credit check failed:', err);
-      return;
-    }
-    setRegeneratingId(dismissedId);
-    try {
-      // Collect ALL existing campaign titles (including dismissed ones) to avoid duplicates
-      const existingTitles = suggestedCampaigns
-        .map(c => c.title)
-        .filter(Boolean);
-      // Also include captions to further differentiate
-      const existingCaptions = suggestedCampaigns
-        .map(c => c.caption?.slice(0, 50))
-        .filter(Boolean);
-      const response = await apiService.getCampaignSuggestions(1, true, undefined, [...existingTitles, ...existingCaptions]);
-      if (response?.campaigns?.length > 0) {
-        const camp = response.campaigns[0];
-        const newCampaign: SuggestedCampaign = {
-          id: `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          title: camp.name || camp.title || 'Campaign Idea',
-          caption: camp.caption || camp.description || '',
-          imageUrl: camp.imageUrl || '',
-          platform: camp.platforms?.[0] || camp.platform || 'Instagram',
-          objective: camp.objective || 'Awareness',
-          hashtags: camp.hashtags || ['#Marketing'],
-          bestTime: camp.bestPostTime || '10:00 AM',
-          estimatedReach: camp.estimatedReach || camp.expectedReach || '10K - 25K'
-        };
-        setSuggestedCampaigns(prev =>
-          prev.map(c => c.id === dismissedId ? newCampaign : c)
-        );
-        setDismissedIds(prev => {
-          const next = new Set(prev);
-          next.delete(dismissedId);
-          return next;
-        });
-      }
-    } catch (err) {
-      console.error('Failed to regenerate single campaign:', err);
-      alert('Failed to regenerate. Please try again.');
-    } finally {
-      setRegeneratingId(null);
-    }
-  };
+  // Get all current suggestion titles (for regeneration exclusion)
+  const getAllSuggestionTitles = useCallback(() => {
+    return suggestedCampaigns.map(c => c.title).filter(Boolean);
+  }, [suggestedCampaigns]);
 
   // Download image
   const handleDownloadImage = async (suggestion: SuggestedCampaign) => {
@@ -1194,204 +1407,24 @@ Generated by Nebulaa Gravity Marketing Agent
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {suggestedCampaigns.map((suggestion, idx) => {
-                // Show regenerate placeholder for dismissed cards
-                if (dismissedIds.has(suggestion.id)) {
-                  return (
-                    <div
-                      key={`dismissed-${suggestion.id}`}
-                      className={`rounded-xl border-2 border-dashed overflow-hidden flex flex-col items-center justify-center min-h-[420px] ${
-                        isDarkMode ? 'border-slate-700 bg-slate-900/50' : 'border-slate-300 bg-slate-50'
-                      }`}
-                    >
-                      <div className={`p-3 rounded-full mb-4 ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
-                        <RefreshCw className={`w-8 h-8 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'} ${regeneratingId === suggestion.id ? 'animate-spin' : ''}`} />
-                      </div>
-                      <p className={`text-sm mb-4 ${theme.textSecondary}`}>Campaign dismissed</p>
-                      <button
-                        onClick={() => handleRegenerateSingle(suggestion.id)}
-                        disabled={regeneratingId !== null}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-[#ffcc29] text-black rounded-lg font-semibold text-sm hover:bg-[#e6b825] transition-colors disabled:opacity-50"
-                      >
-                        {regeneratingId === suggestion.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4" />
-                        )}
-                        Regenerate
-                        <span className="flex items-center gap-0.5 text-xs bg-black/10 px-1.5 py-0.5 rounded-full">
-                          <Zap className="w-3 h-3" />7
-                        </span>
-                      </button>
-                    </div>
-                  );
-                }
-
-                const usedStatus = usedSuggestions.get(suggestion.id);
-                const isUsed = !!usedStatus;
-                return (
-                <div 
-                  key={suggestion.id} 
-                  className={`rounded-xl shadow-sm border overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-4 ${theme.bgCard} ${
-                    isUsed 
-                      ? (isDarkMode ? 'border-green-800/50 opacity-60' : 'border-green-300 opacity-60')
-                      : (isDarkMode ? 'border-slate-700/50 hover:border-slate-600' : 'border-slate-200 hover:border-[#ffcc29]/30')
-                  } ${isUsed ? '' : 'group hover:shadow-lg'}`}
-                  style={{ animationDelay: `${idx * 100}ms` }}
-                >
-                  {/* Image */}
-                  <div className="relative h-48 overflow-hidden">
-                    <img 
-                      src={suggestion.imageUrl} 
-                      alt={suggestion.title}
-                      className={`w-full h-full object-cover transition-all duration-500 ${isUsed ? 'grayscale brightness-75' : 'group-hover:scale-105'}`}
-                      loading="lazy"
-                    />
-                    {/* X dismiss button */}
-                    {!isUsed && (
-                      <button
-                        onClick={() => handleDismissSuggestion(suggestion.id)}
-                        className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-500/80 text-white transition-colors backdrop-blur-sm"
-                        title="Dismiss this campaign"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    {/* Used status overlay */}
-                    {isUsed && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <div className="bg-green-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 shadow-lg">
-                          {usedStatus === 'Saving to drafts...' ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Check className="w-4 h-4" />
-                          )}
-                          {usedStatus}
-                        </div>
-                      </div>
-                    )}
-                    {/* Overlay with actions on hover - only show if not used */}
-                    {!isUsed && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-4 gap-2">
-                      <button 
-                        onClick={() => setEditingCampaign(suggestion)}
-                        className="px-3 py-2 bg-white text-slate-800 rounded-lg font-semibold text-sm flex items-center gap-1.5 hover:bg-slate-100 transition-colors shadow-lg"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" /> Edit
-                      </button>
-                      <button 
-                        onClick={() => handleUseSuggestion(suggestion)}
-                        className="px-3 py-2 bg-[#ffcc29] text-black rounded-lg font-semibold text-sm flex items-center gap-1.5 hover:bg-[#e6b825] transition-colors shadow-lg"
-                      >
-                        <Send className="w-3.5 h-3.5" /> Use
-                      </button>
-                    </div>
-                    )}
-                    {/* Platform badge */}
-                    <div className={`absolute top-3 left-3 ${getPlatformColor(suggestion.platform)} text-white px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5`}>
-                      {getPlatformIcon(suggestion.platform)}
-                      {suggestion.platform}
-                    </div>
-                    {/* Objective badge */}
-                    <div className="absolute top-3 right-12 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-slate-800">
-                      {suggestion.objective}
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-4">
-                    <h3 className={`font-bold mb-2 ${theme.text}`}>{suggestion.title}</h3>
-                    <p className={`text-sm line-clamp-3 mb-3 whitespace-pre-line ${theme.textSecondary}`}>{suggestion.caption}</p>
-                    
-                    {/* Hashtags */}
-                    <div className="flex flex-wrap gap-1.5 mb-4">
-                      {suggestion.hashtags.slice(0, 3).map((tag, i) => (
-                        <span key={i} className="text-xs bg-[#ffcc29]/20 text-[#ffcc29] px-2 py-0.5 rounded-full">
-                          {tag}
-                        </span>
-                      ))}
-                      {suggestion.hashtags.length > 3 && (
-                        <span className={`text-xs ${theme.textSecondary}`}>+{suggestion.hashtags.length - 3}</span>
-                      )}
-                    </div>
-
-                    {/* Stats */}
-                    <div className={`flex items-center justify-between text-xs pt-3 border-t ${theme.textSecondary} ${
-                      isDarkMode ? 'border-slate-700/50' : 'border-slate-200'
-                    }`}>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>Best at {suggestion.bestTime}{(() => {
-                          const m = suggestion.bestTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-                          if (!m) return '';
-                          let h = parseInt(m[1]); const ap = m[3].toUpperCase();
-                          if (ap === 'PM' && h !== 12) h += 12;
-                          if (ap === 'AM' && h === 12) h = 0;
-                          const best = new Date(); best.setHours(h, parseInt(m[2]), 0, 0);
-                          return best <= new Date() ? ' (tomorrow)' : ' (today)';
-                        })()}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>{suggestion.estimatedReach}</span>
-                      </div>
-                    </div>
-
-                    {/* Download Buttons with credit costs */}
-                    <div className={`flex items-center gap-2 mt-3 pt-3 border-t ${
-                      isDarkMode ? 'border-slate-700/50' : 'border-slate-200'
-                    }`}>
-                      <button
-                        onClick={() => handleDownloadImage(suggestion)}
-                        disabled={downloadingImage === suggestion.id || isUsed}
-                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                          isDarkMode 
-                            ? 'bg-slate-800 hover:bg-slate-700 text-white' 
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        } ${(downloadingImage === suggestion.id || isUsed) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        {downloadingImage === suggestion.id ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <ImageDown className="w-3.5 h-3.5" />
-                        )}
-                        Image
-                      </button>
-                      <button
-                        onClick={() => handleDownloadText(suggestion)}
-                        disabled={isUsed}
-                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                          isDarkMode 
-                            ? 'bg-slate-800 hover:bg-slate-700 text-white' 
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        } ${isUsed ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        Text
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleDownloadImage(suggestion);
-                          handleDownloadText(suggestion);
-                        }}
-                        disabled={isUsed}
-                        className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                          isUsed 
-                            ? 'bg-green-600/30 text-green-400 cursor-not-allowed'
-                            : 'bg-[#ffcc29] text-black hover:bg-[#e6b825]'
-                        }`}
-                      >
-                        {isUsed ? (
-                          <><Check className="w-3.5 h-3.5" /> Used</>
-                        ) : (
-                          <><Download className="w-3.5 h-3.5" /> All</>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
+              {suggestedCampaigns.map((suggestion, idx) => (
+                <SuggestionCard
+                  key={`card-${idx}`}
+                  initialSuggestion={suggestion}
+                  index={idx}
+                  isDarkMode={isDarkMode}
+                  theme={theme}
+                  usedStatus={usedSuggestions.get(suggestion.id)}
+                  downloadingImage={downloadingImage}
+                  onEdit={setEditingCampaign}
+                  onUse={handleUseSuggestion}
+                  onDownloadImage={handleDownloadImage}
+                  onDownloadText={handleDownloadText}
+                  getAllTitles={getAllSuggestionTitles}
+                  getPlatformIcon={getPlatformIcon}
+                  getPlatformColor={getPlatformColor}
+                />
+              ))}
               
               {/* Placeholder cards while streaming */}
               {loadingSuggestions && suggestedCampaigns.length > 0 && (
