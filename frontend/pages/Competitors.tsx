@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiService } from '../services/api';
 import { CompetitorPost } from '../types';
-import { Loader2, Search, RotateCw, ExternalLink, Heart, MessageCircle, Plus, Instagram, Twitter, Linkedin, Facebook, Youtube, Swords, Sparkles, X, Eye, Download, Copy, Save, MessageSquare, FileText, EyeOff, Users, MapPin, Edit3 } from 'lucide-react';
+import { Loader2, Search, RotateCw, ExternalLink, Heart, MessageCircle, Plus, Instagram, Twitter, Linkedin, Facebook, Youtube, Swords, Sparkles, X, Eye, Download, Copy, Save, MessageSquare, FileText, EyeOff, Users, MapPin, Edit3, Zap } from 'lucide-react';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 
 const platformIcons: Record<string, React.ReactNode> = {
@@ -662,6 +662,7 @@ const Competitors: React.FC = () => {
                         >
                           <Swords className="w-4 h-4" />
                           Create Rival Post
+                          <span className="flex items-center gap-0.5 text-xs opacity-80"><Zap className="w-3 h-3" />7</span>
                         </button>
 
                         <div className={`flex justify-between items-center pt-4 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-[#f5f5f5]'}`}>
