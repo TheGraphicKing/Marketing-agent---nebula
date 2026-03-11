@@ -346,7 +346,7 @@ function getPlatformCaptionRules(platform) {
   return rules[platform.toLowerCase()] || rules['instagram'];
 }
 
-async function generateCampaignSuggestions(businessProfile, count = 6, allowedPlatforms = null, excludeTitles = []) {
+async function generateCampaignSuggestions(businessProfile, count = 6, allowedPlatforms = null, excludeTitles = [], contentAngle = null) {
   // Build a comprehensive context from the business profile
   const companyName = businessProfile.name || 'Your Company';
   const industry = businessProfile.industry || 'General';
@@ -454,7 +454,13 @@ CRITICAL UNIQUENESS RULES:
 - ALL ${count} campaigns MUST have completely DIFFERENT captions (no reusing the same text)
 - ALL ${count} campaigns MUST cover DIFFERENT topics or angles about ${companyName}
 - Do NOT create multiple campaigns that look or read the same
-- Each campaign should promote a DIFFERENT product, service, or aspect of ${companyName}`;
+- Each campaign should promote a DIFFERENT product, service, or aspect of ${companyName}
+${contentAngle ? `
+=== MANDATORY CONTENT ANGLE ===
+You MUST focus this campaign on the following content angle: "${contentAngle}"
+The entire campaign (title, caption, description, image concept) MUST revolve around this specific angle.
+Do NOT deviate from this angle. Make it the central theme of the campaign.
+` : ''}`;
 
   try {
     // Use higher token limit for generating multiple campaigns

@@ -189,6 +189,32 @@ interface SuggestedCampaign {
 }
 
 // ============================================
+// CONTENT ANGLE POOL — Each regeneration picks a unique angle
+// ============================================
+const CONTENT_ANGLES = [
+  'customer success story',
+  'behind the scenes',
+  'how-to tutorial',
+  'myth busting',
+  'product showcase',
+  'team spotlight',
+  'user testimonial',
+  'data and statistics',
+  'seasonal trend',
+  'industry news commentary',
+  'before and after transformation',
+  'day in the life',
+  'quick tips and hacks',
+  'comparison or versus',
+  'limited time offer',
+  'community spotlight',
+  'fun facts about the brand',
+  'problem and solution',
+  'milestone celebration',
+  'expert interview or quote',
+];
+
+// ============================================
 // INDEPENDENT SUGGESTION CARD COMPONENT
 // Each card manages its own dismiss/regenerate state
 // ============================================
@@ -203,13 +229,21 @@ const SuggestionCard: React.FC<{
   onUse: (s: SuggestedCampaign) => void;
   onDownloadImage: (s: SuggestedCampaign) => void;
   onDownloadText: (s: SuggestedCampaign) => void;
+  registerTitle: (index: number, title: string) => void;
   getAllTitles: () => string[];
+  getUsedAngles: () => string[];
+  enqueueRegeneration: (fn: () => Promise<void>) => void;
   getPlatformIcon: (p: string) => React.ReactNode;
   getPlatformColor: (p: string) => string;
-}> = ({ initialSuggestion, index, isDarkMode, theme, usedStatus, downloadingImage, onEdit, onUse, onDownloadImage, onDownloadText, getAllTitles, getPlatformIcon, getPlatformColor }) => {
+}> = ({ initialSuggestion, index, isDarkMode, theme, usedStatus, downloadingImage, onEdit, onUse, onDownloadImage, onDownloadText, registerTitle, getAllTitles, getUsedAngles, enqueueRegeneration, getPlatformIcon, getPlatformColor }) => {
   const [suggestion, setSuggestion] = useState<SuggestedCampaign>(initialSuggestion);
   const [dismissed, setDismissed] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+
+  // Register this card's title in the shared registry
+  useEffect(() => {
+    registerTitle(index, suggestion.title);
+  }, [suggestion.title, index, registerTitle]);
 
   // Update suggestion when parent passes new initial data (e.g. streaming load)
   useEffect(() => {
@@ -235,31 +269,42 @@ const SuggestionCard: React.FC<{
       return;
     }
     setRegenerating(true);
-    try {
-      const existingTitles = getAllTitles();
-      const response = await apiService.getCampaignSuggestions(1, true, undefined, existingTitles);
-      if (response?.campaigns?.length > 0) {
-        const camp = response.campaigns[0];
-        const newCampaign: SuggestedCampaign = {
-          id: `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          title: camp.name || camp.title || 'Campaign Idea',
-          caption: camp.caption || camp.description || '',
-          imageUrl: camp.imageUrl || '',
-          platform: camp.platforms?.[0] || camp.platform || 'Instagram',
-          objective: camp.objective || 'Awareness',
-          hashtags: camp.hashtags || ['#Marketing'],
-          bestTime: camp.bestPostTime || '10:00 AM',
-          estimatedReach: camp.estimatedReach || camp.expectedReach || '10K - 25K'
-        };
-        setSuggestion(newCampaign);
-        setDismissed(false);
+
+    // Enqueue so regenerations happen one at a time (no parallel = no dupes)
+    enqueueRegeneration(async () => {
+      try {
+        const existingTitles = getAllTitles();
+        // Pick a content angle not currently used by any visible card
+        const usedAngles = getUsedAngles();
+        const availableAngles = CONTENT_ANGLES.filter(a => !usedAngles.includes(a));
+        const angle = availableAngles.length > 0
+          ? availableAngles[Math.floor(Math.random() * availableAngles.length)]
+          : CONTENT_ANGLES[Math.floor(Math.random() * CONTENT_ANGLES.length)];
+
+        const response = await apiService.getCampaignSuggestions(1, true, undefined, existingTitles, angle);
+        if (response?.campaigns?.length > 0) {
+          const camp = response.campaigns[0];
+          const newCampaign: SuggestedCampaign = {
+            id: `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            title: camp.name || camp.title || 'Campaign Idea',
+            caption: camp.caption || camp.description || '',
+            imageUrl: camp.imageUrl || '',
+            platform: camp.platforms?.[0] || camp.platform || 'Instagram',
+            objective: camp.objective || 'Awareness',
+            hashtags: camp.hashtags || ['#Marketing'],
+            bestTime: camp.bestPostTime || '10:00 AM',
+            estimatedReach: camp.estimatedReach || camp.expectedReach || '10K - 25K'
+          };
+          setSuggestion(newCampaign);
+          setDismissed(false);
+        }
+      } catch (err) {
+        console.error('Failed to regenerate:', err);
+        alert('Failed to regenerate. Please try again.');
+      } finally {
+        setRegenerating(false);
       }
-    } catch (err) {
-      console.error('Failed to regenerate:', err);
-      alert('Failed to regenerate. Please try again.');
-    } finally {
-      setRegenerating(false);
-    }
+    });
   };
 
   const isUsed = !!usedStatus;
@@ -1190,6 +1235,36 @@ const Campaigns: React.FC = () => {
     return suggestedCampaigns.map(c => c.title).filter(Boolean);
   }, [suggestedCampaigns]);
 
+  // ====== SHARED TITLE REGISTRY ======
+  // Cards register their titles here so every card can see every other card's current title
+  const titleRegistryRef = useRef<Map<number, string>>(new Map());
+
+  const registerCardTitle = useCallback((cardIndex: number, title: string) => {
+    titleRegistryRef.current.set(cardIndex, title);
+  }, []);
+
+  const getAllRegisteredTitles = useCallback(() => {
+    // Merge parent suggestedCampaigns titles + any regenerated titles from the registry
+    const parentTitles = suggestedCampaigns.map(c => c.title).filter(Boolean);
+    const registryTitles = Array.from(titleRegistryRef.current.values()).filter(Boolean);
+    return Array.from(new Set([...parentTitles, ...registryTitles]));
+  }, [suggestedCampaigns]);
+
+  // ====== USED ANGLES TRACKER ======
+  const angleRegistryRef = useRef<Map<number, string>>(new Map());
+
+  const getUsedAngles = useCallback(() => {
+    return Array.from(angleRegistryRef.current.values()).filter(Boolean);
+  }, []);
+
+  // ====== SERIALIZED REGENERATION QUEUE ======
+  // Only one regeneration runs at a time — prevents duplicate content
+  const regenQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const enqueueRegeneration = useCallback((fn: () => Promise<void>) => {
+    regenQueueRef.current = regenQueueRef.current.then(fn, fn);
+  }, []);
+
   // Download image
   const handleDownloadImage = async (suggestion: SuggestedCampaign) => {
     setDownloadingImage(suggestion.id);
@@ -1420,7 +1495,10 @@ Generated by Nebulaa Gravity Marketing Agent
                   onUse={handleUseSuggestion}
                   onDownloadImage={handleDownloadImage}
                   onDownloadText={handleDownloadText}
-                  getAllTitles={getAllSuggestionTitles}
+                  registerTitle={registerCardTitle}
+                  getAllTitles={getAllRegisteredTitles}
+                  getUsedAngles={getUsedAngles}
+                  enqueueRegeneration={enqueueRegeneration}
                   getPlatformIcon={getPlatformIcon}
                   getPlatformColor={getPlatformColor}
                 />
