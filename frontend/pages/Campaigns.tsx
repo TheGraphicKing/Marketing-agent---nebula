@@ -225,6 +225,7 @@ const SuggestionCard: React.FC<{
   theme: any;
   usedStatus?: string;
   downloadingImage: string | null;
+  initialDismissed?: boolean;
   onEdit: (s: SuggestedCampaign) => void;
   onUse: (s: SuggestedCampaign) => void;
   onDownloadImage: (s: SuggestedCampaign) => void;
@@ -234,11 +235,12 @@ const SuggestionCard: React.FC<{
   getUsedAngles: () => string[];
   enqueueRegeneration: (fn: () => Promise<void>) => void;
   onRegenerated: (index: number, newCampaign: SuggestedCampaign) => void;
+  onDismissed: (index: number) => void;
   getPlatformIcon: (p: string) => React.ReactNode;
   getPlatformColor: (p: string) => string;
-}> = ({ initialSuggestion, index, isDarkMode, theme, usedStatus, downloadingImage, onEdit, onUse, onDownloadImage, onDownloadText, registerTitle, getAllTitles, getUsedAngles, enqueueRegeneration, onRegenerated, getPlatformIcon, getPlatformColor }) => {
+}> = ({ initialSuggestion, index, isDarkMode, theme, usedStatus, downloadingImage, initialDismissed, onEdit, onUse, onDownloadImage, onDownloadText, registerTitle, getAllTitles, getUsedAngles, enqueueRegeneration, onRegenerated, onDismissed, getPlatformIcon, getPlatformColor }) => {
   const [suggestion, setSuggestion] = useState<SuggestedCampaign>(initialSuggestion);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(initialDismissed || false);
   const [regenerating, setRegenerating] = useState(false);
 
   // Register this card's title in the shared registry
@@ -249,11 +251,12 @@ const SuggestionCard: React.FC<{
   // Update suggestion when parent passes new initial data (e.g. streaming load)
   useEffect(() => {
     setSuggestion(initialSuggestion);
-    setDismissed(false);
+    if (!initialDismissed) setDismissed(false);
   }, [initialSuggestion.id]);
 
   const handleDismiss = () => {
     setDismissed(true);
+    onDismissed(index);
   };
 
   const handleRegenerate = async () => {
@@ -298,7 +301,7 @@ const SuggestionCard: React.FC<{
           };
           setSuggestion(newCampaign);
           setDismissed(false);
-          // Notify parent so it persists to localStorage/cache
+          // Notify parent so it persists to localStorage/cache and clears dismissed state
           onRegenerated(index, newCampaign);
         }
       } catch (err) {
@@ -786,12 +789,16 @@ const Campaigns: React.FC = () => {
           // Check if cache is less than 24 hours old (persist campaigns for a day)
           const cacheAge = Date.now() - (parsed.timestamp || 0);
           if (cacheAge < 24 * 60 * 60 * 1000) { // 24 hours
-            // Deduplicate cached campaigns by title before loading
+            // Deduplicate cached campaigns by title AND caption start before loading
             const seenTitles = new Set<string>();
+            const seenCaptionStarts = new Set<string>();
             const dedupedCampaigns = parsed.campaigns.filter((c: SuggestedCampaign) => {
               const title = (c.title || '').toLowerCase().trim();
+              const captionStart = (c.caption || '').toLowerCase().trim().substring(0, 50);
               if (!title || seenTitles.has(title)) return false;
+              if (captionStart.length > 20 && seenCaptionStarts.has(captionStart)) return false;
               seenTitles.add(title);
+              if (captionStart.length > 20) seenCaptionStarts.add(captionStart);
               return true;
             });
             console.log('✅ Loading campaigns from cache (age:', Math.round(cacheAge / 60000), 'minutes, deduped:', parsed.campaigns.length, '->', dedupedCampaigns.length, ')');
@@ -1117,6 +1124,7 @@ const Campaigns: React.FC = () => {
 
     setLoadingSuggestions(true);
     setSuggestedCampaigns([]);
+    setDismissedIndices(new Set()); // Clear dismissed state on full regeneration
     setStreamingProgress({ current: 0, total: 6 });
     setIsCached(false);
     
@@ -1143,10 +1151,22 @@ const Campaigns: React.FC = () => {
             estimatedReach: campaign.estimatedReach || campaign.expectedReach || '10K - 25K'
           };
           
-          // Client-side dedup: skip if title already exists in current campaigns
+          // Client-side dedup: skip if title OR caption start already exists
           setSuggestedCampaigns(prev => {
             const newTitle = (transformed.title || '').toLowerCase().trim();
-            const isDupe = prev.some(c => (c.title || '').toLowerCase().trim() === newTitle);
+            const newCaptionStart = (transformed.caption || '').toLowerCase().trim().substring(0, 50);
+            const isDupe = prev.some(c => {
+              const existingTitle = (c.title || '').toLowerCase().trim();
+              const existingCaptionStart = (c.caption || '').toLowerCase().trim().substring(0, 50);
+              // Title match
+              if (existingTitle === newTitle) return true;
+              // Title containment (one contains the other)
+              if (existingTitle.length > 10 && newTitle.length > 10 && 
+                  (existingTitle.includes(newTitle) || newTitle.includes(existingTitle))) return true;
+              // Caption start match
+              if (newCaptionStart.length > 20 && existingCaptionStart === newCaptionStart) return true;
+              return false;
+            });
             if (isDupe) {
               console.log('🚫 Frontend dedup: skipping duplicate "' + transformed.title + '"');
               return prev;
@@ -1225,12 +1245,16 @@ const Campaigns: React.FC = () => {
           bestTime: camp.bestPostTime || '10:00 AM',
           estimatedReach: camp.expectedReach || camp.expectedResults || '10K - 25K'
         }));
-        // Deduplicate by title
+        // Deduplicate by title AND caption start
         const seenTitles = new Set<string>();
+        const seenCaptionStarts = new Set<string>();
         const dedupedSuggestions = aiSuggestions.filter(c => {
           const title = (c.title || '').toLowerCase().trim();
+          const captionStart = (c.caption || '').toLowerCase().trim().substring(0, 50);
           if (!title || seenTitles.has(title)) return false;
+          if (captionStart.length > 20 && seenCaptionStarts.has(captionStart)) return false;
           seenTitles.add(title);
+          if (captionStart.length > 20) seenCaptionStarts.add(captionStart);
           return true;
         });
         setSuggestedCampaigns(dedupedSuggestions);
@@ -1303,6 +1327,39 @@ const Campaigns: React.FC = () => {
       }
       return updated;
     });
+    // Clear dismissed state for this card since it's been regenerated
+    setDismissedIndices(prev => {
+      const updated = new Set(prev);
+      updated.delete(cardIndex);
+      return updated;
+    });
+  }, []);
+
+  // ====== DISMISSED STATE PERSISTENCE ======
+  const [dismissedIndices, setDismissedIndices] = useState<Set<number>>(new Set());
+
+  // Load dismissed indices from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getCacheKey() + '_dismissed');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setDismissedIndices(new Set(parsed));
+        }
+      }
+    } catch (_) {}
+  }, []);
+
+  // Save dismissed indices whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(getCacheKey() + '_dismissed', JSON.stringify(Array.from(dismissedIndices)));
+    } catch (_) {}
+  }, [dismissedIndices]);
+
+  const handleCardDismissed = useCallback((cardIndex: number) => {
+    setDismissedIndices(prev => new Set(prev).add(cardIndex));
   }, []);
 
   // Download image
@@ -1531,6 +1588,7 @@ Generated by Nebulaa Gravity Marketing Agent
                   theme={theme}
                   usedStatus={usedSuggestions.get(suggestion.id)}
                   downloadingImage={downloadingImage}
+                  initialDismissed={dismissedIndices.has(idx)}
                   onEdit={setEditingCampaign}
                   onUse={handleUseSuggestion}
                   onDownloadImage={handleDownloadImage}
@@ -1540,6 +1598,7 @@ Generated by Nebulaa Gravity Marketing Agent
                   getUsedAngles={getUsedAngles}
                   enqueueRegeneration={enqueueRegeneration}
                   onRegenerated={handleCardRegenerated}
+                  onDismissed={handleCardDismissed}
                   getPlatformIcon={getPlatformIcon}
                   getPlatformColor={getPlatformColor}
                 />

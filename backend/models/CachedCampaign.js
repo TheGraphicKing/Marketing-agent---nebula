@@ -117,15 +117,22 @@ cachedCampaignSchema.statics.saveCampaigns = async function(userId, businessProf
   // Save new campaigns
   const validObjectives = ['awareness', 'engagement', 'traffic', 'sales', 'conversion', 'trust', 'authority'];
   
-  // Deduplicate campaigns before saving to cache
+  // Deduplicate campaigns before saving to cache — check BOTH title AND caption start
   const seenTitles = new Set();
+  const seenCaptionStarts = new Set();
   const dedupedCampaigns = campaigns.filter(camp => {
     const title = (camp.name || camp.title || '').toLowerCase().trim();
+    const captionStart = (camp.caption || '').toLowerCase().trim().substring(0, 60);
     if (!title || seenTitles.has(title)) {
-      console.log(`🚫 Not caching duplicate: "${title}"`);
+      console.log(`🚫 Not caching duplicate title: "${title}"`);
+      return false;
+    }
+    if (captionStart.length > 20 && seenCaptionStarts.has(captionStart)) {
+      console.log(`🚫 Not caching duplicate caption: "${captionStart}..."`);
       return false;
     }
     seenTitles.add(title);
+    if (captionStart.length > 20) seenCaptionStarts.add(captionStart);
     return true;
   });
   

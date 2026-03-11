@@ -905,12 +905,16 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
       const cached = await CachedCampaign.getCachedForUser(user._id, profileHash, count);
       
       if (cached && cached.length >= count) {
-        // Deduplicate cached campaigns by title before serving
+        // Deduplicate cached campaigns by title AND caption before serving
         const seenTitles = new Set();
+        const seenCaptionStarts = new Set();
         const dedupedCached = cached.filter(c => {
           const title = (c.name || '').toLowerCase().trim();
+          const captionStart = (c.caption || '').toLowerCase().trim().substring(0, 60);
           if (!title || seenTitles.has(title)) return false;
+          if (captionStart.length > 20 && seenCaptionStarts.has(captionStart)) return false;
           seenTitles.add(title);
+          if (captionStart.length > 20) seenCaptionStarts.add(captionStart);
           return true;
         });
         
@@ -976,8 +980,59 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
     
     const generatedCampaigns = [];
     const usedTitles = [];
-    const maxAttempts = count + 3; // Allow extra attempts to fill count if dupes are skipped
+    const usedCaptions = [];
+    
+    // Pre-populate usedTitles and usedCaptions from existing cached campaigns
+    // This prevents new generations from duplicating content that's already in the cache
+    try {
+      const existingCached = await CachedCampaign.find({
+        userId: user._id,
+        status: { $in: ['suggested', 'viewed'] },
+        expiresAt: { $gt: new Date() }
+      }).select('name caption').lean();
+      for (const c of existingCached) {
+        if (c.name) usedTitles.push(c.name);
+        if (c.caption) usedCaptions.push(c.caption);
+      }
+      if (existingCached.length > 0) {
+        console.log(`📋 Pre-seeded dedup with ${existingCached.length} cached campaigns`);
+      }
+    } catch (seedErr) {
+      console.error('Failed to seed dedup from cache:', seedErr);
+    }
+    const maxAttempts = count + 4; // Allow extra attempts to fill count if dupes are skipped
     let attemptIndex = 0;
+    
+    // Helper: check if title is duplicate or too similar
+    const checkTitleDupe = (c) => c && usedTitles.some(t => {
+      const existing = t.toLowerCase().trim();
+      const newTitle = (c.name || c.title || '').toLowerCase().trim();
+      if (!newTitle) return false;
+      return existing === newTitle || 
+             existing.includes(newTitle) || 
+             newTitle.includes(existing) ||
+             (newTitle.split(' ').filter(w => w.length > 3 && existing.includes(w)).length >= 3);
+    });
+    
+    // Helper: check if caption is too similar to any existing
+    const checkCaptionDupe = (c) => c && usedCaptions.some(existingCaption => {
+      const a = existingCaption.toLowerCase().trim();
+      const b = (c.caption || '').toLowerCase().trim();
+      if (!a || !b || a.length < 20 || b.length < 20) return false;
+      // Exact match
+      if (a === b) return true;
+      // First 50 chars same = definitely dupe
+      if (a.substring(0, 50) === b.substring(0, 50)) return true;
+      // Word overlap check
+      const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 3));
+      const wordsB = b.split(/\s+/).filter(w => w.length > 3);
+      if (wordsA.size === 0 || wordsB.length === 0) return false;
+      const overlap = wordsB.filter(w => wordsA.has(w)).length;
+      return overlap / Math.max(wordsA.size, wordsB.length) > 0.5;
+    });
+    
+    // Combined duplicate check
+    const isDuplicate = (c) => checkTitleDupe(c) || checkCaptionDupe(c);
     
     while (generatedCampaigns.length < count && attemptIndex < maxAttempts) {
       const i = attemptIndex;
@@ -986,50 +1041,27 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
         // Generate single campaign, passing used titles to avoid duplicates
         let campaign = await generateSingleCampaign(user.businessProfile, i, count, platformsParam, usedTitles);
         
-        // Check if title is duplicate or too similar
-        const checkDuplicate = (c) => c && usedTitles.some(t => {
-          const existing = t.toLowerCase().trim();
-          const newTitle = (c.name || c.title || '').toLowerCase().trim();
-          return existing === newTitle || 
-                 existing.includes(newTitle) || 
-                 newTitle.includes(existing) ||
-                 (newTitle.split(' ').filter(w => w.length > 3 && existing.includes(w)).length >= 3);
-        });
-        
-        // Retry up to 2 times if duplicate detected
+        // Retry up to 2 times if title OR caption is duplicate
         let retries = 0;
-        while (checkDuplicate(campaign) && retries < 2) {
-          console.log(`⚠️ Duplicate/similar title detected: "${campaign.name}", retry ${retries + 1}...`);
-          campaign = await generateSingleCampaign(user.businessProfile, i + retries + 1, count, platformsParam, usedTitles);
+        while (isDuplicate(campaign) && retries < 2) {
+          const reason = checkTitleDupe(campaign) ? 'title' : 'caption';
+          console.log(`⚠️ Duplicate ${reason} detected: "${campaign.name}", retry ${retries + 1}...`);
+          campaign = await generateSingleCampaign(user.businessProfile, i + retries + 10, count, platformsParam, usedTitles);
           retries++;
         }
         
-        // Also check caption similarity — reject if caption is >80% same as existing
-        const checkCaptionDupe = (c) => c && generatedCampaigns.some(existing => {
-          const a = (existing.caption || '').toLowerCase().trim();
-          const b = (c.caption || '').toLowerCase().trim();
-          if (!a || !b || a.length < 20) return false;
-          // Simple overlap: count matching words
-          const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 3));
-          const wordsB = b.split(/\s+/).filter(w => w.length > 3);
-          const overlap = wordsB.filter(w => wordsA.has(w)).length;
-          return overlap / Math.max(wordsA.size, wordsB.length) > 0.6;
-        });
-        
-        if (checkCaptionDupe(campaign)) {
-          console.log(`⚠️ Caption too similar, retrying once more...`);
-          campaign = await generateSingleCampaign(user.businessProfile, i + 10, count, platformsParam, usedTitles);
-        }
-        
         // Skip if STILL a duplicate after retries
-        if (checkDuplicate(campaign)) {
-          console.log(`🚫 Skipping campaign ${i} — still duplicate after retries`);
+        if (isDuplicate(campaign)) {
+          const reason = checkTitleDupe(campaign) ? 'title' : 'caption';
+          console.log(`🚫 Skipping campaign ${i} — still duplicate ${reason} after ${retries} retries`);
           continue;
         }
         
         if (campaign) {
           const title = campaign.name || campaign.title || '';
+          const caption = campaign.caption || '';
           if (title) usedTitles.push(title);
+          if (caption) usedCaptions.push(caption);
           generatedCampaigns.push(campaign);
           
           res.write(`data: ${JSON.stringify({ 

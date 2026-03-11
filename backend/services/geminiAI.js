@@ -78,8 +78,15 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 function getCacheKey(prompt) {
-  // Create a simple hash of the prompt
-  return prompt.substring(0, 100).replace(/\s+/g, '_');
+  // Use a proper hash of the full prompt to avoid cache collisions
+  // Previously used first 100 chars which caused identical campaigns for similar prompts
+  let hash = 0;
+  for (let i = 0; i < prompt.length; i++) {
+    const char = prompt.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return 'gemini_' + Math.abs(hash).toString(36);
 }
 
 /**
@@ -464,7 +471,8 @@ Do NOT deviate from this angle. Make it the central theme of the campaign.
 
   try {
     // Use higher token limit for generating multiple campaigns
-    const response = await callGemini(prompt, { temperature: 0.8, maxTokens: 16384, timeout: EXTENDED_TIMEOUT });
+    // ALWAYS skip cache for campaign generation — cached prompts cause duplicate content
+    const response = await callGemini(prompt, { temperature: 0.8, maxTokens: 16384, timeout: EXTENDED_TIMEOUT, skipCache: true });
     const parsed = parseGeminiJSON(response);
     
     // Deduplicate campaigns — remove any with duplicate titles or very similar captions
@@ -573,16 +581,20 @@ async function generateSingleCampaign(businessProfile, index, total, allowedPlat
   const objective = shuffledObjectives[index % shuffledObjectives.length];
   const platform = shuffledPlatforms[index % shuffledPlatforms.length];
   
-  // Add variety triggers based on time
-  const varietyHooks = [
-    'Create a FRESH and UNIQUE',
-    'Design an INNOVATIVE',
-    'Craft a CREATIVE and ORIGINAL',
-    'Develop a COMPELLING',
-    'Build an ENGAGING',
-    'Generate a STANDOUT'
+  // Assign a specific CONTENT SLOT to each campaign index — guarantees diversity
+  const contentSlots = [
+    'product showcase or feature highlight',
+    'customer success story or testimonial',
+    'educational tip or how-to guide',
+    'behind the scenes or team culture',
+    'limited-time offer or promotion',
+    'industry trend or thought leadership',
+    'problem-solution narrative',
+    'milestone, achievement, or social proof',
+    'community engagement or poll',
+    'seasonal or event-based campaign'
   ];
-  const hookIndex = (Date.now() + index) % varietyHooks.length;
+  const contentSlot = contentSlots[index % contentSlots.length];
   
   // Get additional business context
   const products = businessProfile.products?.map(p => p.name || p).join(', ') || '';
@@ -591,7 +603,11 @@ async function generateSingleCampaign(businessProfile, index, total, allowedPlat
   const usps = businessProfile.uniqueSellingPoints?.join(', ') || '';
   const description = businessProfile.description || '';
   
-  const prompt = `${varietyHooks[hookIndex]} ${objective}-focused social media campaign for "${companyName}" (${industry}/${niche}).
+  const prompt = `Generate a ${objective}-focused social media campaign for "${companyName}" (${industry}/${niche}).
+
+=== MANDATORY CONTENT SLOT ===
+This campaign MUST be a "${contentSlot}" type post. Build the ENTIRE campaign around this angle.
+Do NOT deviate from this content type. ID: ${Date.now()}-${Math.random().toString(36).slice(2,6)}
 
 BUSINESS DETAILS:
 - Company: ${companyName}
