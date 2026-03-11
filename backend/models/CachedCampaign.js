@@ -117,7 +117,19 @@ cachedCampaignSchema.statics.saveCampaigns = async function(userId, businessProf
   // Save new campaigns
   const validObjectives = ['awareness', 'engagement', 'traffic', 'sales', 'conversion', 'trust', 'authority'];
   
-  const docs = campaigns.map(camp => {
+  // Deduplicate campaigns before saving to cache
+  const seenTitles = new Set();
+  const dedupedCampaigns = campaigns.filter(camp => {
+    const title = (camp.name || camp.title || '').toLowerCase().trim();
+    if (!title || seenTitles.has(title)) {
+      console.log(`🚫 Not caching duplicate: "${title}"`);
+      return false;
+    }
+    seenTitles.add(title);
+    return true;
+  });
+  
+  const docs = dedupedCampaigns.map(camp => {
     // Sanitize objective - AI sometimes returns "awareness|engagement|sales" instead of single value
     let objective = (camp.objective || 'awareness').toLowerCase().trim();
     if (objective.includes('|')) {

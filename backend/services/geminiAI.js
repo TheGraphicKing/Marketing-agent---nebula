@@ -600,7 +600,7 @@ BUSINESS DETAILS:
 - Description: ${description || 'A leading company in ' + industry}
 
 IMPORTANT: Generate content SPECIFICALLY about ${companyName}'s actual products/services. The campaign MUST be relevant to what ${companyName} does — do NOT create generic motivational or startup advice content unless that IS the business.
-${usedTitles.length > 0 ? `\nALREADY USED TITLES (DO NOT REPEAT OR USE SIMILAR):\n${usedTitles.map(t => `- "${t}"`).join('\n')}\nYou MUST create a COMPLETELY DIFFERENT campaign topic, title, AND caption. Do NOT reuse any words from the above titles.\n` : ''}
+${usedTitles.length > 0 ? `\nALREADY USED TITLES (DO NOT REPEAT OR CREATE SIMILAR TITLES):\n${usedTitles.map(t => `- "${t}"`).join('\n')}\n\nCRITICAL: You MUST create a COMPLETELY DIFFERENT campaign with a DIFFERENT topic, title, AND caption.\n- Do NOT reuse any key words from the above titles.\n- Do NOT create a variation or rephrasing of any above title.\n- Choose a DIFFERENT product, service, or marketing angle entirely.\n- The new title must NOT share more than 2 significant words with ANY used title.\n` : ''}
 Target: ${targetAudience}
 Voice: ${brandVoice}
 Platform: ${platform}

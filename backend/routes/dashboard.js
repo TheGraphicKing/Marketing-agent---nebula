@@ -905,9 +905,23 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
       const cached = await CachedCampaign.getCachedForUser(user._id, profileHash, count);
       
       if (cached && cached.length >= count) {
+        // Deduplicate cached campaigns by title before serving
+        const seenTitles = new Set();
+        const dedupedCached = cached.filter(c => {
+          const title = (c.name || '').toLowerCase().trim();
+          if (!title || seenTitles.has(title)) return false;
+          seenTitles.add(title);
+          return true;
+        });
+        
+        // If too many dupes removed, skip cache and regenerate fresh
+        if (dedupedCached.length < count) {
+          console.log(`🗑️ Cache had duplicates (${cached.length} → ${dedupedCached.length}), regenerating fresh...`);
+          await CachedCampaign.invalidateCache(user._id);
+        } else {
         // Stream cached campaigns quickly (50ms apart for smooth UX)
-        for (let i = 0; i < cached.length; i++) {
-          const c = cached[i];
+        for (let i = 0; i < dedupedCached.length; i++) {
+          const c = dedupedCached[i];
           const campaign = {
             id: c.campaignId,
             name: c.name,
@@ -934,9 +948,10 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
           await new Promise(r => setTimeout(r, 50));
         }
         
-        res.write(`data: ${JSON.stringify({ type: 'complete', total: cached.length, cached: true })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'complete', total: dedupedCached.length, cached: true })}\n\n`);
         res.end();
         return;
+      } // end else (enough deduped)
       }
     }
     
@@ -961,24 +976,55 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
     
     const generatedCampaigns = [];
     const usedTitles = [];
+    const maxAttempts = count + 3; // Allow extra attempts to fill count if dupes are skipped
+    let attemptIndex = 0;
     
-    for (let i = 0; i < count; i++) {
+    while (generatedCampaigns.length < count && attemptIndex < maxAttempts) {
+      const i = attemptIndex;
+      attemptIndex++;
       try {
         // Generate single campaign, passing used titles to avoid duplicates
         let campaign = await generateSingleCampaign(user.businessProfile, i, count, platformsParam, usedTitles);
         
-        // Retry once if title is duplicate or too similar
-        const isDuplicate = campaign && usedTitles.some(t => {
+        // Check if title is duplicate or too similar
+        const checkDuplicate = (c) => c && usedTitles.some(t => {
           const existing = t.toLowerCase().trim();
-          const newTitle = (campaign.name || campaign.title || '').toLowerCase().trim();
+          const newTitle = (c.name || c.title || '').toLowerCase().trim();
           return existing === newTitle || 
                  existing.includes(newTitle) || 
                  newTitle.includes(existing) ||
                  (newTitle.split(' ').filter(w => w.length > 3 && existing.includes(w)).length >= 3);
         });
-        if (isDuplicate) {
-          console.log(`⚠️ Duplicate/similar title detected: "${campaign.name}", retrying...`);
-          campaign = await generateSingleCampaign(user.businessProfile, i, count, platformsParam, usedTitles);
+        
+        // Retry up to 2 times if duplicate detected
+        let retries = 0;
+        while (checkDuplicate(campaign) && retries < 2) {
+          console.log(`⚠️ Duplicate/similar title detected: "${campaign.name}", retry ${retries + 1}...`);
+          campaign = await generateSingleCampaign(user.businessProfile, i + retries + 1, count, platformsParam, usedTitles);
+          retries++;
+        }
+        
+        // Also check caption similarity — reject if caption is >80% same as existing
+        const checkCaptionDupe = (c) => c && generatedCampaigns.some(existing => {
+          const a = (existing.caption || '').toLowerCase().trim();
+          const b = (c.caption || '').toLowerCase().trim();
+          if (!a || !b || a.length < 20) return false;
+          // Simple overlap: count matching words
+          const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 3));
+          const wordsB = b.split(/\s+/).filter(w => w.length > 3);
+          const overlap = wordsB.filter(w => wordsA.has(w)).length;
+          return overlap / Math.max(wordsA.size, wordsB.length) > 0.6;
+        });
+        
+        if (checkCaptionDupe(campaign)) {
+          console.log(`⚠️ Caption too similar, retrying once more...`);
+          campaign = await generateSingleCampaign(user.businessProfile, i + 10, count, platformsParam, usedTitles);
+        }
+        
+        // Skip if STILL a duplicate after retries
+        if (checkDuplicate(campaign)) {
+          console.log(`🚫 Skipping campaign ${i} — still duplicate after retries`);
+          continue;
         }
         
         if (campaign) {
@@ -988,7 +1034,7 @@ router.get('/campaign-suggestions-stream', protect, async (req, res) => {
           
           res.write(`data: ${JSON.stringify({ 
             type: 'campaign', 
-            index: i, 
+            index: generatedCampaigns.length - 1, 
             total: count,
             campaign,
             cached: false
