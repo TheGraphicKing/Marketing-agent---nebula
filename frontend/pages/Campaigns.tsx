@@ -759,11 +759,7 @@ const Campaigns: React.FC = () => {
     });
   };
 
-  // Use ref to track if we loaded from cache (avoids race condition)
-  const loadedFromCacheRef = useRef(false);
-  const initialLoadDoneRef = useRef(false);
-
-  // Derive a user-scoped cache key from the JWT token so different users never share cached campaigns
+  // Derive a user-scoped key from JWT for dismissed state persistence
   const getCacheKey = () => {
     try {
       const token = localStorage.getItem('authToken');
@@ -776,61 +772,14 @@ const Campaigns: React.FC = () => {
     return 'nebula_suggested_campaigns';
   };
 
-  // Load cached campaigns from localStorage on mount - BEFORE any other effects
-  useEffect(() => {
-    if (initialLoadDoneRef.current) return;
-    initialLoadDoneRef.current = true;
-    
-    const cachedCampaigns = localStorage.getItem(getCacheKey());
-    if (cachedCampaigns) {
-      try {
-        const parsed = JSON.parse(cachedCampaigns);
-        if (parsed.campaigns && parsed.campaigns.length > 0) {
-          // Check if cache is less than 24 hours old (persist campaigns for a day)
-          const cacheAge = Date.now() - (parsed.timestamp || 0);
-          if (cacheAge < 24 * 60 * 60 * 1000) { // 24 hours
-            // Deduplicate cached campaigns by title AND caption start before loading
-            const seenTitles = new Set<string>();
-            const seenCaptionStarts = new Set<string>();
-            const dedupedCampaigns = parsed.campaigns.filter((c: SuggestedCampaign) => {
-              const title = (c.title || '').toLowerCase().trim();
-              const captionStart = (c.caption || '').toLowerCase().trim().substring(0, 50);
-              if (!title || seenTitles.has(title)) return false;
-              if (captionStart.length > 20 && seenCaptionStarts.has(captionStart)) return false;
-              seenTitles.add(title);
-              if (captionStart.length > 20) seenCaptionStarts.add(captionStart);
-              return true;
-            });
-            console.log('✅ Loading campaigns from cache (age:', Math.round(cacheAge / 60000), 'minutes, deduped:', parsed.campaigns.length, '->', dedupedCampaigns.length, ')');
-            setSuggestedCampaigns(dedupedCampaigns);
-            setLoadingSuggestions(false);
-            setIsCached(true);
-            loadedFromCacheRef.current = true;
-            return;
-          } else {
-            console.log('⏰ Cache expired after 24 hours, will regenerate');
-          }
-        }
-      } catch (e) {
-        console.log('Could not parse cached campaigns');
-      }
-    }
-  }, []);
-
+  // Always load campaigns from backend (MongoDB cache + Cloudinary URLs = single source of truth)
+  // No localStorage campaign cache — all browsers/devices stay in sync
   useEffect(() => {
     if (activeTab === 'suggestions') {
-      // Skip if we already loaded from cache
-      if (loadedFromCacheRef.current) {
-        console.log('✅ Using cached campaigns, skipping generation');
-        loadedFromCacheRef.current = false; // Reset for next tab switch
-        setLoadingSuggestions(false);
-        return;
-      }
-      // Only generate if no campaigns exist in state
+      // Only fetch if no campaigns in current React state (handles tab switching within same session)
       if (suggestedCampaigns.length === 0) {
         generateSuggestions();
       } else {
-        console.log('✅ Campaigns already in state, skipping generation');
         setLoadingSuggestions(false);
       }
     } else {
@@ -838,41 +787,6 @@ const Campaigns: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Save campaigns to localStorage whenever they change (without base64 images to avoid quota issues)
-  useEffect(() => {
-    if (suggestedCampaigns.length > 0) {
-      try {
-        // Use unique stock images per campaign based on campaign title/id to maintain variety
-        const stockImages = [
-          'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1551434678-e076c223a692?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=600&fit=crop',
-          'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&h=600&fit=crop',
-        ];
-        
-        const campaignsForCache = suggestedCampaigns.map((campaign, idx) => ({
-          ...campaign,
-          // Replace base64 images with unique stock images per campaign
-          imageUrl: campaign.imageUrl?.startsWith('data:') 
-            ? stockImages[idx % stockImages.length]
-            : campaign.imageUrl
-        }));
-        localStorage.setItem(getCacheKey(), JSON.stringify({
-          campaigns: campaignsForCache,
-          timestamp: Date.now()
-        }));
-      } catch (e) {
-        console.warn('Failed to cache campaigns to localStorage:', e);
-        // Clear cache if quota exceeded
-        localStorage.removeItem(getCacheKey());
-      }
-    }
-  }, [suggestedCampaigns]);
 
   // Generate personalized fallback suggestions based on business profile
   const generatePersonalizedFallback = (profile: any, seed: number = 0): SuggestedCampaign[] => {
@@ -1318,7 +1232,7 @@ const Campaigns: React.FC = () => {
   }, []);
 
   // ====== PERSIST REGENERATED CARDS ======
-  // When a card regenerates, update suggestedCampaigns so it auto-saves to localStorage
+  // When a card regenerates, update suggestedCampaigns in React state
   const handleCardRegenerated = useCallback((cardIndex: number, newCampaign: SuggestedCampaign) => {
     setSuggestedCampaigns(prev => {
       const updated = [...prev];
