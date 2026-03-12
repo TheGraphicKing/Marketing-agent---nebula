@@ -1354,7 +1354,7 @@ const Dashboard: React.FC = () => {
                   🔄 Live
                 </button>
                 <button 
-                  onClick={() => window.open('/competitors', '_self')}
+                  onClick={() => window.location.hash = '#/competitors'}
                   className="text-[#ffcc29] text-xs font-semibold hover:underline px-3 py-1.5 bg-[#ffcc29]/10 rounded-lg hover:bg-[#ffcc29]/20 transition-colors"
                 >
                   View All
@@ -1370,7 +1370,7 @@ const Dashboard: React.FC = () => {
                 <p className={`text-sm font-medium mb-1 ${theme.textSecondary}`}>No competitor data yet</p>
                 <p className={`text-xs mb-4 ${theme.textMuted}`}>Add competitors to track their activity</p>
                 <button 
-                  onClick={() => window.open('/competitors', '_self')}
+                  onClick={() => window.location.hash = '#/competitors'}
                   className="px-4 py-2 bg-[#ffcc29] hover:bg-[#e6b825] text-[#070A12] text-xs font-semibold rounded-lg transition-colors"
                 >
                   + Add Competitors
