@@ -161,8 +161,10 @@ const Competitors: React.FC = () => {
         setCompetitors(prev => [...prev, res.competitor]);
         setDiscoveryMessage(res.message || `✅ Added ${addCompetitorName.trim()}!`);
         setAddCompetitorName('');
-        // Reload posts after a delay to catch background Apify results
-        setTimeout(() => loadPosts(), 15000);
+        // Fetch posts for the new competitor's category with loading animation
+        const compType = res.competitor?.competitorType || selectedCategory || 'direct';
+        const fetchType = compType === 'all' ? 'direct' : compType;
+        setTimeout(() => handleFetchPostsForType(fetchType), 2000);
       } else {
         setDiscoveryMessage(`⚠️ ${res.message || 'Failed to add competitor'}`);
       }
