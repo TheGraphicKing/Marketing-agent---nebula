@@ -242,6 +242,7 @@ const SuggestionCard: React.FC<{
   const [suggestion, setSuggestion] = useState<SuggestedCampaign>(initialSuggestion);
   const [dismissed, setDismissed] = useState(initialDismissed || false);
   const [regenerating, setRegenerating] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Register this card's title in the shared registry
   useEffect(() => {
@@ -458,20 +459,16 @@ const SuggestionCard: React.FC<{
           isDarkMode ? 'border-slate-700/50' : 'border-slate-200'
         }`}>
           <button
-            onClick={() => onDownloadImage(suggestion)}
-            disabled={downloadingImage === suggestion.id || isUsed}
+            onClick={() => setShowPreview(true)}
+            disabled={isUsed}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
               isDarkMode
                 ? 'bg-slate-800 hover:bg-slate-700 text-white'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            } ${(downloadingImage === suggestion.id || isUsed) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            } ${isUsed ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {downloadingImage === suggestion.id ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <ImageDown className="w-3.5 h-3.5" />
-            )}
-            Image
+            <Eye className="w-3.5 h-3.5" />
+            Preview
           </button>
           <button
             onClick={() => onDownloadText(suggestion)}
@@ -505,6 +502,19 @@ const SuggestionCard: React.FC<{
           </button>
         </div>
       </div>
+
+      {/* Platform Preview Modal */}
+      {showPreview && (
+        <PlatformPreview
+          platform={suggestion.platform || 'instagram'}
+          imageUrl={suggestion.imageUrl}
+          caption={suggestion.caption}
+          hashtags={suggestion.hashtags}
+          brandName={suggestion.title?.split(' ')[0] || 'Your Brand'}
+          onClose={() => setShowPreview(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
     </div>
   );
 };
