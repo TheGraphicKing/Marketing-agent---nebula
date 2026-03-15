@@ -2444,8 +2444,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         return d;
     });
 
-    // Time slots from 6 AM to 11 PM
-    const timeSlots = Array.from({ length: 18 }, (_, i) => i + 6);
+    // Time slots from 12 AM to 11 PM (full 24 hours)
+    const timeSlots = Array.from({ length: 24 }, (_, i) => i);
 
     // Indian Holidays, Festivals & Marketing Events (2025-2026)
     // This includes national holidays, major festivals, and important marketing dates
@@ -3653,8 +3653,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                       const now = new Date();
                       const currentHour = now.getHours();
                       const currentMinute = now.getMinutes();
-                      if (currentHour >= 6 && currentHour <= 23) {
-                        const topPos = ((currentHour - 6) * 56) + (currentMinute * 0.93);
+                      if (currentHour >= 0 && currentHour <= 23) {
+                        const topPos = (currentHour * 56) + (currentMinute * 0.93);
                         return (
                           <div 
                             className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none"
@@ -3790,7 +3790,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           : event.time 
                                             ? new Date(event.time).getHours()
                                             : 9;
-                                        const topOffset = (startHour - 6) * 48;
+                                        const topOffset = startHour * 48;
                                         
                                         const colors: Record<string, string> = {
                                             'active': 'bg-emerald-500 border-emerald-600',
@@ -3847,8 +3847,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 const now = new Date();
                                 const currentHour = now.getHours();
                                 const currentMinute = now.getMinutes();
-                                if (currentHour >= 6 && currentHour <= 23) {
-                                    const topPos = ((currentHour - 6) * 48) + (currentMinute * 0.8);
+                                if (currentHour >= 0 && currentHour <= 23) {
+                                    const topPos = (currentHour * 48) + (currentMinute * 0.8);
                                     const todayIdx = weekDays.findIndex(d => isToday(d));
                                     return (
                                         <div 
