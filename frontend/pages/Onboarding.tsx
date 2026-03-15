@@ -307,7 +307,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     const validateStep = (currentStep: number) => {
         if (currentStep === 1) {
-            if (!formData.name || !formData.industry) return "Company Name and Industry are required.";
+            if (!formData.name || !formData.niche) return "Company Name and Niche are required.";
             if (!formData.businessType) return "Please select your business type (B2B, B2C, or Both).";
             if (!formData.businessLocation) return "Please enter your business location.";
             if (formData.gstNumber && formData.gstNumber.trim().length > 0) {
@@ -648,106 +648,19 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                                         </p>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Industry <span className="text-red-500">*</span></label>
-                                        <select 
-                                            className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] ${
-                                                theme === 'dark' 
-                                                    ? 'bg-[#070A12] border-[#ffcc29]/30 text-[#ededed]' 
-                                                    : 'bg-white border-gray-300 text-gray-900'
-                                            }`}
-                                            value={formData.industry}
-                                            onChange={e => handleChange('industry', e.target.value)}
-                                        >
-                                            <option value="">Select...</option>
-                                            {/* Retail & E-commerce */}
-                                            <option value="Ecommerce">E-commerce / Online Retail</option>
-                                            <option value="Retail">Retail / Brick & Mortar</option>
-                                            <option value="D2C">D2C (Direct to Consumer)</option>
-                                            <option value="Marketplace">Marketplace / Platform</option>
-                                            {/* Technology */}
-                                            <option value="SaaS">SaaS / Software</option>
-                                            <option value="Tech">Technology / IT Services</option>
-                                            <option value="AI_ML">AI / Machine Learning</option>
-                                            <option value="Fintech">Fintech / Financial Technology</option>
-                                            <option value="Edtech">Edtech / Education Technology</option>
-                                            <option value="Healthtech">Healthtech / Medical Tech</option>
-                                            <option value="MobileApp">Mobile App</option>
-                                            {/* Professional Services */}
-                                            <option value="Consulting">Consulting / Advisory</option>
-                                            <option value="Agency">Marketing / Creative Agency</option>
-                                            <option value="Legal">Legal Services</option>
-                                            <option value="Accounting">Accounting / Finance</option>
-                                            <option value="RealEstate">Real Estate</option>
-                                            <option value="Insurance">Insurance</option>
-                                            {/* Healthcare & Wellness */}
-                                            <option value="Healthcare">Healthcare / Medical</option>
-                                            <option value="Fitness">Fitness / Gym</option>
-                                            <option value="Wellness">Wellness / Spa</option>
-                                            <option value="Nutrition">Nutrition / Diet</option>
-                                            <option value="MentalHealth">Mental Health / Therapy</option>
-                                            {/* Food & Beverage */}
-                                            <option value="Restaurant">Restaurant / Cafe</option>
-                                            <option value="FoodDelivery">Food Delivery</option>
-                                            <option value="FMCG">FMCG / Consumer Goods</option>
-                                            <option value="Beverage">Beverage / Drinks</option>
-                                            <option value="Snacks">Snacks / Confectionery</option>
-                                            {/* Fashion & Beauty */}
-                                            <option value="Fashion">Fashion / Apparel</option>
-                                            <option value="Beauty">Beauty / Cosmetics</option>
-                                            <option value="Jewelry">Jewelry / Accessories</option>
-                                            <option value="Luxury">Luxury Goods</option>
-                                            {/* Media & Entertainment */}
-                                            <option value="Content">Content Creator / Influencer</option>
-                                            <option value="Media">Media / Publishing</option>
-                                            <option value="Entertainment">Entertainment / Events</option>
-                                            <option value="Gaming">Gaming / Esports</option>
-                                            <option value="Music">Music / Audio</option>
-                                            <option value="Video">Video / Streaming</option>
-                                            {/* Education */}
-                                            <option value="Education">Education / Training</option>
-                                            <option value="Coaching">Coaching / Mentorship</option>
-                                            <option value="OnlineCourses">Online Courses</option>
-                                            {/* Travel & Hospitality */}
-                                            <option value="Travel">Travel / Tourism</option>
-                                            <option value="Hospitality">Hospitality / Hotels</option>
-                                            <option value="Airlines">Airlines / Transportation</option>
-                                            {/* B2B & Manufacturing */}
-                                            <option value="B2B">B2B Services</option>
-                                            <option value="Manufacturing">Manufacturing</option>
-                                            <option value="Logistics">Logistics / Supply Chain</option>
-                                            <option value="Wholesale">Wholesale / Distribution</option>
-                                            {/* Home & Living */}
-                                            <option value="HomeDecor">Home Decor / Furniture</option>
-                                            <option value="HomeServices">Home Services</option>
-                                            <option value="Construction">Construction / Renovation</option>
-                                            {/* Automotive */}
-                                            <option value="Automotive">Automotive / Vehicles</option>
-                                            <option value="AutoServices">Auto Services / Repairs</option>
-                                            {/* Non-profit & Others */}
-                                            <option value="Nonprofit">Non-profit / NGO</option>
-                                            <option value="Government">Government / Public Sector</option>
-                                            <option value="Agriculture">Agriculture / Farming</option>
-                                            <option value="Pets">Pets / Animal Care</option>
-                                            <option value="Sports">Sports / Athletics</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Niche</label>
-                                        <input 
-                                            type="text" 
-                                            className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] ${
-                                                theme === 'dark' 
-                                                    ? 'bg-[#070A12] border-[#ffcc29]/30 text-[#ededed] placeholder-[#ededed]/40' 
-                                                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
-                                            }`}
-                                            placeholder="e.g. Sustainable Fashion"
-                                            value={formData.niche}
-                                            onChange={e => handleChange('niche', e.target.value)}
-                                        />
-                                    </div>
+                                <div>
+                                    <label className={`block text-sm font-bold mb-1 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Niche <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        className={`w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] ${
+                                            theme === 'dark'
+                                                ? 'bg-[#070A12] border-[#ffcc29]/30 text-[#ededed] placeholder-[#ededed]/40'
+                                                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                                        }`}
+                                        placeholder="e.g. Sustainable Fashion, AI SaaS, Organic Skincare"
+                                        value={formData.niche}
+                                        onChange={e => handleChange('niche', e.target.value)}
+                                    />
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold mb-2 ${theme === 'dark' ? 'text-[#ededed]/80' : 'text-gray-700'}`}>Business Type <span className="text-red-500">*</span></label>

@@ -114,8 +114,8 @@ async function triggerCompetitorDiscovery(userId, contextData) {
     console.log('📋 Industry:', businessContext.industry);
     console.log('📋 Location:', businessContext.location);
 
-    if (!businessContext.industry || businessContext.industry === 'General') {
-      console.log('⚠️ No industry specified, skipping competitor discovery');
+    if (!businessContext.description && (!businessContext.industry || businessContext.industry === 'General')) {
+      console.log('⚠️ No niche or industry specified, skipping competitor discovery');
       return;
     }
 
