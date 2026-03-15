@@ -403,31 +403,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                       </div>
                     </div>
 
-                    {/* Recent Activity */}
-                    {trialInfo.history.length > 0 && (
-                      <div className={`px-5 py-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-gray-100'}`}>
-                        <p className={`text-[11px] font-medium uppercase tracking-wider mb-2 ${isDarkMode ? 'text-slate-500' : 'text-gray-400'}`}>
-                          Recent Activity
-                        </p>
-                        <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                          {trialInfo.history.slice(-5).reverse().map((entry, i) => (
-                            <div key={i} className={`flex items-center justify-between text-xs py-1 ${
-                              isDarkMode ? 'text-slate-400' : 'text-gray-500'
-                            }`}>
-                              <span className="truncate mr-2">
-                                {ACTION_LABELS[entry.action]?.icon || '⚡'}{' '}
-                                {entry.description || ACTION_LABELS[entry.action]?.label || (typeof entry.action === 'string' && entry.action.includes('campaign') ? 'Campaign Ideas' : null) || (typeof entry.action === 'number' || (!isNaN(Number(entry.action)) && entry.action) ? 'Campaign Ideas' : null) || entry.action || 'Credit usage'}
-                              </span>
-                              <span className={`font-medium tabular-nums flex-shrink-0 ${
-                                entry.amount < 0 ? (isDarkMode ? 'text-red-400' : 'text-red-500') : (isDarkMode ? 'text-green-400' : 'text-green-500')
-                              }`}>
-                                {entry.amount > 0 ? '+' : ''}{entry.amount}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
 
                     {/* Trial Timer */}
                     <div className={`px-5 py-3 border-t ${isDarkMode ? 'border-slate-800 bg-[#0f1419]' : 'border-gray-100 bg-gray-50'}`}>
