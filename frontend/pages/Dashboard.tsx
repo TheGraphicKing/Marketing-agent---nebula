@@ -2444,8 +2444,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         return d;
     });
 
-    // Time slots from 6 AM to 11 PM
-    const timeSlots = Array.from({ length: 18 }, (_, i) => i + 6);
+    // Time slots from 12 AM to 12 PM
+    const timeSlots = Array.from({ length: 13 }, (_, i) => i);
     const scrollBodyRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to current time area on mount
@@ -2454,7 +2454,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         const now = new Date();
         const currentHour = now.getHours();
         // Scroll to 2 hours before current time (or 6 AM min)
-        const scrollToHour = Math.max(currentHour - 2, 6) - 6;
+        const scrollToHour = Math.max(currentHour - 2, 0);
         scrollBodyRef.current.scrollTop = scrollToHour * 40;
       }
     }, [viewType]);
@@ -3665,8 +3665,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                       const now = new Date();
                       const currentHour = now.getHours();
                       const currentMinute = now.getMinutes();
-                      if (currentHour >= 6 && currentHour <= 23) {
-                        const topPos = ((currentHour - 6) * 40) + (currentMinute * 0.67);
+                      if (currentHour >= 0 && currentHour <= 12) {
+                        const topPos = (currentHour * 40) + (currentMinute * 0.67);
                         return (
                           <div 
                             className="absolute left-0 right-0 h-0.5 bg-red-500 z-20 pointer-events-none"
@@ -3802,7 +3802,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           : event.time 
                                             ? new Date(event.time).getHours()
                                             : 9;
-                                        const topOffset = (startHour - 6) * 40;
+                                        const topOffset = startHour * 40;
                                         
                                         const colors: Record<string, string> = {
                                             'active': 'bg-emerald-500 border-emerald-600',
@@ -3859,8 +3859,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 const now = new Date();
                                 const currentHour = now.getHours();
                                 const currentMinute = now.getMinutes();
-                                if (currentHour >= 6 && currentHour <= 23) {
-                                    const topPos = ((currentHour - 6) * 40) + (currentMinute * 0.67);
+                                if (currentHour >= 0 && currentHour <= 12) {
+                                    const topPos = (currentHour * 40) + (currentMinute * 0.67);
                                     const todayIdx = weekDays.findIndex(d => isToday(d));
                                     return (
                                         <div 
