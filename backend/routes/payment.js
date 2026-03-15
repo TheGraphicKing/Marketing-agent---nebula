@@ -286,6 +286,63 @@ router.get('/billing', protect, async (req, res) => {
 });
 
 /**
+ * POST /api/payment/retry-invoices
+ * Retry Zoho Books invoice creation for past payments that don't have an invoice
+ */
+router.post('/retry-invoices', protect, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id || req.user?._id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const payments = user.payments || [];
+    const results = [];
+
+    for (const payment of payments) {
+      if (payment.invoiceUrl) {
+        results.push({ paymentId: payment.razorpayPaymentId, status: 'already_exists' });
+        continue;
+      }
+
+      try {
+        const invoiceResult = await createInvoice({
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName || '',
+          companyName: user.companyName || user.businessProfile?.name || '',
+          amount: payment.amount,
+          credits: payment.credits,
+          razorpayPaymentId: payment.razorpayPaymentId
+        });
+
+        payment.invoiceUrl = invoiceResult.invoiceUrl || '';
+        results.push({
+          paymentId: payment.razorpayPaymentId,
+          status: 'created',
+          invoiceNumber: invoiceResult.invoiceNumber
+        });
+      } catch (err) {
+        results.push({
+          paymentId: payment.razorpayPaymentId,
+          status: 'failed',
+          error: err.message
+        });
+      }
+    }
+
+    await user.save();
+
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('Retry invoices error:', error);
+    res.status(500).json({ success: false, message: 'Failed to retry invoice creation' });
+  }
+});
+
+/**
  * Send welcome email to user after successful migration
  */
 async function sendWelcomeEmail(email, firstName) {
