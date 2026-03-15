@@ -25,14 +25,13 @@ const {
 const { generateWithLLM } = require('../services/llmRouter');
 const { getAyrshareUserProfile, getUserSocialAnalytics } = require('../services/socialMediaAPI');
 
-// In-memory dashboard cache for fast loading
+// In-memory dashboard cache — persists until user explicitly refreshes
 const dashboardCache = new Map();
-const CACHE_TTL = 60 * 1000; // 1 minute cache for dashboard data
 
 // Cache helper functions
 function getCachedDashboard(userId) {
   const cached = dashboardCache.get(userId);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  if (cached) {
     console.log(`📦 Dashboard cache hit for user ${userId}`);
     return cached.data;
   }
@@ -44,16 +43,20 @@ function setCachedDashboard(userId, data) {
     data,
     timestamp: Date.now()
   });
-  
-  // Clean old cache entries
+
+  // Evict oldest entries if cache grows too large
   if (dashboardCache.size > 100) {
-    const now = Date.now();
-    for (const [key, value] of dashboardCache.entries()) {
-      if (now - value.timestamp > CACHE_TTL * 5) {
-        dashboardCache.delete(key);
-      }
+    const oldest = [...dashboardCache.entries()]
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+      .slice(0, 20);
+    for (const [key] of oldest) {
+      dashboardCache.delete(key);
     }
   }
+}
+
+function clearCachedDashboard(userId) {
+  dashboardCache.delete(userId);
 }
 
 // Import socialMediaAPI for real competitor scraping (Instagram only)
@@ -274,12 +277,18 @@ router.get('/overview', protect, async (req, res) => {
   
   try {
     const userId = req.user.userId || req.user.id;
-    
-    // Check cache first for instant response
-    const cached = getCachedDashboard(userId);
-    if (cached) {
-      console.log(`⚡ Dashboard served from cache in ${Date.now() - startTime}ms`);
-      return res.json(cached);
+    const forceRefresh = req.query.refresh === 'true';
+
+    // Check cache first for instant response (skip if refresh requested)
+    if (!forceRefresh) {
+      const cached = getCachedDashboard(userId);
+      if (cached) {
+        console.log(`⚡ Dashboard served from cache in ${Date.now() - startTime}ms`);
+        return res.json(cached);
+      }
+    } else {
+      clearCachedDashboard(userId);
+      console.log(`🔄 Dashboard cache cleared for user ${userId} (refresh requested)`);
     }
     
     // Run initial queries in parallel for faster loading

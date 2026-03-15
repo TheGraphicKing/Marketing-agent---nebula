@@ -24,6 +24,38 @@ const {
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+const SOCIAL_CONNECT_REWARD = 5; // credits awarded for first-time social connection
+
+/**
+ * Award credits for first-time social connection
+ * Checks if platform was already connected before rewarding
+ */
+async function rewardSocialConnect(user, platform) {
+  const normalizedPlatform = platform.toLowerCase();
+  const alreadyConnected = user.connectedSocials?.some(
+    s => s.platform.toLowerCase() === normalizedPlatform ||
+         (normalizedPlatform === 'x' && s.platform.toLowerCase() === 'twitter') ||
+         (normalizedPlatform === 'twitter' && s.platform.toLowerCase() === 'x')
+  );
+
+  if (alreadyConnected) return false;
+
+  // First time connecting this platform — award credits
+  user.credits = user.credits || { balance: 0, totalUsed: 0, history: [] };
+  user.credits.balance = Number(user.credits.balance || 0) + SOCIAL_CONNECT_REWARD;
+  user.credits.history = (user.credits.history || []).slice(-50);
+  user.credits.history.push({
+    action: `social_connect_${normalizedPlatform}`,
+    cost: -SOCIAL_CONNECT_REWARD,
+    balanceAfter: user.credits.balance,
+    description: `Reward for connecting ${platform}`,
+    timestamp: new Date()
+  });
+
+  console.log(`🎁 Awarded ${SOCIAL_CONNECT_REWARD} credits to user ${user.email} for connecting ${platform}`);
+  return true;
+}
+
 // Google/YouTube OAuth
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -507,9 +539,12 @@ router.get('/youtube/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/#/connect-socials?error=user_not_found`);
     }
 
+    // Award credits for first-time connection (must check before filter)
+    await rewardSocialConnect(user, 'YouTube');
+
     // Remove existing YouTube connection if any
     user.connectedSocials = user.connectedSocials.filter(s => s.platform !== 'YouTube');
-    
+
     // Add new connection
     user.connectedSocials.push(channelInfo);
     await user.save();
@@ -623,6 +658,7 @@ router.get('/meta/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/#/connect-socials?error=user_not_found`);
     }
 
+    await rewardSocialConnect(user, connectionInfo.platform);
     user.connectedSocials = user.connectedSocials.filter(s => s.platform !== connectionInfo.platform);
     user.connectedSocials.push(connectionInfo);
     await user.save();
@@ -708,6 +744,7 @@ router.get('/twitter/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/#/connect-socials?error=user_not_found`);
     }
 
+    await rewardSocialConnect(user, 'X');
     user.connectedSocials = user.connectedSocials.filter(s => s.platform !== 'X' && s.platform !== 'Twitter');
     user.connectedSocials.push(connectionInfo);
     await user.save();
@@ -788,6 +825,7 @@ router.get('/linkedin/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/#/connect-socials?error=user_not_found`);
     }
 
+    await rewardSocialConnect(user, 'LinkedIn');
     user.connectedSocials = user.connectedSocials.filter(s => s.platform !== 'LinkedIn');
     user.connectedSocials.push(connectionInfo);
     await user.save();
@@ -869,6 +907,7 @@ router.get('/pinterest/callback', async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/#/connect-socials?error=user_not_found`);
     }
 
+    await rewardSocialConnect(user, 'Pinterest');
     user.connectedSocials = user.connectedSocials.filter(s => s.platform !== 'Pinterest');
     user.connectedSocials.push(connectionInfo);
     await user.save();
@@ -1265,13 +1304,16 @@ router.post('/connect/:platform', protect, async (req, res) => {
     const { username, accessToken, refreshToken, profileData } = req.body;
     
     const user = await User.findById(req.user._id);
-    
+
+    // Award credits for first-time connection
+    await rewardSocialConnect(user, platform);
+
     // Remove existing connection for this platform
-    user.connectedSocials = user.connectedSocials.filter(s => 
+    user.connectedSocials = user.connectedSocials.filter(s =>
       s.platform.toLowerCase() !== platform.toLowerCase() &&
       !(platform.toLowerCase() === 'x' && s.platform.toLowerCase() === 'twitter')
     );
-    
+
     // Add new connection
     user.connectedSocials.push({
       platform: platform === 'twitter' ? 'X' : platform,

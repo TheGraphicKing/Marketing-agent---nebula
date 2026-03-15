@@ -468,17 +468,21 @@ const Dashboard: React.FC = () => {
   const hasSpend = (data?.overview?.totalSpent || 0) > 0;
   
   // Fetch dashboard data
-  const fetchData = async () => {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchData = async (refresh = false) => {
     const startTime = Date.now();
-    
+    if (refresh) setRefreshing(true);
+
     try {
-      const dashboardData = await apiService.getDashboardOverview();
+      const dashboardData = await apiService.getDashboardOverview(refresh);
       setData(dashboardData);
-      console.log(`Dashboard loaded in ${Date.now() - startTime}ms`);
+      console.log(`Dashboard ${refresh ? 'refreshed' : 'loaded'} in ${Date.now() - startTime}ms`);
     } catch (error) {
       console.error("Failed to load dashboard", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
   
@@ -1160,12 +1164,24 @@ const Dashboard: React.FC = () => {
               {data?.businessContext?.name ? `${data.businessContext.name} Dashboard` : 'Dashboard'}
             </h1>
             <p className={`text-sm mt-0.5 ${theme.textSecondary}`}>
-              {data?.businessContext?.industry 
+              {data?.businessContext?.industry
                 ? `Marketing performance for your ${data.businessContext.industry} business.`
                 : 'Overview of your marketing performance.'
               }
             </p>
         </div>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+            isDarkMode
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/50'
+              : 'bg-white hover:bg-slate-50 text-slate-600 border border-slate-200'
+          } ${refreshing ? 'opacity-60 cursor-not-allowed' : ''}`}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       {/* Social Followers Bar Chart */}

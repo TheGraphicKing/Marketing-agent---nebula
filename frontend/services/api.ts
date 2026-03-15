@@ -419,10 +419,10 @@ export const apiService = {
   // REAL DASHBOARD ENDPOINTS (AI-POWERED)
   // ============================================
 
-  getDashboardOverview: async (): Promise<DashboardData> => {
+  getDashboardOverview: async (refresh = false): Promise<DashboardData> => {
     try {
       const response = await apiCall<{ success: boolean; data: any }>(
-        '/dashboard/overview',
+        `/dashboard/overview${refresh ? '?refresh=true' : ''}`,
         { method: 'GET' },
         true
       );
