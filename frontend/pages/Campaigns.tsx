@@ -404,11 +404,7 @@ const SuggestionCard: React.FC<{
             </button>
           </div>
         )}
-        {/* Platform badge */}
-        <div className={`absolute top-3 left-3 ${getPlatformColor(suggestion.platform)} text-white px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5`}>
-          {getPlatformIcon(suggestion.platform)}
-          {suggestion.platform}
-        </div>
+        {/* Platform badge removed */}
         {/* Objective badge */}
         <div className="absolute top-3 right-12 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-slate-800">
           {suggestion.objective}
