@@ -7,492 +7,318 @@ const TermsAndConditions: React.FC = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
 
+  const isDark = theme === 'dark';
+  const text = isDark ? 'text-[#ededed]' : 'text-gray-900';
+  const textSec = isDark ? 'text-[#ededed]/70' : 'text-gray-600';
+  const bg = isDark ? 'bg-[#070A12]' : 'bg-gray-50';
+  const card = isDark ? 'bg-[#161b22]' : 'bg-white';
+  const infoBox = isDark ? 'bg-[#070A12]' : 'bg-gray-50';
+
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#070A12]' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen ${bg}`}>
       {/* Header */}
-      <div className={`sticky top-0 z-10 backdrop-blur-md ${theme === 'dark' ? 'bg-[#070A12]/80 border-b border-white/10' : 'bg-gray-50/80 border-b border-gray-200'}`}>
+      <div className={`sticky top-0 z-10 backdrop-blur-md ${isDark ? 'bg-[#070A12]/80 border-b border-white/10' : 'bg-gray-50/80 border-b border-gray-200'}`}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => navigate('/')}
-            className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-white/10 text-[#ededed]' : 'hover:bg-gray-200 text-gray-900'}`}
-          >
+          <button onClick={() => navigate('/')} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10 text-[#ededed]' : 'hover:bg-gray-200 text-gray-900'}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className={`text-lg font-semibold ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-            Terms & Conditions
-          </h1>
+          <h1 className={`text-lg font-semibold ${text}`}>Terms & Conditions</h1>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className={`rounded-2xl p-8 md:p-12 ${theme === 'dark' ? 'bg-[#161b22]' : 'bg-white'} shadow-lg`}>
+        <div className={`rounded-2xl p-8 md:p-12 ${card} shadow-lg`}>
           {/* Title */}
-          <div className="text-center mb-10">
-            <h1 className={`text-3xl md:text-4xl font-bold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-              NEBULAA Terms & Conditions of Service
-            </h1>
-            <p className={`text-sm ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
-              Effective Date: 10 March 2025 | Version 1.0
-            </p>
-            <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
-              Governing Entity: Noburo Business Services LLP, India
-            </p>
+          <div className="mb-10">
+            <h1 className={`text-4xl font-bold mb-1 ${text}`}>NEBULAA</h1>
+            <h2 className="text-2xl font-bold text-[#ffcc29] mb-2">Terms & Conditions of Service</h2>
+            <p className={`text-sm italic ${textSec}`}>Effective Date: 10 March 2025 | Version 1.0</p>
+            <p className={`text-sm italic ${textSec}`}>Governing Entity: Noburo Business Services LLP, India</p>
           </div>
 
-          <div className={`space-y-8 ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
+          <div className={`space-y-8 leading-relaxed ${textSec}`}>
             {/* Preamble */}
-            <p className="leading-relaxed">
-              Welcome to <span className="text-[#ffcc29] font-semibold">NEBULAA</span> ("Platform", "Service", "we", "us", or "our"), an AI-powered social media marketing and management platform owned and operated by <strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>Noburo Business Services LLP</strong>, a Limited Liability Partnership registered under the laws of India.
-            </p>
-            <p className="leading-relaxed">
-              These Terms and Conditions of Service ("Terms") constitute a legally binding agreement between you ("User", "you", "your", "Client", "Subscriber") and Noburo Business Services LLP ("Company", "we", "us", "our") governing your access to and use of the NEBULAA platform, including all associated websites, applications, APIs, tools, features, and services.
-            </p>
-            <p className="leading-relaxed">
-              By accessing, registering for, or using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms in their entirety. If you do not agree, you must immediately cease all use of the Platform.
-            </p>
+            <div className={`border-l-4 border-[#ffcc29] pl-4 italic ${textSec}`}>
+              Please read these Terms & Conditions carefully before accessing or using the Nebulaa platform. By registering, accessing, or using Nebulaa in any capacity — including during a free trial — you confirm that you have read, understood, and agree to be bound by these Terms. If you do not agree, do not use the platform.
+            </div>
 
-            {/* Section 1 */}
+            {/* 1 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                1. Definitions
-              </h2>
-              <p className="mb-3 leading-relaxed">For the purposes of these Terms:</p>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>1. Definitions</h2>
+              <p className="mb-3">For the purposes of these Terms, the following definitions apply:</p>
               <ul className="list-disc pl-6 space-y-2">
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"Platform"</strong> refers to the NEBULAA software application, website (nebulaa.ai), and all related tools, APIs, dashboards, and services.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"User"</strong> refers to any individual or entity who accesses or uses the Platform, whether under a free trial, paid subscription, or otherwise.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"Content"</strong> refers to all text, images, videos, graphics, data, posts, and other materials created, uploaded, shared, or generated using the Platform.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"AI-Generated Content"</strong> refers to any content produced by the Platform's artificial intelligence tools, including but not limited to captions, images, posts, strategies, analytics summaries, and recommendations.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"Subscription"</strong> refers to a paid plan that grants the User access to specific features and usage tiers of the Platform.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"Third-Party Services"</strong> refers to external platforms (e.g., Instagram, Facebook, X/Twitter, LinkedIn, Google, YouTube, etc.) integrated with NEBULAA.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"Account"</strong> refers to a registered user profile created on the Platform.</li>
-                <li><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>"Services"</strong> collectively refers to all functionalities offered through the Platform, including AI content generation, social media scheduling, analytics, competitor monitoring, campaign management, and related features.</li>
+                <li><strong className={text}>"Company", "We", "Us", or "Our"</strong> refers to Noburo Business Services LLP, the legal entity operating the Nebulaa platform under the laws of India.</li>
+                <li><strong className={text}>"Platform"</strong> refers to the Nebulaa application, website (nebulaa.ai), associated APIs, tools, dashboards, and any related services, including Founder OS and all named product modules (Gravity, Pulsar, Infinity, Singularity, Atom, etc.).</li>
+                <li><strong className={text}>"User", "You", or "Your"</strong> refers to any individual or entity that registers for, accesses, or uses the Platform.</li>
+                <li><strong className={text}>"Trial Period"</strong> means the free, time-limited access period granted before a paid subscription commences.</li>
+                <li><strong className={text}>"Subscription"</strong> means a paid plan that grants continued access to the Platform after the Trial Period.</li>
+                <li><strong className={text}>"Content"</strong> refers to all data, inputs, outputs, text, decisions, learnings, records, reports, and materials submitted to or generated through the Platform.</li>
+                <li><strong className={text}>"AI Output"</strong> refers to suggestions, recommendations, analyses, or insights generated by the Platform's artificial intelligence or machine learning components.</li>
+                <li><strong className={text}>"Services"</strong> refers to all features, functions, modules, and capabilities made available through the Platform.</li>
               </ul>
             </section>
 
-            {/* Section 2 */}
+            {/* 2 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                2. Acceptance of Terms
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>By creating an account, accessing any part of the Platform, or using any of our Services, you agree to these Terms, our Privacy Policy, and any other policies referenced herein.</li>
-                <li>If you are using the Platform on behalf of a company, organization, or other entity, you represent and warrant that you have the authority to bind that entity to these Terms.</li>
-                <li>We reserve the right to update or modify these Terms at any time. Continued use of the Platform after changes are posted constitutes acceptance of the revised Terms.</li>
-                <li>Users will be notified of material changes via email or in-app notification. It is the User's responsibility to review Terms periodically.</li>
-              </ul>
-            </section>
-
-            {/* Section 3 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                3. Account Registration & Security
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                3.1 Eligibility
-              </h3>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>2. Acceptance of Terms</h2>
+              <p className="mb-3">2.1 By creating an account, clicking "I Agree", or using any part of the Platform, you confirm that:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>You must be at least 18 years of age or the age of legal majority in your jurisdiction to use the Platform.</li>
-                <li>You must provide accurate, complete, and up-to-date information during registration.</li>
+                <li>You are at least 18 years of age;</li>
+                <li>You have the legal authority to enter into a binding agreement on behalf of yourself or the entity you represent;</li>
+                <li>You are not prohibited by applicable law from entering into such an agreement;</li>
+                <li>You have read, understood, and agree to these Terms in their entirety.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                3.2 Account Responsibilities
-              </h3>
+              <p className="mb-4">2.2 If you are accepting these Terms on behalf of a company, organisation, or other legal entity, you warrant that you have the authority to bind such entity to these Terms.</p>
+              <p>2.3 We reserve the right to update or modify these Terms at any time. Material changes will be communicated via email or in-platform notification. Continued use of the Platform after such notification constitutes acceptance of the revised Terms.</p>
+            </section>
+
+            {/* 3 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>3. Account Registration & Security</h2>
+              <p className="mb-3">3.1 You must provide accurate, complete, and current information during registration and keep this information updated at all times.</p>
+              <p className="mb-3">3.2 You are solely responsible for maintaining the confidentiality of your login credentials. You must notify us immediately at <a href="mailto:support@nebulaa.ai" className="text-[#ffcc29] hover:underline">support@nebulaa.ai</a> upon becoming aware of any unauthorised use of your account.</p>
+              <p className="mb-3">3.3 We are not liable for any loss or damage arising from your failure to safeguard your account credentials.</p>
+              <p className="mb-3">3.4 One account per individual or entity is permitted unless expressly authorised by us in writing. You may not share account access with third parties.</p>
+              <p>3.5 We reserve the right to suspend or terminate accounts that we reasonably believe are being used in violation of these Terms, applicable laws, or our community standards.</p>
+            </section>
+
+            {/* 4 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>4. Free Trial</h2>
+              <p className="mb-3">4.1 We may offer a free Trial Period at our sole discretion. The Trial Period allows limited or full access to the Platform for evaluation purposes only.</p>
+              <p className="mb-3">4.2 By commencing a trial, you agree that:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>You are solely responsible for maintaining the confidentiality of your login credentials.</li>
-                <li>You agree to notify us immediately of any unauthorized access to or use of your account.</li>
-                <li>We are not liable for any loss or damage arising from your failure to protect your account.</li>
+                <li>The trial is provided on an "as-is" basis with no warranties of any kind;</li>
+                <li>We may modify, suspend, or terminate your trial access at any time without notice;</li>
+                <li>Data and content created during the trial may be retained, deleted, or transitioned upon conversion to a paid plan, at our discretion;</li>
+                <li>The Trial Period duration will be as communicated during onboarding and is subject to change.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                3.3 Account Termination
-              </h3>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>We reserve the right to suspend or terminate accounts that violate these Terms, engage in fraudulent activity, or remain inactive for an extended period.</li>
-                <li>Users may request account deletion by contacting support@nebulaa.ai.</li>
-              </ul>
+              <p>4.3 If you do not upgrade to a paid Subscription upon expiry of the Trial Period, your access will be restricted or terminated. We are not obligated to preserve data post-trial unless you have an active Subscription.</p>
             </section>
 
-            {/* Section 4 */}
+            {/* 5 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                4. Free Trial
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>NEBULAA may offer a limited free trial period for new users to explore the Platform's features.</li>
-                <li>The duration, scope, and features available during the trial may be modified at our sole discretion.</li>
-                <li>No credit card or payment information is required to start a free trial unless explicitly stated.</li>
-                <li>At the end of the trial period, access to premium features will be restricted unless the User subscribes to a paid plan.</li>
-                <li>We reserve the right to limit, modify, or discontinue the free trial offering at any time without prior notice.</li>
-                <li>Abuse of the free trial (e.g., creating multiple accounts) may result in permanent suspension.</li>
-              </ul>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>5. Subscriptions, Billing & Payments</h2>
+              <p className="mb-3">5.1 Paid Subscriptions are offered on a periodic basis (monthly, quarterly, annual, or as otherwise stated during checkout). Subscription fees are displayed at the time of purchase and are subject to change with advance notice.</p>
+              <p className="mb-3">5.2 All payments are processed through Razorpay or such other payment gateway as we may designate. By providing payment details, you authorise us to charge the applicable fees on the billing cycle commensurate with your chosen plan.</p>
+              <p className="mb-3">5.3 Unless you cancel your Subscription before the renewal date, your Subscription will automatically renew for the same period at the then-current rate. You are responsible for cancelling before renewal if you do not wish to continue.</p>
+              <p className="mb-3">5.4 All fees are quoted in Indian Rupees (INR) unless otherwise stated. Applicable taxes, including Goods and Services Tax (GST), will be added at the prevailing rate.</p>
+              <p className="mb-3">5.5 Failure to pay or charge-backs may result in immediate suspension of access. We reserve the right to charge interest on overdue amounts at a rate of 1.5% per month or the maximum rate permitted by law, whichever is lower.</p>
+              <p>5.6 We reserve the right to modify our pricing at any time. Any changes to your Subscription pricing will be communicated with at least 30 days' advance notice prior to the next billing cycle.</p>
             </section>
 
-            {/* Section 5 */}
+            {/* 6 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                5. Subscriptions, Billing & Payments
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                5.1 Subscription Plans
-              </h3>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>6. Refund Policy</h2>
+              <p className="mb-3">6.1 Given the nature of digital services, all payments made are non-refundable except as expressly stated below or required by applicable law.</p>
+              <p className="mb-3">6.2 A refund may be considered in the following limited circumstances:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>NEBULAA offers various subscription plans with different features and usage limits.</li>
-                <li>Plan details, pricing, and features are available on our website and may change at any time.</li>
+                <li>You were charged incorrectly due to a billing error on our part;</li>
+                <li>The Platform experienced material service downtime (greater than 72 consecutive hours) within the first 7 days of a new paid Subscription, directly attributable to our failure, and you notify us within that period.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                5.2 Billing
-              </h3>
+              <p className="mb-3">6.3 All refund requests must be submitted to <a href="mailto:support@nebulaa.ai" className="text-[#ffcc29] hover:underline">support@nebulaa.ai</a> within 7 days of the charge in question, accompanied by supporting details. We will process approved refunds within 10 business days.</p>
+              <p>6.4 We do not offer refunds for partial periods, unused features, or dissatisfaction with AI Outputs or results.</p>
+            </section>
+
+            {/* 7 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>7. Platform Use & Acceptable Use Policy</h2>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>7.1 Permitted Use</h3>
+              <p className="mb-4">You may use the Platform solely for your own internal business purposes as a founder, operator, or professional, subject to your Subscription plan and these Terms.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>7.2 Prohibited Conduct</h3>
+              <p className="mb-3">You must not:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>Subscriptions are billed in advance on a recurring basis (monthly or annually, depending on the selected plan).</li>
-                <li>All fees are in Indian Rupees (INR) unless otherwise specified.</li>
-                <li>Applicable taxes (including GST) will be added to the subscription fee.</li>
+                <li>Use the Platform for any unlawful purpose or in violation of any applicable local, national, or international law or regulation;</li>
+                <li>Attempt to gain unauthorised access to any part of the Platform, other accounts, or associated systems or networks;</li>
+                <li>Reverse engineer, decompile, disassemble, or attempt to extract the source code, algorithms, or underlying models of the Platform;</li>
+                <li>Scrape, harvest, or systematically download data from the Platform without prior written authorisation;</li>
+                <li>Sell, resell, sublicence, rent, or commercially exploit the Platform or your access to it, except as expressly permitted;</li>
+                <li>Upload or transmit any material that contains viruses, malware, or any other harmful code;</li>
+                <li>Interfere with or disrupt the integrity, performance, or availability of the Platform or its infrastructure;</li>
+                <li>Use the Platform to send unsolicited communications, spam, or phishing content;</li>
+                <li>Impersonate any person or entity or misrepresent your affiliation with any person or entity;</li>
+                <li>Use AI Outputs to create competing products or services without our prior written consent;</li>
+                <li>Use the Platform in any manner that could bring the Company, the Nebulaa brand, or our partners into disrepute.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                5.3 Payment Processing
-              </h3>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>7.3 Content Standards</h3>
+              <p>All content you submit to the Platform must be lawful, accurate, and not infringe any third-party intellectual property, privacy, or other rights. You are solely responsible for all content you submit.</p>
+            </section>
+
+            {/* 8 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>8. Intellectual Property</h2>
+              <p className="mb-3">8.1 All rights, title, and interest in and to the Platform — including but not limited to its software, code, architecture, design, branding, AI models, workflows, templates, documentation, and all updates and derivatives thereof — are and shall remain the exclusive property of Noburo Business Services LLP or our licensors.</p>
+              <p className="mb-3">8.2 These Terms do not grant you any ownership rights in the Platform. You receive only a limited, non-exclusive, non-transferable, revocable licence to use the Platform during the term of your Subscription in accordance with these Terms.</p>
+              <p className="mb-3">8.3 You retain ownership of the original input data and business information you provide to the Platform. By submitting content, you grant us a non-exclusive, royalty-free, worldwide licence to use, process, and analyse your content solely for the purpose of providing and improving the Services.</p>
+              <p className="mb-3">8.4 Any feedback, suggestions, or ideas you provide regarding the Platform may be used by us without restriction, compensation, or attribution.</p>
+              <p>8.5 "Nebulaa", "Founder OS", "Gravity", "Pulsar", "Infinity", "Singularity", "Atom", and all associated logos and marks are proprietary to Noburo Business Services LLP. You may not use our trademarks or branding without prior written permission.</p>
+            </section>
+
+            {/* 9 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>9. AI-Generated Outputs — Disclaimer & Limitations</h2>
+              <p className="mb-3">9.1 The Platform utilises artificial intelligence and machine learning technologies to generate insights, recommendations, action plans, and analyses (collectively, "AI Outputs").</p>
+              <p className="mb-3">9.2 AI Outputs are provided for informational and productivity purposes only. They are generated on the basis of inputs provided by you and historical patterns, and are not a substitute for professional business, financial, legal, or strategic advice.</p>
+              <p className="mb-3">9.3 We make no warranty that AI Outputs will be accurate, complete, current, suitable for any particular purpose, or free from errors. You acknowledge that AI systems can produce incorrect, outdated, or contextually inappropriate results.</p>
+              <p className="mb-3">9.4 All business decisions, actions, and strategies taken based on AI Outputs remain your sole responsibility. We expressly disclaim all liability for any outcomes — financial, reputational, operational, or otherwise — arising from your reliance on AI Outputs.</p>
+              <p>9.5 You must independently verify any AI Output before acting upon it, particularly for significant business decisions.</p>
+            </section>
+
+            {/* 10 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>10. Data & Privacy</h2>
+              <p className="mb-3">10.1 Your use of the Platform is also governed by our <a href="/#/privacy-policy" className="text-[#ffcc29] hover:underline">Privacy Policy</a>, which is incorporated into these Terms by reference.</p>
+              <p className="mb-3">10.2 By using the Platform, you consent to the collection, storage, processing, and use of your data as described in the Privacy Policy.</p>
+              <p className="mb-3">10.3 You warrant that any personal data of third parties that you submit to the Platform has been collected and may be shared lawfully under applicable data protection laws.</p>
+              <p>10.4 We implement industry-standard technical and organisational measures to protect your data. However, no digital system can guarantee absolute security, and we shall not be liable for breaches beyond our reasonable control.</p>
+            </section>
+
+            {/* 11 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>11. Third-Party Integrations & Services</h2>
+              <p className="mb-3">11.1 The Platform may integrate with or contain links to third-party tools, APIs, and services (e.g., payment gateways, CRM tools, email platforms). These third-party services are governed by their own terms and privacy policies.</p>
+              <p className="mb-3">11.2 We do not endorse, control, or assume responsibility for third-party services. Your use of such services is at your own risk.</p>
+              <p>11.3 We are not liable for any disruption to your use of the Platform arising from failure, modification, or discontinuation of any third-party service.</p>
+            </section>
+
+            {/* 12 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>12. Service Availability & Modifications</h2>
+              <p className="mb-3">12.1 We strive to maintain Platform availability but do not guarantee uninterrupted, error-free, or continuous access. The Platform may be temporarily unavailable due to scheduled maintenance, technical failures, or circumstances beyond our control.</p>
+              <p className="mb-3">12.2 We reserve the right to modify, update, enhance, deprecate, or discontinue any feature or module of the Platform at any time, with reasonable notice where practicable.</p>
+              <p>12.3 In the event of a complete discontinuation of the Platform, we will provide at least 30 days' advance notice and, at our discretion, offer a pro-rated refund for unused prepaid Subscription periods.</p>
+            </section>
+
+            {/* 13 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>13. Disclaimers of Warranty</h2>
+              <p className={`mb-3 uppercase font-semibold ${text}`}>13.1 TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, THE PLATFORM AND ALL SERVICES ARE PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS WITHOUT ANY WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE.</p>
+              <p className={`mb-3 uppercase font-semibold ${text}`}>13.2 WE EXPRESSLY DISCLAIM ALL WARRANTIES, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, ACCURACY, TITLE, NON-INFRINGEMENT, AND UNINTERRUPTED OR ERROR-FREE OPERATION.</p>
+              <p>13.3 We do not warrant that the Platform will meet your specific requirements or that the results obtained through the Platform will achieve any particular business outcome.</p>
+            </section>
+
+            {/* 14 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>14. Limitation of Liability</h2>
+              <p className={`mb-3 uppercase font-semibold ${text}`}>14.1 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL NOBURO BUSINESS SERVICES LLP, ITS DIRECTORS, OFFICERS, EMPLOYEES, PARTNERS, OR AGENTS BE LIABLE FOR:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>Payments are processed through secure third-party payment gateways (e.g., Razorpay).</li>
-                <li>By subscribing, you authorize us to charge your selected payment method on a recurring basis.</li>
-                <li>We do not store your full payment card details on our servers.</li>
+                <li>Any indirect, incidental, special, consequential, exemplary, or punitive damages;</li>
+                <li>Loss of profits, revenue, data, goodwill, or business opportunities;</li>
+                <li>Losses arising from reliance on AI Outputs or Platform-generated recommendations;</li>
+                <li>Costs of procurement of substitute services;</li>
+                <li>Any damages arising from unauthorised access to or alteration of your data;</li>
+                <li>Any matter beyond our reasonable control.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                5.4 Failed Payments
-              </h3>
+              <p className="mb-3">14.2 Our aggregate liability to you under or in connection with these Terms, whether in contract, tort (including negligence), breach of statutory duty, or otherwise, shall not exceed the total fees paid by you to us in the three (3) months immediately preceding the event giving rise to the claim.</p>
+              <p>14.3 Nothing in these Terms limits or excludes liability for death or personal injury caused by negligence, fraud, or any other liability that cannot be excluded by law.</p>
+            </section>
+
+            {/* 15 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>15. Indemnification</h2>
+              <p className="mb-3">You agree to indemnify, defend, and hold harmless Noburo Business Services LLP and its officers, directors, employees, partners, and agents from and against any claims, liabilities, damages, losses, costs, and expenses (including reasonable legal fees) arising out of or related to:</p>
+              <ul className="list-disc pl-6 space-y-2">
+                <li>Your use of or access to the Platform;</li>
+                <li>Your violation of these Terms;</li>
+                <li>Your violation of any applicable law or third-party rights;</li>
+                <li>Any content or data you submit to the Platform;</li>
+                <li>Any business decisions made using AI Outputs.</li>
+              </ul>
+            </section>
+
+            {/* 16 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>16. Confidentiality</h2>
+              <p className="mb-3">16.1 Each party agrees to keep confidential all non-public information of the other party that is disclosed in connection with these Terms or the use of the Platform, using at least the same standard of care as it uses to protect its own confidential information, but no less than reasonable care.</p>
+              <p className="mb-3">16.2 This obligation does not apply to information that: (a) is or becomes publicly available without breach; (b) was independently developed without reference to confidential information; (c) is required to be disclosed by law or a court order.</p>
+              <p>16.3 This confidentiality obligation survives termination or expiry of these Terms for a period of two (2) years.</p>
+            </section>
+
+            {/* 17 */}
+            <section>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>17. Term & Termination</h2>
+              <p className="mb-3">17.1 These Terms commence on the date you first access the Platform and continue until your Subscription is terminated or expires.</p>
+              <p className="mb-3">17.2 You may terminate your Subscription at any time through your account settings or by contacting <a href="mailto:support@nebulaa.ai" className="text-[#ffcc29] hover:underline">support@nebulaa.ai</a>. Termination is effective at the end of the current billing cycle, and you will retain access until then. No pro-rated refunds are provided except as set out in Section 6.</p>
+              <p className="mb-3">17.3 We may suspend or terminate your access immediately, without notice, if:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>If a payment fails, we may retry the charge and/or suspend access until payment is successfully processed.</li>
-                <li>Continued failure to pay may result in account downgrade or termination.</li>
+                <li>You materially breach these Terms and fail to remedy the breach within 7 days of notice;</li>
+                <li>We are required to do so by law or a regulatory authority;</li>
+                <li>You engage in fraudulent, abusive, or illegal conduct;</li>
+                <li>Continued provision of access poses a security risk to the Platform or other users.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                5.5 Plan Changes
-              </h3>
+              <p className="mb-3">17.4 Upon termination:</p>
               <ul className="list-disc pl-6 space-y-2">
-                <li>You may upgrade or downgrade your plan at any time through your account settings.</li>
-                <li>Upgrades take effect immediately; downgrades take effect at the end of the current billing cycle.</li>
-                <li>No prorated refunds are issued for downgrades or cancellations mid-cycle.</li>
+                <li>Your licence to use the Platform immediately ceases;</li>
+                <li>You must discontinue all use of the Platform;</li>
+                <li>Provisions that by their nature should survive termination (including Sections 8, 9, 13, 14, 15, 16, 19, 20) shall continue in full force;</li>
+                <li>We may retain or delete your data in accordance with our data retention policy and Privacy Policy.</li>
               </ul>
             </section>
 
-            {/* Section 6 */}
+            {/* 18 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                6. Refund Policy
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>All subscription fees are generally non-refundable.</li>
-                <li>Refund requests may be considered on a case-by-case basis if submitted within 7 days of the initial subscription purchase, provided the User has not extensively used the Platform's core features during that period.</li>
-                <li>No refunds will be issued for partial months of service, downgraded accounts, or unused features.</li>
-                <li>Refund requests should be directed to support@nebulaa.ai with your account details and reason for the request.</li>
-                <li>Approved refunds will be processed within 10-15 business days to the original payment method.</li>
-                <li>We reserve the right to deny refund requests that do not meet our criteria or appear to be abusive.</li>
-              </ul>
-            </section>
-
-            {/* Section 7 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                7. Platform Use & Acceptable Use Policy
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                7.1 Permitted Use
-              </h3>
-              <p className="mb-3 leading-relaxed">You may use the Platform solely for lawful purposes related to social media marketing, content creation, scheduling, analytics, and related business activities.</p>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                7.2 Prohibited Activities
-              </h3>
-              <p className="mb-3 leading-relaxed">You agree NOT to:</p>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>18. Governing Law & Dispute Resolution</h2>
+              <p className="mb-3">18.1 These Terms shall be governed by and construed in accordance with the laws of India, without regard to conflict of law principles.</p>
+              <p className="mb-3">18.2 Any dispute, controversy, or claim arising out of or in connection with these Terms or the Platform shall be resolved through the following process:</p>
               <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>Use the Platform for any illegal, harmful, or unethical purpose.</li>
-                <li>Upload, generate, or distribute content that is defamatory, obscene, hateful, discriminatory, violent, or otherwise objectionable.</li>
-                <li>Attempt to reverse-engineer, decompile, or disassemble any part of the Platform.</li>
-                <li>Use automated bots, scrapers, or other unauthorized tools to access the Platform.</li>
-                <li>Interfere with or disrupt the Platform's infrastructure, security, or other users' experience.</li>
-                <li>Resell, sublicense, or redistribute access to the Platform without our prior written consent.</li>
-                <li>Violate any applicable local, state, national, or international law or regulation.</li>
-                <li>Impersonate any person or entity, or falsely claim an affiliation with any person or entity.</li>
-                <li>Use the Platform to send spam, unsolicited messages, or engage in any form of harassment.</li>
-                <li>Circumvent or attempt to circumvent any usage limits, access controls, or security measures.</li>
+                <li><strong className={text}>Step 1 — Informal Resolution:</strong> The aggrieved party shall notify the other in writing, and both parties shall make good-faith efforts to resolve the dispute within 30 days.</li>
+                <li><strong className={text}>Step 2 — Mediation:</strong> If unresolved, the parties shall submit to mediation under the auspices of a mutually agreed mediator in Chennai, Tamil Nadu.</li>
+                <li><strong className={text}>Step 3 — Arbitration:</strong> If mediation fails, the dispute shall be resolved by binding arbitration under the Arbitration and Conciliation Act, 1996, with proceedings conducted in Chennai, Tamil Nadu, in the English language.</li>
               </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                7.3 Enforcement
-              </h3>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>We reserve the right to investigate and take appropriate action against any violations, including but not limited to removing content, suspending or terminating accounts, and reporting to law enforcement authorities.</li>
-              </ul>
+              <p className="mb-3">18.3 Subject to the arbitration clause above, you consent to the exclusive jurisdiction of the courts located in Chennai, Tamil Nadu, India for any matter not subject to arbitration.</p>
+              <p>18.4 You waive any right to participate in a class action lawsuit or class-wide arbitration.</p>
             </section>
 
-            {/* Section 8 */}
+            {/* 19 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                8. Intellectual Property
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                8.1 Platform IP
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>All intellectual property rights in the Platform, including but not limited to software, code, design, graphics, logos, trademarks, and documentation, are owned by Noburo Business Services LLP.</li>
-                <li>Nothing in these Terms grants you any right, title, or interest in our intellectual property except for the limited license to use the Platform as described herein.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                8.2 User Content
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>You retain ownership of any original content you upload to the Platform.</li>
-                <li>By uploading content, you grant us a non-exclusive, worldwide, royalty-free license to use, process, store, and display such content solely for the purpose of providing the Services.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                8.3 AI-Generated Content Ownership
-              </h3>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Content generated by the Platform's AI tools is provided for your use, and you may use it for your business purposes.</li>
-                <li>However, we make no guarantees regarding the originality, uniqueness, or copyright status of AI-generated content.</li>
-                <li>You are solely responsible for reviewing, editing, and ensuring that AI-generated content complies with applicable laws and third-party rights before publishing.</li>
-              </ul>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>19. Force Majeure</h2>
+              <p>We shall not be liable for any delay or failure in performance resulting from events beyond our reasonable control, including but not limited to acts of God, natural disasters, pandemics, government actions, wars, civil disturbances, internet outages, power failures, or failures of third-party services.</p>
             </section>
 
-            {/* Section 9 */}
+            {/* 20 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                9. AI-Generated Content Disclaimer
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>NEBULAA uses artificial intelligence and machine learning technologies to generate content, provide recommendations, and deliver insights.</li>
-                <li>AI-generated outputs are provided "as-is" and may not always be accurate, complete, appropriate, or error-free.</li>
-                <li>We do not guarantee that AI-generated content will be free from bias, factual errors, or inappropriate material.</li>
-                <li>Users are solely responsible for reviewing, editing, verifying, and approving all AI-generated content before use or publication.</li>
-                <li>NEBULAA shall not be held liable for any consequences arising from the use of AI-generated content, including but not limited to reputational damage, legal claims, or loss of business.</li>
-                <li>The AI models used by the Platform may be updated, changed, or replaced at any time, which may affect the quality or nature of outputs.</li>
-              </ul>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>20. General Provisions</h2>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.1 Entire Agreement</h3>
+              <p className="mb-4">These Terms, together with the Privacy Policy and any other agreements or policies incorporated by reference, constitute the entire agreement between you and us regarding the Platform and supersede all prior agreements and understandings.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.2 Severability</h3>
+              <p className="mb-4">If any provision of these Terms is found to be invalid, illegal, or unenforceable, that provision shall be modified to the minimum extent necessary to make it enforceable, and the remaining provisions shall continue in full force and effect.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.3 Waiver</h3>
+              <p className="mb-4">Our failure to enforce any right or provision of these Terms shall not constitute a waiver of that right or provision.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.4 Assignment</h3>
+              <p className="mb-4">You may not assign or transfer any rights or obligations under these Terms without our prior written consent. We may assign our rights and obligations to an affiliate, successor, or acquirer of the business.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.5 No Partnership</h3>
+              <p className="mb-4">Nothing in these Terms creates any partnership, joint venture, agency, franchise, or employment relationship between you and us.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.6 Notices</h3>
+              <p className="mb-4">Notices to us shall be sent to <a href="mailto:legal@nebulaa.ai" className="text-[#ffcc29] hover:underline">legal@nebulaa.ai</a> or by post to the registered address of Noburo Business Services LLP. Notices to you shall be sent to the email address associated with your account.</p>
+              <h3 className={`text-lg font-semibold mb-3 ${text}`}>20.7 Language</h3>
+              <p>These Terms are written in English. In the event of any inconsistency between an English version and a translated version, the English version shall prevail.</p>
             </section>
 
-            {/* Section 10 */}
+            {/* 21 */}
             <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                10. Data & Privacy
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Your use of the Platform is also governed by our Privacy Policy, which is incorporated into these Terms by reference.</li>
-                <li>By using the Platform, you consent to the collection, processing, and use of your data as described in the Privacy Policy.</li>
-                <li>We implement reasonable security measures to protect your data but cannot guarantee absolute security.</li>
-                <li>You are responsible for ensuring that any data you upload or process through the Platform complies with applicable data protection laws.</li>
-              </ul>
-            </section>
-
-            {/* Section 11 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                11. Third-Party Integrations
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>The Platform integrates with various third-party services (e.g., Instagram, Facebook, X/Twitter, LinkedIn, Google, YouTube, and others).</li>
-                <li>Your use of these integrations is subject to the respective terms of service and privacy policies of those third-party platforms.</li>
-                <li>We are not responsible for the availability, accuracy, or actions of third-party services.</li>
-                <li>Changes made by third-party platforms to their APIs, policies, or functionality may affect the availability or performance of certain features on NEBULAA.</li>
-                <li>We do not guarantee uninterrupted integration with any third-party service and shall not be liable for any disruptions caused by third-party platform changes.</li>
-              </ul>
-            </section>
-
-            {/* Section 12 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                12. Service Availability
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>We strive to maintain high availability of the Platform but do not guarantee uninterrupted, error-free, or secure access at all times.</li>
-                <li>The Platform may be temporarily unavailable due to maintenance, updates, or circumstances beyond our control.</li>
-                <li>We reserve the right to modify, suspend, or discontinue any part of the Service at any time, with or without notice.</li>
-                <li>We shall not be liable for any loss or inconvenience caused by downtime or service interruptions.</li>
-              </ul>
-            </section>
-
-            {/* Section 13 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                13. Disclaimers of Warranty
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>THE PLATFORM AND ALL SERVICES ARE PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE.</li>
-                <li>WE EXPRESSLY DISCLAIM ALL IMPLIED WARRANTIES, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND ACCURACY.</li>
-                <li>WE DO NOT WARRANT THAT THE PLATFORM WILL MEET YOUR REQUIREMENTS, OPERATE WITHOUT INTERRUPTION, BE ERROR-FREE, OR THAT ANY DEFECTS WILL BE CORRECTED.</li>
-                <li>NO ADVICE OR INFORMATION, WHETHER ORAL OR WRITTEN, OBTAINED FROM US SHALL CREATE ANY WARRANTY NOT EXPRESSLY STATED IN THESE TERMS.</li>
-              </ul>
-            </section>
-
-            {/* Section 14 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                14. Limitation of Liability
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, NOBURO BUSINESS SERVICES LLP AND ITS OFFICERS, DIRECTORS, EMPLOYEES, PARTNERS, AND AGENTS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, REVENUE, GOODWILL, OR BUSINESS OPPORTUNITIES.</li>
-                <li>OUR TOTAL AGGREGATE LIABILITY ARISING OUT OF OR RELATED TO THESE TERMS OR THE USE OF THE PLATFORM SHALL NOT EXCEED THE AMOUNT PAID BY YOU TO US IN THE TWELVE (12) MONTHS IMMEDIATELY PRECEDING THE EVENT GIVING RISE TO THE CLAIM.</li>
-                <li>THESE LIMITATIONS APPLY REGARDLESS OF THE THEORY OF LIABILITY (CONTRACT, TORT, STRICT LIABILITY, OR OTHERWISE) AND EVEN IF WE HAVE BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</li>
-                <li>SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION OR LIMITATION OF CERTAIN DAMAGES. IN SUCH JURISDICTIONS, OUR LIABILITY SHALL BE LIMITED TO THE MAXIMUM EXTENT PERMITTED BY LAW.</li>
-              </ul>
-            </section>
-
-            {/* Section 15 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                15. Indemnification
-              </h2>
-              <p className="leading-relaxed mb-3">
-                You agree to indemnify, defend, and hold harmless Noburo Business Services LLP, its partners, officers, directors, employees, and agents from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising out of or related to:
-              </p>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Your use or misuse of the Platform.</li>
-                <li>Your violation of these Terms.</li>
-                <li>Your violation of any applicable law or regulation.</li>
-                <li>Your infringement of any third-party rights, including intellectual property rights.</li>
-                <li>Any content you upload, generate, publish, or share through the Platform.</li>
-                <li>Any activity conducted through your account, whether or not authorized by you.</li>
-              </ul>
-            </section>
-
-            {/* Section 16 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                16. Confidentiality
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Both parties agree to maintain the confidentiality of any proprietary or confidential information disclosed during the course of using the Platform.</li>
-                <li>Confidential information does not include information that is publicly available, independently developed, or rightfully received from a third party without obligation of confidentiality.</li>
-                <li>This obligation of confidentiality survives the termination of these Terms.</li>
-              </ul>
-            </section>
-
-            {/* Section 17 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                17. Term & Termination
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                17.1 Term
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>These Terms are effective from the date you first access or use the Platform and remain in effect until terminated.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                17.2 Termination by User
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>You may terminate your account at any time by contacting support@nebulaa.ai or through your account settings.</li>
-                <li>Termination does not entitle you to a refund of any prepaid subscription fees.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                17.3 Termination by Us
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>We may suspend or terminate your access at any time, with or without cause, and with or without notice, including but not limited to breach of these Terms.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                17.4 Effect of Termination
-              </h3>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Upon termination, your right to access and use the Platform immediately ceases.</li>
-                <li>We may delete your account data after a reasonable retention period, subject to applicable laws.</li>
-                <li>Sections of these Terms that by their nature should survive termination (e.g., Intellectual Property, Limitation of Liability, Indemnification, Confidentiality, Governing Law) shall survive.</li>
-              </ul>
-            </section>
-
-            {/* Section 18 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                18. Governing Law & Dispute Resolution
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                18.1 Governing Law
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>These Terms shall be governed by and construed in accordance with the laws of India, without regard to its conflict of law principles.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                18.2 Dispute Resolution
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>Any dispute arising out of or in connection with these Terms shall first be attempted to be resolved through good faith negotiation between the parties.</li>
-                <li>If the dispute cannot be resolved through negotiation within 30 days, it shall be referred to and finally resolved by arbitration in accordance with the Arbitration and Conciliation Act, 1996 of India.</li>
-                <li>The seat of arbitration shall be Chennai, India.</li>
-                <li>The language of arbitration shall be English.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                18.3 Jurisdiction
-              </h3>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>Subject to the arbitration clause above, the courts of Chennai, India shall have exclusive jurisdiction over any matters arising under these Terms.</li>
-              </ul>
-            </section>
-
-            {/* Section 19 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                19. Force Majeure
-              </h2>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>We shall not be liable for any failure or delay in performing our obligations under these Terms if such failure or delay results from circumstances beyond our reasonable control, including but not limited to natural disasters, pandemics, wars, terrorism, riots, government actions, power failures, internet or telecommunications failures, cyberattacks, or acts of God.</li>
-              </ul>
-            </section>
-
-            {/* Section 20 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                20. General Provisions
-              </h2>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                20.1 Entire Agreement
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>These Terms, together with the Privacy Policy and any other referenced policies, constitute the entire agreement between you and Noburo Business Services LLP regarding the use of the Platform.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                20.2 Severability
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>If any provision of these Terms is found to be invalid or unenforceable, the remaining provisions shall continue in full force and effect.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                20.3 Waiver
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>No failure or delay by us in exercising any right shall constitute a waiver of that right.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                20.4 Assignment
-              </h3>
-              <ul className="list-disc pl-6 space-y-2 mb-4">
-                <li>You may not assign or transfer your rights under these Terms without our prior written consent. We may assign our rights and obligations without restriction.</li>
-              </ul>
-              <h3 className={`text-lg font-semibold mb-3 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                20.5 Notices
-              </h3>
-              <ul className="list-disc pl-6 space-y-2">
-                <li>All notices under these Terms shall be sent to the email address associated with your account or to the contact addresses specified below.</li>
-              </ul>
-            </section>
-
-            {/* Section 21 */}
-            <section>
-              <h2 className={`text-xl font-bold mb-4 ${theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}`}>
-                21. Contact Information
-              </h2>
-              <p className="leading-relaxed mb-3">
-                If you have any questions, concerns, or requests regarding these Terms, please contact us:
-              </p>
-              <div className={`rounded-lg p-5 space-y-2 ${theme === 'dark' ? 'bg-[#070A12]' : 'bg-gray-50'}`}>
-                <p><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>Company:</strong> Noburo Business Services LLP</p>
-                <p><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>Email (Support):</strong> <a href="mailto:support@nebulaa.ai" className="text-[#ffcc29] hover:underline">support@nebulaa.ai</a></p>
-                <p><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>Email (Legal):</strong> <a href="mailto:legal@nebulaa.ai" className="text-[#ffcc29] hover:underline">legal@nebulaa.ai</a></p>
-                <p><strong className={theme === 'dark' ? 'text-[#ededed]' : 'text-gray-900'}>Website:</strong> <a href="https://nebulaa.ai" target="_blank" rel="noopener noreferrer" className="text-[#ffcc29] hover:underline">nebulaa.ai</a></p>
+              <h2 className={`text-xl font-bold mb-4 ${text}`}>21. Contact Information</h2>
+              <p className="mb-4">For questions, concerns, or notices under these Terms, please contact:</p>
+              <div className={`rounded-lg p-5 space-y-1 ${infoBox}`}>
+                <p><strong className={text}>Noburo Business Services LLP</strong></p>
+                <p>Operating Platform: Nebulaa (nebulaa.ai)</p>
+                <p>Support Email: <a href="mailto:support@nebulaa.ai" className="text-[#ffcc29] hover:underline">support@nebulaa.ai</a></p>
+                <p>Website: <a href="https://www.nebulaa.ai" target="_blank" rel="noopener noreferrer" className="text-[#ffcc29] hover:underline">https://www.nebulaa.ai</a></p>
               </div>
+              <div className={`mt-6 border-l-4 border-[#ffcc29] pl-4 italic ${textSec}`}>
+                By using Nebulaa, you acknowledge that you have read, understood, and agreed to these Terms & Conditions.
+              </div>
+              <p className={`mt-4 text-sm italic ${textSec}`}>Last Updated: 10 March 2025 | Document Version: 1.0</p>
             </section>
           </div>
         </div>
 
         {/* Footer */}
         <div className="text-center mt-10 pb-10">
-          <p className={`text-sm ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-400'}`}>
-            &copy; {new Date().getFullYear()} Noburo Business Services LLP. All rights reserved.
+          <p className={`text-sm ${isDark ? 'text-[#ededed]/50' : 'text-gray-400'}`}>
+            &copy; 2024 Noburo Business Services LLP. All rights reserved.
           </p>
-          <div className={`mt-3 flex items-center justify-center gap-4 text-sm ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-400'}`}>
+          <div className={`mt-3 flex items-center justify-center gap-4 text-sm ${isDark ? 'text-[#ededed]/50' : 'text-gray-400'}`}>
             <a href="/#/privacy-policy" className="hover:text-[#ffcc29] transition-colors">Privacy Policy</a>
             <span>|</span>
             <a href="https://nebulaa.ai" target="_blank" rel="noopener noreferrer" className="hover:text-[#ffcc29] transition-colors">nebulaa.ai</a>
