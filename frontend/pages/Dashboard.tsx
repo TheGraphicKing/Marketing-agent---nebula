@@ -2448,16 +2448,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
     const timeSlots = Array.from({ length: 13 }, (_, i) => i);
     const scrollBodyRef = useRef<HTMLDivElement>(null);
 
-    // Auto-scroll to current time area on mount
-    useEffect(() => {
-      if (scrollBodyRef.current && viewType === 'week') {
-        const now = new Date();
-        const currentHour = now.getHours();
-        // Scroll to 2 hours before current time (or 6 AM min)
-        const scrollToHour = Math.max(currentHour - 2, 0);
-        scrollBodyRef.current.scrollTop = scrollToHour * 40;
-      }
-    }, [viewType]);
+    // No auto-scroll needed — all 13 slots (12 AM–12 PM) fit without scrolling
 
     // Indian Holidays, Festivals & Marketing Events (2025-2026)
     // This includes national holidays, major festivals, and important marketing dates
@@ -3683,7 +3674,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
               </div>
             ) : (
               // Week View (default)
-              <div className="flex flex-col overflow-hidden" style={{ height: '520px' }}>
+              <div className="flex flex-col overflow-hidden" style={{ height: '572px' }}>
                 {/* Day Headers - fixed at top */}
                 <div className={`flex border-b flex-shrink-0 ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} ${theme.bgCard}`}>
                     <div className={`flex-shrink-0 w-16 border-r ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}></div>
@@ -3715,7 +3706,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                 </div>
 
                 {/* Scrollable Body: Time Column + Day Grid */}
-                <div className="flex flex-1 overflow-y-auto" ref={scrollBodyRef}>
+                <div className="flex flex-1" ref={scrollBodyRef}>
                   {/* Time Column */}
                   <div className={`flex-shrink-0 w-16 border-r ${isDarkMode ? 'border-slate-700/50 bg-[#0d1117]' : 'border-slate-200 bg-[#f5f5f5]'}`}>
                     {timeSlots.map(hour => (
