@@ -36,9 +36,11 @@ async function getAccessToken() {
   const data = await res.json();
 
   if (data.error) {
+    console.error(`📄 [ZOHO] Token refresh failed:`, data);
     throw new Error(`Zoho token refresh failed: ${data.error}`);
   }
 
+  console.log(`📄 [ZOHO] Token refreshed successfully`);
   cachedAccessToken = data.access_token;
   tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000; // refresh 60s early
   return cachedAccessToken;
@@ -68,9 +70,11 @@ async function zohoRequest(method, endpoint, body = null) {
   const data = await res.json();
 
   if (data.code !== 0) {
+    console.error(`📄 [ZOHO] API error on ${method} ${endpoint}:`, data);
     throw new Error(`Zoho Books API error: ${data.message || JSON.stringify(data)}`);
   }
 
+  console.log(`📄 [ZOHO] ${method} ${endpoint} — success`);
   return data;
 }
 

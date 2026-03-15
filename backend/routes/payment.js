@@ -292,22 +292,33 @@ router.get('/billing', protect, async (req, res) => {
 router.post('/retry-invoices', protect, async (req, res) => {
   try {
     const userId = req.user?.userId || req.user?.id || req.user?._id;
+    console.log(`📄 [RETRY-INVOICES] Starting for user: ${userId}`);
+
     const user = await User.findById(userId);
 
     if (!user) {
+      console.log(`📄 [RETRY-INVOICES] User not found: ${userId}`);
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    console.log(`📄 [RETRY-INVOICES] User: ${user.email}, Payments count: ${(user.payments || []).length}`);
 
     const payments = user.payments || [];
     const results = [];
 
     for (const payment of payments) {
+      console.log(`📄 [RETRY-INVOICES] Processing payment: ${payment.razorpayPaymentId}, amount: ₹${payment.amount}, hasInvoice: ${!!payment.invoiceUrl}`);
+
       if (payment.invoiceUrl) {
+        console.log(`📄 [RETRY-INVOICES] Skipping ${payment.razorpayPaymentId} — invoice already exists`);
         results.push({ paymentId: payment.razorpayPaymentId, status: 'already_exists' });
         continue;
       }
 
       try {
+        console.log(`📄 [RETRY-INVOICES] Creating Zoho invoice for ${payment.razorpayPaymentId}...`);
+        console.log(`📄 [RETRY-INVOICES] Zoho config — CLIENT_ID: ${process.env.ZOHO_BOOKS_CLIENT_ID ? process.env.ZOHO_BOOKS_CLIENT_ID.slice(0, 10) + '...' : 'NOT SET'}, ORG_ID: ${process.env.ZOHO_BOOKS_ORG_ID || 'NOT SET'}, REFRESH_TOKEN: ${process.env.ZOHO_BOOKS_REFRESH_TOKEN ? 'SET' : 'NOT SET'}`);
+
         const invoiceResult = await createInvoice({
           email: user.email,
           firstName: user.firstName,
@@ -318,6 +329,8 @@ router.post('/retry-invoices', protect, async (req, res) => {
           razorpayPaymentId: payment.razorpayPaymentId
         });
 
+        console.log(`📄 [RETRY-INVOICES] ✅ Invoice created! Number: ${invoiceResult.invoiceNumber}, URL: ${invoiceResult.invoiceUrl}`);
+
         payment.invoiceUrl = invoiceResult.invoiceUrl || '';
         results.push({
           paymentId: payment.razorpayPaymentId,
@@ -325,6 +338,8 @@ router.post('/retry-invoices', protect, async (req, res) => {
           invoiceNumber: invoiceResult.invoiceNumber
         });
       } catch (err) {
+        console.error(`📄 [RETRY-INVOICES] ❌ Failed for ${payment.razorpayPaymentId}:`, err.message);
+        console.error(`📄 [RETRY-INVOICES] Full error:`, err.stack || err);
         results.push({
           paymentId: payment.razorpayPaymentId,
           status: 'failed',
@@ -334,10 +349,11 @@ router.post('/retry-invoices', protect, async (req, res) => {
     }
 
     await user.save();
+    console.log(`📄 [RETRY-INVOICES] Done. Results:`, JSON.stringify(results));
 
     res.json({ success: true, results });
   } catch (error) {
-    console.error('Retry invoices error:', error);
+    console.error('📄 [RETRY-INVOICES] Fatal error:', error);
     res.status(500).json({ success: false, message: 'Failed to retry invoice creation' });
   }
 });
