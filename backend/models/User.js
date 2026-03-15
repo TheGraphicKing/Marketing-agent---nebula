@@ -94,6 +94,15 @@ const userSchema = new mongoose.Schema({
     status: { type: String, enum: ['active', 'cancelled', 'expired'], default: 'active' },
     expiresAt: { type: Date }
   },
+  // Google Calendar integration
+  googleCalendar: {
+    accessToken: { type: String, default: '' },
+    refreshToken: { type: String, default: '' },
+    tokenExpiresAt: { type: Date },
+    calendarId: { type: String, default: 'primary' },
+    connected: { type: Boolean, default: false },
+    connectedAt: { type: Date }
+  },
   // Ayrshare integration for social media management
   ayrshare: {
     profileKey: { type: String, default: '' },  // User's Ayrshare Profile Key for API calls

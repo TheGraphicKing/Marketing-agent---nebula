@@ -342,6 +342,27 @@ export const apiService = {
     return apiCall('/payment/billing', { method: 'GET' }, true);
   },
 
+  // Google Calendar
+  getGoogleCalendarStatus: async (): Promise<{ connected: boolean; connectedAt?: string }> => {
+    return apiCall('/google-calendar/status', { method: 'GET' }, true);
+  },
+
+  initiateGoogleCalendarAuth: async (): Promise<{ authUrl: string }> => {
+    return apiCall('/google-calendar/auth', { method: 'GET' }, true);
+  },
+
+  disconnectGoogleCalendar: async (): Promise<any> => {
+    return apiCall('/google-calendar/disconnect', { method: 'POST' }, true);
+  },
+
+  createGoogleCalendarEvent: async (data: { title: string; description?: string; startTime: string; platform?: string }): Promise<{ success: boolean; eventId?: string; htmlLink?: string }> => {
+    return apiCall('/google-calendar/create-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }, true);
+  },
+
   getBusinessContext: async (): Promise<{ success: boolean; businessLocation?: string; company?: any; geography?: any }> => {
     try {
       const response = await apiCall<{ success: boolean; context: any }>(

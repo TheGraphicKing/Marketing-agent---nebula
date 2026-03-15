@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { apiService } from '../services/api';
 import { DashboardData, Campaign, CompetitorPost } from '../types';
-import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3, Swords, Sparkles, Download, Copy, Send, Save, Lightbulb, Flame, Target, Zap, Music, Image as ImageIcon, RefreshCw, PenTool, Wand2, Upload, Filter } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, ChevronRight, ChevronLeft, Calendar as CalendarIcon, Calendar, CalendarSync, Info, Activity, Clock, MoreHorizontal, Plus, X, ExternalLink, Edit3, Share2, MessageSquare, FileText, Loader2, Bell, BellRing, Check, AlertCircle, Trash2, Eye, Users, BarChart3, Swords, Sparkles, Download, Copy, Send, Save, Lightbulb, Flame, Target, Zap, Music, Image as ImageIcon, RefreshCw, PenTool, Wand2, Upload, Filter, Unlink } from 'lucide-react';
 import { useTheme, getThemeClasses } from '../context/ThemeContext';
 import PlatformPreview from '../components/PlatformPreview';
 
@@ -2365,6 +2365,64 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
       }
     }, [showPlatformFilter]);
 
+    // Google Calendar sync state
+    const [googleCalendarSynced, setGoogleCalendarSynced] = useState(false);
+    const [googleCalSyncLoading, setGoogleCalSyncLoading] = useState(false);
+
+    // Check Google Calendar sync status on mount
+    useEffect(() => {
+      const checkGoogleCalSync = async () => {
+        try {
+          const res = await apiService.getGoogleCalendarStatus();
+          setGoogleCalendarSynced(res.connected || false);
+        } catch {
+          // silently fail
+        }
+      };
+      checkGoogleCalSync();
+    }, []);
+
+    const handleGoogleCalendarSync = async () => {
+      if (googleCalendarSynced) {
+        // Disconnect
+        setGoogleCalSyncLoading(true);
+        try {
+          await apiService.disconnectGoogleCalendar();
+          setGoogleCalendarSynced(false);
+        } catch (e) {
+          console.error('Failed to disconnect Google Calendar:', e);
+          alert('Failed to disconnect Google Calendar.');
+        } finally {
+          setGoogleCalSyncLoading(false);
+        }
+        return;
+      }
+      // Initiate OAuth
+      setGoogleCalSyncLoading(true);
+      try {
+        const res = await apiService.initiateGoogleCalendarAuth();
+        if (res.authUrl) {
+          // Open Google OAuth in a popup
+          const popup = window.open(res.authUrl, 'googleCalAuth', 'width=500,height=600,menubar=no,toolbar=no');
+          // Listen for the popup to close (callback redirects back)
+          const checkClosed = setInterval(() => {
+            if (popup?.closed) {
+              clearInterval(checkClosed);
+              // Re-check sync status
+              apiService.getGoogleCalendarStatus().then(r => {
+                setGoogleCalendarSynced(r.connected || false);
+                setGoogleCalSyncLoading(false);
+              }).catch(() => setGoogleCalSyncLoading(false));
+            }
+          }, 500);
+        }
+      } catch (e) {
+        console.error('Failed to initiate Google Calendar auth:', e);
+        alert('Failed to connect Google Calendar.');
+        setGoogleCalSyncLoading(false);
+      }
+    };
+
     // Drag-and-drop rescheduling state
     const [draggedEvent, setDraggedEvent] = useState<any | null>(null);
     const [dragOverCell, setDragOverCell] = useState<string | null>(null); // "YYYY-MM-DD-HH" key
@@ -2899,6 +2957,20 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
           }
         }
         
+        // Sync to Google Calendar if connected
+        if (googleCalendarSynced) {
+          try {
+            await apiService.createGoogleCalendarEvent({
+              title: scheduleForm.title,
+              description: scheduleForm.description || scheduleForm.title,
+              startTime: scheduledFor.toISOString(),
+              platform: scheduleForm.platform
+            });
+          } catch (gcalErr) {
+            console.warn('Google Calendar sync failed (non-blocking):', gcalErr);
+          }
+        }
+
         setShowScheduleModal(false);
         setSelectedSlot(null);
       } catch (e) {
@@ -2908,7 +2980,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         setLoading(false);
       }
     };
-    
+
     // Handle dismissing a reminder
     const handleDismissReminder = async (reminderId: string) => {
       try {
@@ -3316,7 +3388,29 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                         </button>
                       ))}
                     </div>
-                    <button 
+                    {/* Google Calendar Sync Button */}
+                    <button
+                      onClick={handleGoogleCalendarSync}
+                      disabled={googleCalSyncLoading}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        googleCalendarSynced
+                          ? `${isDarkMode ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'}`
+                          : `${isDarkMode ? 'bg-[#0d1117] text-slate-300 border border-slate-700/50 hover:border-[#ffcc29]/50 hover:text-[#ffcc29]' : 'bg-[#ededed] text-slate-600 border border-slate-200 hover:border-[#ffcc29] hover:text-[#b8941a]'}`
+                      }`}
+                      title={googleCalendarSynced ? 'Click to disconnect Google Calendar' : 'Sync scheduled posts to Google Calendar'}
+                    >
+                      {googleCalSyncLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : googleCalendarSynced ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <CalendarSync className="w-3.5 h-3.5" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {googleCalSyncLoading ? 'Syncing...' : googleCalendarSynced ? 'Google Cal' : 'Sync Calendar'}
+                      </span>
+                    </button>
+                    <button
                         onClick={() => {
                           const now = new Date();
                           setSelectedSlot({ date: now, hour: now.getHours() + 1, minute: 0 });
@@ -3472,7 +3566,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
               </div>
             ) : viewType === 'day' ? (
               // Day View
-              <div className="flex overflow-hidden" style={{ height: '500px' }}>
+              <div className="flex overflow-y-auto" style={{ height: '600px' }}>
                 {/* Time Column */}
                 <div className={`flex-shrink-0 w-20 border-r ${isDarkMode ? 'border-slate-700/50 bg-[#0d1117]' : 'border-slate-200 bg-[#f5f5f5]'}`}>
                   {timeSlots.map(hour => (
@@ -3485,7 +3579,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                 </div>
                 
                 {/* Single Day Grid */}
-                <div className="flex-1 overflow-y-auto relative">
+                <div className="flex-1 relative">
                   {timeSlots.map(hour => {
                     const dayEvents = getEventsForDay(currentDate).filter((e: any) => {
                       const eventHour = e.scheduling?.postTime 
@@ -3577,10 +3671,41 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
               </div>
             ) : (
               // Week View (default)
-              <div className="flex overflow-hidden" style={{ height: '500px' }}>
-                {/* Time Column */}
-                <div className={`flex-shrink-0 w-16 border-r ${isDarkMode ? 'border-slate-700/50 bg-[#0d1117]' : 'border-slate-200 bg-[#f5f5f5]'}`}>
-                    <div className={`h-16 border-b ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}></div>
+              <div className="flex flex-col overflow-hidden" style={{ height: '600px' }}>
+                {/* Day Headers - fixed at top */}
+                <div className={`flex border-b flex-shrink-0 ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} ${theme.bgCard}`}>
+                    <div className={`flex-shrink-0 w-16 border-r ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}></div>
+                    {weekDays.map((day, idx) => {
+                        const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
+                        const dayNum = day.getDate();
+                        const today = isToday(day);
+
+                        return (
+                            <div
+                                key={idx}
+                                className={`flex-1 h-16 flex flex-col items-center justify-center border-r ${isDarkMode ? 'border-[#ffcc29]/10' : 'border-[#ededed]'} last:border-r-0 ${
+                                    today ? `${isDarkMode ? 'bg-[#ffcc29]/20' : 'bg-[#ffcc29]/10'}` : ''
+                                }`}
+                            >
+                                <span className={`text-xs font-medium ${today ? 'text-[#ffcc29]' : theme.textSecondary}`}>
+                                    {dayName}
+                                </span>
+                                <span className={`text-xl font-bold mt-0.5 ${
+                                    today
+                                        ? 'text-white bg-[#ffcc29] w-8 h-8 rounded-full flex items-center justify-center'
+                                        : theme.text
+                                }`}>
+                                    {dayNum}
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Scrollable Body: Time Column + Day Grid */}
+                <div className="flex flex-1 overflow-y-auto">
+                  {/* Time Column */}
+                  <div className={`flex-shrink-0 w-16 border-r ${isDarkMode ? 'border-slate-700/50 bg-[#0d1117]' : 'border-slate-200 bg-[#f5f5f5]'}`}>
                     {timeSlots.map(hour => (
                         <div key={hour} className={`h-12 border-b ${isDarkMode ? 'border-[#ffcc29]/10' : 'border-[#ededed]'} pr-2 flex items-start justify-end pt-0`}>
                             <span className={`text-xs ${theme.textMuted} -mt-2`}>
@@ -3588,39 +3713,10 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                             </span>
                         </div>
                     ))}
-                </div>
+                  </div>
 
-                {/* Days Grid */}
-                <div className="flex-1 overflow-y-auto">
-                    {/* Day Headers */}
-                    <div className={`flex border-b ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'} ${theme.bgCard} sticky top-0 z-10`}>
-                        {weekDays.map((day, idx) => {
-                            const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
-                            const dayNum = day.getDate();
-                            const today = isToday(day);
-                            
-                            return (
-                                <div 
-                                    key={idx} 
-                                    className={`flex-1 h-16 flex flex-col items-center justify-center border-r ${isDarkMode ? 'border-[#ffcc29]/10' : 'border-[#ededed]'} last:border-r-0 ${
-                                        today ? `${isDarkMode ? 'bg-[#ffcc29]/20' : 'bg-[#ffcc29]/10'}` : ''
-                                    }`}
-                                >
-                                    <span className={`text-xs font-medium ${today ? 'text-[#ffcc29]' : theme.textSecondary}`}>
-                                        {dayName}
-                                    </span>
-                                    <span className={`text-xl font-bold mt-0.5 ${
-                                        today 
-                                            ? 'text-white bg-[#ffcc29] w-8 h-8 rounded-full flex items-center justify-center' 
-                                            : theme.text
-                                    }`}>
-                                        {dayNum}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-
+                  {/* Days Grid */}
+                  <div className="flex-1">
                     {/* Time Grid */}
                     <div className="flex relative">
                         {weekDays.map((day, dayIdx) => {
@@ -3771,6 +3867,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                             })()
                         )}
                     </div>
+                  </div>
                 </div>
               </div>
             )}

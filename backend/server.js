@@ -66,6 +66,9 @@ const { checkTrial } = require('./middleware/trialGuard');
 // Content routes
 const contentRoutes = require('./routes/content');
 
+// Google Calendar routes
+const googleCalendarRoutes = require('./routes/googleCalendar');
+
 // Notification scheduler service
 const notificationScheduler = require('./services/notificationScheduler');
 // Analytics snapshot scheduler
@@ -148,6 +151,7 @@ app.use('/api/payment', paymentRoutes);
 
 // Routes - Content
 app.use('/api/content', contentRoutes);
+app.use('/api/google-calendar', googleCalendarRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
