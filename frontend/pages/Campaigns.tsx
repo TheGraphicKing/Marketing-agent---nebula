@@ -3364,38 +3364,47 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
 
                                 <div>
                                   <label className={labelClasses}>Aspect Ratio</label>
-                                  <div className="flex items-end gap-3 mt-2">
+                                  <div className="grid grid-cols-6 gap-3 mt-2">
                                     {[
-                                      { value: '1:1', w: 40, h: 40 },
-                                      { value: '3:4', w: 36, h: 48 },
-                                      { value: '4:3', w: 48, h: 36 },
-                                      { value: '4:5', w: 36, h: 45 },
-                                      { value: '9:16', w: 30, h: 53 },
-                                      { value: '16:9', w: 53, h: 30 },
+                                      { value: '1:1', label: 'Square', w: 44, h: 44 },
+                                      { value: '3:4', label: 'Portrait', w: 39, h: 52 },
+                                      { value: '4:3', label: 'Landscape', w: 52, h: 39 },
+                                      { value: '4:5', label: 'Insta', w: 40, h: 50 },
+                                      { value: '9:16', label: 'Story', w: 33, h: 58 },
+                                      { value: '16:9', label: 'Wide', w: 58, h: 33 },
                                     ].map((ratio) => (
                                       <button
                                         key={ratio.value}
                                         type="button"
                                         onClick={() => setContentType(ratio.value as any)}
-                                        className={`flex flex-col items-center gap-1.5 group`}
+                                        className={`flex flex-col items-center justify-end gap-2 p-3 rounded-xl border-2 transition-all duration-200 ${
+                                          contentType === ratio.value
+                                            ? 'border-[#ffcc29] bg-[#ffcc29]/10 shadow-md shadow-[#ffcc29]/20'
+                                            : isDarkMode
+                                              ? 'border-slate-700 bg-slate-800/30 hover:border-slate-500'
+                                              : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                                        }`}
                                       >
                                         <div
                                           style={{ width: ratio.w, height: ratio.h }}
-                                          className={`rounded-lg border-2 transition-all duration-200 ${
+                                          className={`rounded transition-colors ${
                                             contentType === ratio.value
-                                              ? 'border-[#ffcc29] bg-[#ffcc29]/10 shadow-md shadow-[#ffcc29]/20'
+                                              ? 'bg-[#ffcc29]/30 border border-[#ffcc29]/50'
                                               : isDarkMode
-                                                ? 'border-slate-600 bg-slate-800/50 group-hover:border-slate-400'
-                                                : 'border-slate-300 bg-slate-50 group-hover:border-slate-400'
+                                                ? 'bg-slate-600/50 border border-slate-600'
+                                                : 'bg-slate-200 border border-slate-300'
                                           }`}
                                         />
-                                        <span className={`text-[11px] font-medium ${
-                                          contentType === ratio.value
-                                            ? 'text-[#ffcc29]'
-                                            : theme.textSecondary
-                                        }`}>
-                                          {ratio.value}
-                                        </span>
+                                        <div className="text-center">
+                                          <span className={`text-xs font-bold block ${
+                                            contentType === ratio.value ? 'text-[#ffcc29]' : theme.text
+                                          }`}>
+                                            {ratio.value}
+                                          </span>
+                                          <span className={`text-[10px] ${theme.textSecondary}`}>
+                                            {ratio.label}
+                                          </span>
+                                        </div>
                                       </button>
                                     ))}
                                   </div>
@@ -3512,22 +3521,6 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                 </div>
                                 
                                 <div>
-                                  <label className={labelClasses}>Posts Per Week: {postsPerWeek}</label>
-                                  <input 
-                                    type="range" 
-                                    min="1" 
-                                    max="7" 
-                                    value={postsPerWeek}
-                                    onChange={e => setPostsPerWeek(parseInt(e.target.value))}
-                                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#ffcc29]"
-                                  />
-                                  <div className="flex justify-between text-xs text-slate-500 mt-1">
-                                    <span>1 post</span>
-                                    <span>7 posts</span>
-                                  </div>
-                                </div>
-                                
-                                <div>
                                   <label className={labelClasses}>Preferred Days</label>
                                   <div className="flex flex-wrap gap-2">
                                     {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => (
@@ -3545,54 +3538,6 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                         {day.slice(0, 3)}
                                       </button>
                                     ))}
-                                  </div>
-                                </div>
-                                
-                                <div>
-                                  <label className={labelClasses}>Preferred Posting Times</label>
-                                  <p className={`text-xs mb-2 ${theme.textSecondary}`}>Add custom times when you want posts to go live</p>
-                                  <div className="flex flex-wrap gap-2 mb-3">
-                                    {preferredTimes.map((time, idx) => (
-                                      <div
-                                        key={idx}
-                                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#ffcc29]/20 border border-[#ffcc29] text-[#ffcc29]"
-                                      >
-                                        <Clock className="w-3 h-3" />
-                                        <span className="text-sm font-medium">{time}</span>
-                                        <button
-                                          onClick={() => setPreferredTimes(prev => prev.filter((_, i) => i !== idx))}
-                                          className="ml-1 hover:text-red-400"
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <input
-                                      type="time"
-                                      id="customTimeInput"
-                                      defaultValue="10:00"
-                                      className={`${inputClasses} flex-1`}
-                                      onChange={(e) => {
-                                        if (e.target.value && !preferredTimes.includes(e.target.value)) {
-                                          setPreferredTimes(prev => [...prev, e.target.value]);
-                                        }
-                                      }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const input = document.getElementById('customTimeInput') as HTMLInputElement;
-                                        if (input?.value && !preferredTimes.includes(input.value)) {
-                                          setPreferredTimes(prev => [...prev, input.value]);
-                                          input.value = '';
-                                        }
-                                      }}
-                                      className="px-4 py-2 bg-[#ffcc29] text-black rounded-lg font-medium hover:bg-[#e6b825] transition-colors"
-                                    >
-                                      Add Time
-                                    </button>
                                   </div>
                                 </div>
                             </div>
