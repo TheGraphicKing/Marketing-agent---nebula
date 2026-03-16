@@ -70,7 +70,8 @@ async function zohoRequest(method, endpoint, body = null) {
   const data = await res.json();
 
   if (data.code !== 0) {
-    console.error(`📄 [ZOHO] API error on ${method} ${endpoint}:`, data);
+    console.error(`📄 [ZOHO] API error on ${method} ${endpoint}:`, JSON.stringify(data, null, 2));
+    if (body) console.error(`📄 [ZOHO] Request body was:`, JSON.stringify(body, null, 2));
     throw new Error(`Zoho Books API error: ${data.message || JSON.stringify(data)}`);
   }
 
@@ -150,15 +151,18 @@ async function createInvoice(params) {
   const invoiceData = {
     customer_id: contactId,
     date: today,
-    is_inclusive_tax: true,
+    is_inclusive_tax: false,
     gst_treatment: 'consumer',
+    gst_no: '',
     place_of_supply: 'TN',
+    tax_treatment: 'vat_exempt',
     line_items: [{
       name: `Nebulaa Gravity - ${credits} Credits`,
       description: `${credits} AI marketing credits for Nebulaa Gravity platform`,
       rate: amount,
       quantity: 1,
-      tax_percentage: 18
+      item_type: 'sales',
+      tax_exemption_code: 'NON_TAXABLE'
     }],
     notes: `Payment via Razorpay (${razorpayPaymentId})`,
     reference_number: razorpayPaymentId
