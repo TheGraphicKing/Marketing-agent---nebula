@@ -2004,7 +2004,15 @@ const Dashboard: React.FC = () => {
 
       {/* Rival Post Modal */}
       {showRivalPostModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => !rivalPostLoading && setShowRivalPostModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => {
+            if (rivalPostLoading || rivalPost) {
+              const shouldClose = window.confirm('⚡ 7 credits have already been consumed. Do you want to close?');
+              if (!shouldClose) return;
+            }
+            setShowRivalPostModal(false);
+            setRivalPost(null);
+            setRivalPostLoading(false);
+          }}>
           <div 
             className={`${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'} border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden`}
             onClick={(e) => e.stopPropagation()}
@@ -2024,9 +2032,16 @@ const Dashboard: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowRivalPostModal(false)}
-                  disabled={rivalPostLoading}
-                  className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} transition-colors disabled:opacity-50`}
+                  onClick={() => {
+                    if (rivalPostLoading || rivalPost) {
+                      const shouldClose = window.confirm('⚡ 7 credits have already been consumed. Do you want to close?');
+                      if (!shouldClose) return;
+                    }
+                    setShowRivalPostModal(false);
+                    setRivalPost(null);
+                    setRivalPostLoading(false);
+                  }}
+                  className={`p-2 rounded-lg ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} transition-colors`}
                 >
                   <X className="w-5 h-5" />
                 </button>
