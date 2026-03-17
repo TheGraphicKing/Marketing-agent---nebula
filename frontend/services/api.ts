@@ -137,60 +137,15 @@ const daysFromNow = (n: number) => {
   return d.toISOString().split('T')[0];
 };
 
-// Initial Mock Campaigns
-let campaigns: Campaign[] = [
-  {
-    _id: 'c1',
-    name: 'Winter Collection Launch',
-    objective: 'awareness',
-    platforms: ['instagram'],
-    status: 'posted',
-    creative: { type: 'image', textContent: 'Embrace the chill. ❄️ #WinterFashion', imageUrls: ['https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=2070&auto=format&fit=crop'], captions: 'Embrace the chill.' },
-    scheduling: { startDate: daysFromNow(-2), postTime: '10:00' },
-    performance: { impressions: 12500, clicks: 450, ctr: 3.6, engagement: 4500, spend: 500 },
-    createdAt: daysFromNow(-10)
-  },
-  {
-    _id: 'c2',
-    name: 'Spring Teaser Video',
-    objective: 'awareness',
-    platforms: ['instagram'],
-    status: 'draft',
-    creative: { type: 'video', textContent: 'Coming soon...', imageUrls: [], captions: '' },
-    scheduling: { startDate: daysFromNow(2), postTime: '09:00' },
-    createdAt: daysFromNow(-1)
-  },
-  {
-    _id: 'c3',
-    name: 'Flash Sale: 24h',
-    objective: 'sales',
-    platforms: ['facebook'],
-    status: 'scheduled',
-    creative: { type: 'image', textContent: '24h Only!', imageUrls: [], captions: '' },
-    scheduling: { startDate: daysFromNow(5), postTime: '12:00' },
-    createdAt: daysFromNow(-3)
-  },
-  {
-    _id: 'c4',
-    name: 'Influencer Collab',
-    objective: 'engagement',
-    platforms: ['instagram', 'youtube'],
-    status: 'active',
-    creative: { type: 'image', textContent: 'Check out this review!', imageUrls: [], captions: '' },
-    scheduling: { startDate: daysFromNow(0), postTime: '15:00' },
-    createdAt: daysFromNow(-5)
-  }
-];
+// Empty campaigns - no dummy data
+let campaigns: Campaign[] = [];
 
-// Initial Social Connections
+// Social connections - only supported platforms
 let socialConnections: SocialConnection[] = [
   { platform: 'Instagram', connected: false, status: 'disconnected' },
   { platform: 'Facebook', connected: false, status: 'disconnected' },
   { platform: 'X', connected: false, status: 'disconnected' },
-  { platform: 'LinkedIn', connected: false, status: 'disconnected' },
-  { platform: 'YouTube', connected: false, status: 'disconnected' },
-  { platform: 'Pinterest', connected: false, status: 'disconnected' },
-  { platform: 'Reddit', connected: false, status: 'disconnected' }
+  { platform: 'LinkedIn', connected: false, status: 'disconnected' }
 ];
 
 // Helper for Mock AI Generation
