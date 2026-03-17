@@ -3164,30 +3164,11 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
         }
         
         if (scheduledCampaigns.length > 0) {
-          // Create a parent campaign to track all scheduled posts
-          const { campaign: parentCampaign } = await apiService.createCampaign({
-            name: campaignName,
-            objective: objective as any,
-            platforms,
-            status: 'scheduled',
-            creative: {
-              type: contentType,
-              textContent: campaignDescription,
-              imageUrls: postsToSave.map(p => p.imageUrl),
-              captions: keyMessages
-            },
-            scheduling: {
-              startDate,
-              postTime: preferredTimes[0] || '10:00'
-            },
-            budget: { type: 'lifetime' as const, amount: 0, currency: 'USD' }
-          });
-          
           if (errorMessages.length > 0) {
             alert(`✅ ${scheduledCampaigns.length}/${postsToSave.length} posts scheduled!\n\n❌ Failed:\n${errorMessages.join('\n')}`);
           }
-          
-          onSuccess(parentCampaign);
+
+          onSuccess(scheduledCampaigns[0]);
         } else {
           const reason = errorMessages.length > 0 
             ? `Errors:\n${errorMessages.join('\n')}`
