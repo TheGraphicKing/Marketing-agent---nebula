@@ -34,6 +34,7 @@ console.log('');
 const authRoutes = require('./routes/auth');
 const socialRoutes = require('./routes/social');
 const chatRoutes = require('./routes/chat');
+const supportRoutes = require('./routes/support');
 const dashboardRoutes = require('./routes/dashboard');
 const campaignRoutes = require('./routes/campaigns');
 const competitorRoutes = require('./routes/competitors');
@@ -123,6 +124,7 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/support', supportRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/competitors', competitorRoutes);
@@ -271,12 +273,21 @@ const startServer = async () => {
     console.warn('   Server will start in demo mode (no database persistence)');
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`✅ Gravity API server running on http://localhost:${PORT}`);
     console.log(`   Health check: http://localhost:${PORT}/api/health`);
     if (!mongoConnected) {
       console.log('   ⚠️  Running in DEMO MODE (MongoDB unavailable)');
     }
+  });
+
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Stop the other process or set PORT to a different value.`);
+      process.exit(1);
+    }
+    console.error('Server listen error:', err);
+    process.exit(1);
   });
 };
 

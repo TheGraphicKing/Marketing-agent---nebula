@@ -2,8 +2,8 @@ import { AuthResponse, BusinessProfile, Campaign, DashboardData, SocialConnectio
 
 // Use relative URL in production (when served from same origin), localhost in development
 declare const __PROD__: boolean;
-const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
-  ? '/api' 
+const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? '/api'
   : 'http://localhost:5000/api';
 
 // Helper to get auth token
