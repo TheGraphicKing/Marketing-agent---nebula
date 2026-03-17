@@ -2163,29 +2163,16 @@ Return ONLY valid JSON (no markdown, no explanations):
     
     console.log(`✅ Generated mocking caption for ${brandContext.companyName}`);
     
-    // Generate AI image with rich brand context
+    // Generate AI image with Nano Banana 2
     const imagePrompt = `${parsed.imageDescription}. Brand: ${brandContext.companyName}. Industry: ${brandContext.industry}. Products: ${brandContext.products || 'premium products'}. Style: modern, premium, commercial photography, high-end advertising quality.`;
 
-    // Use Nano Banana for image generation if brand logo is provided, otherwise use standard
-    let imageUrl;
-    if (brandLogo) {
-      imageUrl = await generateCampaignImageNanoBanana(imagePrompt, {
-        brandName: brandContext.companyName,
-        brandLogo,
-        industry: brandContext.industry,
-        tone: 'professional',
-        campaignTheme: `Rival post countering ${competitorName}`
-      });
-    } else {
-      imageUrl = await getRelevantImage(
-        imagePrompt,
-        brandContext.industry,
-        'engagement',
-        `${brandContext.companyName} ${contentThemes.slice(0, 2).join(' ')}`,
-        platform,
-        brandContext
-      );
-    }
+    const imageUrl = await generateCampaignImageNanoBanana(imagePrompt, {
+      brandName: brandContext.companyName,
+      brandLogo: brandLogo || null,
+      industry: brandContext.industry,
+      tone: 'professional',
+      campaignTheme: `Rival post countering ${competitorName}`
+    });
     
     // Clean and format hashtags
     const cleanHashtags = Array.isArray(parsed.hashtags) 
@@ -3998,16 +3985,34 @@ ${totalPosts > 1 ? `9. SERIES CONSISTENCY: This is part of a ${totalPosts}-post 
       let logoData = brandLogo;
       let logoMime = 'image/png';
       if (brandLogo.startsWith('data:')) {
+        // Already base64 data URI
         const matches = brandLogo.match(/^data:([^;]+);base64,(.+)$/);
         if (matches) {
           logoMime = matches[1];
           logoData = matches[2];
         }
+      } else if (brandLogo.startsWith('http')) {
+        // URL — fetch and convert to base64
+        try {
+          console.log(`📥 Fetching brand logo from URL for Gemini...`);
+          const logoResponse = await fetch(brandLogo);
+          const logoBuffer = await logoResponse.arrayBuffer();
+          logoData = Buffer.from(logoBuffer).toString('base64');
+          const contentType = logoResponse.headers.get('content-type');
+          if (contentType) logoMime = contentType;
+        } catch (logoErr) {
+          console.error('Failed to fetch brand logo:', logoErr);
+          // Skip logo if fetch fails
+          parts.push({ text: prompt });
+          logoData = null;
+        }
       }
-      parts.push({
-        inlineData: { mimeType: logoMime, data: logoData }
-      });
-      parts.push({ text: `The image above is the brand logo. Integrate it elegantly into the ad design — place it naturally as part of the composition (corner placement, brand bar, or embedded in the layout). Do NOT just slap it as a watermark.\n\n${prompt}` });
+      if (logoData) {
+        parts.push({
+          inlineData: { mimeType: logoMime, data: logoData }
+        });
+        parts.push({ text: `The image above is the brand logo. Integrate it elegantly into the ad design — place it naturally as part of the composition (corner placement, brand bar, or embedded in the layout). Do NOT just slap it as a watermark.\n\n${prompt}` });
+      }
     } else {
       parts.push({ text: prompt });
     }
