@@ -1760,8 +1760,33 @@ const Dashboard: React.FC = () => {
                     <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${theme.textSecondary}`}>Image</label>
                     {postImageUrl ? (
                       <div className="relative rounded-xl overflow-hidden mb-3">
-                        <img src={postImageUrl} alt="Post" className="w-full h-64 object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                        <img src={postImageUrl} alt="Post" className="w-full object-contain max-h-[500px]" />
+                        {/* Download button */}
+                        <a
+                          href={postImageUrl}
+                          download="strategic-post.png"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-2 right-2 p-2 bg-black/60 hover:bg-black/80 rounded-lg text-white transition-colors"
+                          title="Download image"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetch(postImageUrl)
+                              .then(res => res.blob())
+                              .then(blob => {
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = 'strategic-post.png';
+                                a.click();
+                                URL.revokeObjectURL(url);
+                              })
+                              .catch(() => window.open(postImageUrl, '_blank'));
+                            e.preventDefault();
+                          }}
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
                       </div>
                     ) : (
                       <div className={`h-64 rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-100'}`}>
