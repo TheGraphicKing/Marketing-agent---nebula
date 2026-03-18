@@ -2880,22 +2880,18 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
       }
     };
     
-    // Regenerate/edit poster with new instructions
+    // Edit/refine poster with instructions (sends current image to AI for actual editing)
     const handleEditPoster = async () => {
-      if (!posterEditInstructions.trim()) return;
-      if (imageMode === 'reference' && !scheduleImage) return;
+      if (!posterEditInstructions.trim() || !generatedPoster) return;
       setPosterGenerating(true);
       try {
-        const editedContent = posterContent + '\n\nAdditional instruction: ' + posterEditInstructions;
-        const result = await apiService.generatePosterFromReference(
-          imageMode === 'reference' ? scheduleImage! : '',
-          editedContent,
-          scheduleForm.platform,
-          calendarSelectedLogo || undefined,
-          calendarAspectRatio
+        const result = await apiService.editTemplatePoster(
+          generatedPoster,
+          posterContent,
+          posterEditInstructions
         );
-        if (result.success && result.imageBase64) {
-          setGeneratedPoster(result.imageBase64);
+        if (result.success && (result.imageBase64 || result.imageUrl)) {
+          setGeneratedPoster(result.imageUrl || result.imageBase64 || '');
           setPosterEditInstructions('');
           setPosterEditMode(false);
         } else {
@@ -4159,7 +4155,28 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           className={`w-full max-h-80 object-contain rounded-xl border ${isDarkMode ? 'border-slate-700/50 bg-[#161b22]' : 'border-slate-200 bg-slate-50'}`}
                                         />
                                         <span className="absolute top-2 left-2 bg-purple-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">AI Generated</span>
-                                        <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                const response = await fetch(generatedPoster);
+                                                const blob = await response.blob();
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url;
+                                                a.download = `poster-${Date.now()}.png`;
+                                                document.body.appendChild(a);
+                                                a.click();
+                                                document.body.removeChild(a);
+                                                URL.revokeObjectURL(url);
+                                              } catch (err) {
+                                                console.error('Download failed:', err);
+                                              }
+                                            }}
+                                            className="px-3 py-2 bg-white/90 text-slate-800 text-xs font-medium rounded-lg hover:bg-white transition-colors flex items-center gap-1.5"
+                                          >
+                                            <Download className="w-3.5 h-3.5" /> Download
+                                          </button>
                                           <button
                                             onClick={() => { setGeneratedPoster(null); setPosterContent(''); setPosterEditInstructions(''); }}
                                             className="px-3 py-2 bg-red-500/90 text-white text-xs font-medium rounded-lg hover:bg-red-500 transition-colors flex items-center gap-1.5"
@@ -4242,6 +4259,29 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           <span className={`absolute top-2 left-2 ${isDarkMode ? 'bg-slate-800/90 text-slate-300' : 'bg-white/90 text-slate-600'} text-[10px] font-bold px-2 py-0.5 rounded-md`}>Reference</span>
                                         )}
                                         <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                          {generatedPoster && (
+                                            <button
+                                              onClick={async () => {
+                                                try {
+                                                  const response = await fetch(generatedPoster);
+                                                  const blob = await response.blob();
+                                                  const url = URL.createObjectURL(blob);
+                                                  const a = document.createElement('a');
+                                                  a.href = url;
+                                                  a.download = `poster-${Date.now()}.png`;
+                                                  document.body.appendChild(a);
+                                                  a.click();
+                                                  document.body.removeChild(a);
+                                                  URL.revokeObjectURL(url);
+                                                } catch (err) {
+                                                  console.error('Download failed:', err);
+                                                }
+                                              }}
+                                              className="px-3 py-2 bg-white/90 text-slate-800 text-xs font-medium rounded-lg hover:bg-white transition-colors flex items-center gap-1.5"
+                                            >
+                                              <Download className="w-3.5 h-3.5" /> Download
+                                            </button>
+                                          )}
                                           <button
                                             onClick={() => scheduleFileInputRef.current?.click()}
                                             className="px-3 py-2 bg-white/90 text-slate-800 text-xs font-medium rounded-lg hover:bg-white transition-colors flex items-center gap-1.5"
