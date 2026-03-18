@@ -2339,6 +2339,12 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
     const [calendarLogos, setCalendarLogos] = useState<Array<{ _id: string; name: string; url: string; isPrimary: boolean }>>([]);
     const [calendarLogosLoaded, setCalendarLogosLoaded] = useState(false);
 
+    // Calendar step-by-step modal flow state
+    const [showCalendarLogoModal, setShowCalendarLogoModal] = useState(false);
+    const [showCalendarAspectModal, setShowCalendarAspectModal] = useState(false);
+    const [calendarAIReady, setCalendarAIReady] = useState(false);
+    const [calendarRefReady, setCalendarRefReady] = useState(false);
+
     // Platform preview state
     const [showCalendarPreview, setShowCalendarPreview] = useState(false);
     const [calendarPreviewData, setCalendarPreviewData] = useState<{ platform: string; imageUrl: string | null; caption: string; hashtags: string[] }>({ platform: 'instagram', imageUrl: null, caption: '', hashtags: [] });
@@ -2995,6 +3001,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         }
 
         setShowScheduleModal(false);
+        setCalendarAIReady(false);
+        setCalendarRefReady(false);
         setSelectedSlot(null);
       } catch (e) {
         console.error('Failed to create event:', e);
@@ -3093,6 +3101,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
         await refreshCampaigns();
         
         setShowScheduleModal(false);
+        setCalendarAIReady(false);
+        setCalendarRefReady(false);
         setSelectedSlot(null);
         setIsEditMode(false);
         setEditingCampaign(null);
@@ -3897,7 +3907,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
 
             {/* Schedule Modal - Quick Post Scheduler */}
             {showScheduleModal && selectedSlot && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowScheduleModal(false)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowScheduleModal(false); setCalendarAIReady(false); setCalendarRefReady(false); }}>
                     <div className={`${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'} border rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200`} onClick={e => e.stopPropagation()}>
                         {/* Header */}
                         <div className={`sticky top-0 z-10 ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-slate-200'} border-b px-6 py-4`}>
@@ -3908,7 +3918,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                       {selectedSlot.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {(() => { const h = selectedSlot.hour; const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h; return `${h12}:${String(selectedSlot.minute).padStart(2,'0')} ${h >= 12 ? 'PM' : 'AM'}`; })()}
                                     </p>
                                 </div>
-                                <button onClick={() => { setShowScheduleModal(false); setIsEditMode(false); setEditingCampaign(null); }} className={`p-2 ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} rounded-lg transition-colors`}>
+                                <button onClick={() => { setShowScheduleModal(false); setIsEditMode(false); setEditingCampaign(null); setCalendarAIReady(false); setCalendarRefReady(false); }} className={`p-2 ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} rounded-lg transition-colors`}>
                                     <X className={`w-5 h-5 ${theme.textMuted}`} />
                                 </button>
                             </div>
@@ -4060,7 +4070,28 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                   ]).map(tab => (
                                     <button
                                       key={tab.key}
-                                      onClick={() => { setImageMode(tab.key); if (tab.key === 'upload') { setGeneratedPoster(null); setPosterContent(''); setPosterEditInstructions(''); } }}
+                                      onClick={() => {
+                                        if (tab.key === 'ai') {
+                                          if (!calendarAIReady) {
+                                            setImageMode('ai');
+                                            setShowCalendarLogoModal(true);
+                                            return;
+                                          }
+                                        } else if (tab.key === 'reference') {
+                                          if (!calendarRefReady) {
+                                            setImageMode('reference');
+                                            setShowCalendarLogoModal(true);
+                                            return;
+                                          }
+                                        } else if (tab.key === 'upload') {
+                                          setCalendarAIReady(false);
+                                          setCalendarRefReady(false);
+                                          setGeneratedPoster(null);
+                                          setPosterContent('');
+                                          setPosterEditInstructions('');
+                                        }
+                                        setImageMode(tab.key);
+                                      }}
                                       className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
                                         imageMode === tab.key
                                           ? tab.key === 'upload'
@@ -4117,7 +4148,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 )}
 
                                 {/* ===== AI GENERATE TAB ===== */}
-                                {imageMode === 'ai' && (
+                                {imageMode === 'ai' && calendarAIReady && (
                                   <div className="space-y-3">
                                     {/* Generated poster preview */}
                                     {generatedPoster && (
@@ -4183,82 +4214,18 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                       </div>
                                     </div>
 
-                                    {/* Logo selector */}
-                                    <div>
-                                      <label className={`text-xs font-semibold ${theme.textSecondary} uppercase tracking-wide`}>Brand Logo</label>
-                                      <div className="flex gap-2 mt-1.5 flex-wrap">
-                                        <button
-                                          onClick={() => setCalendarSelectedLogo(null)}
-                                          className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-[10px] font-medium transition-all ${
-                                            calendarSelectedLogo === null
-                                              ? 'border-[#ffcc29] bg-[#ffcc29]/10 text-[#ffcc29]'
-                                              : isDarkMode ? 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500' : 'border-gray-200 bg-gray-50 text-slate-500 hover:border-gray-300'
-                                          }`}
-                                        >
-                                          No Logo
-                                        </button>
-                                        {calendarLogos.map(logo => (
-                                          <button
-                                            key={logo._id}
-                                            onClick={() => setCalendarSelectedLogo(calendarSelectedLogo === logo.url ? null : logo.url)}
-                                            className={`relative w-14 h-14 rounded-xl border-2 p-1.5 flex items-center justify-center transition-all ${
-                                              calendarSelectedLogo === logo.url
-                                                ? 'border-[#ffcc29] bg-[#ffcc29]/10 scale-105'
-                                                : isDarkMode ? 'border-slate-700 bg-slate-800/50 hover:border-slate-500' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                                            }`}
-                                          >
-                                            <img src={logo.url} alt={logo.name} className="max-w-full max-h-full object-contain" />
-                                            {calendarSelectedLogo === logo.url && (
-                                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#ffcc29] rounded-full flex items-center justify-center">
-                                                <svg className="w-2.5 h-2.5 text-[#070A12]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                              </div>
-                                            )}
-                                          </button>
-                                        ))}
-                                        {calendarLogos.length === 0 && calendarLogosLoaded && (
-                                          <p className={`text-xs ${theme.textMuted} self-center ml-1`}>No logos uploaded yet</p>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Aspect ratio picker */}
-                                    <div>
-                                      <label className={`text-xs font-semibold ${theme.textSecondary} uppercase tracking-wide`}>Aspect Ratio</label>
-                                      <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                                        {[
-                                          { value: '1:1', desc: 'Square' },
-                                          { value: '4:5', desc: 'Portrait' },
-                                          { value: '9:16', desc: 'Story' },
-                                          { value: '16:9', desc: 'Landscape' },
-                                          { value: '3:4', desc: 'Portrait' },
-                                          { value: '4:3', desc: 'Landscape' },
-                                        ].map(ratio => (
-                                          <button
-                                            key={ratio.value}
-                                            onClick={() => setCalendarAspectRatio(ratio.value)}
-                                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center ${
-                                              calendarAspectRatio === ratio.value
-                                                ? 'border-[#ffcc29] bg-[#ffcc29]/10 text-[#ffcc29]'
-                                                : isDarkMode ? 'border-slate-700 text-slate-400 hover:border-slate-500' : 'border-gray-200 text-slate-500 hover:border-gray-300'
-                                            }`}
-                                          >
-                                            <span className="font-bold">{ratio.value}</span>
-                                            <span className={`text-[9px] ${calendarAspectRatio === ratio.value ? 'text-[#ffcc29]/70' : theme.textMuted}`}>{ratio.desc}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-
                                     {!generatedPoster && (
-                                      <p className={`text-[10px] ${theme.textMuted}`}>AI generates a poster from your description · Press Enter to send</p>
+                                      <p className={`text-[10px] ${theme.textMuted}`}>
+                                        AI generates a poster from your description · Press Enter to send
+                                        {calendarSelectedLogo && <span className="ml-1">· Logo: selected</span>}
+                                        {calendarAspectRatio !== '1:1' && <span className="ml-1">· {calendarAspectRatio}</span>}
+                                      </p>
                                     )}
                                   </div>
                                 )}
 
                                 {/* ===== FROM REFERENCE TAB ===== */}
-                                {imageMode === 'reference' && (
+                                {imageMode === 'reference' && calendarRefReady && (
                                   <div className="space-y-3">
                                     {/* Reference image upload */}
                                     {scheduleImage ? (
@@ -4348,76 +4315,12 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                       </div>
                                     </div>
 
-                                    {/* Logo selector */}
-                                    <div>
-                                      <label className={`text-xs font-semibold ${theme.textSecondary} uppercase tracking-wide`}>Brand Logo</label>
-                                      <div className="flex gap-2 mt-1.5 flex-wrap">
-                                        <button
-                                          onClick={() => setCalendarSelectedLogo(null)}
-                                          className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-[10px] font-medium transition-all ${
-                                            calendarSelectedLogo === null
-                                              ? 'border-[#ffcc29] bg-[#ffcc29]/10 text-[#ffcc29]'
-                                              : isDarkMode ? 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500' : 'border-gray-200 bg-gray-50 text-slate-500 hover:border-gray-300'
-                                          }`}
-                                        >
-                                          No Logo
-                                        </button>
-                                        {calendarLogos.map(logo => (
-                                          <button
-                                            key={logo._id}
-                                            onClick={() => setCalendarSelectedLogo(calendarSelectedLogo === logo.url ? null : logo.url)}
-                                            className={`relative w-14 h-14 rounded-xl border-2 p-1.5 flex items-center justify-center transition-all ${
-                                              calendarSelectedLogo === logo.url
-                                                ? 'border-[#ffcc29] bg-[#ffcc29]/10 scale-105'
-                                                : isDarkMode ? 'border-slate-700 bg-slate-800/50 hover:border-slate-500' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                                            }`}
-                                          >
-                                            <img src={logo.url} alt={logo.name} className="max-w-full max-h-full object-contain" />
-                                            {calendarSelectedLogo === logo.url && (
-                                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#ffcc29] rounded-full flex items-center justify-center">
-                                                <svg className="w-2.5 h-2.5 text-[#070A12]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                              </div>
-                                            )}
-                                          </button>
-                                        ))}
-                                        {calendarLogos.length === 0 && calendarLogosLoaded && (
-                                          <p className={`text-xs ${theme.textMuted} self-center ml-1`}>No logos uploaded yet</p>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Aspect ratio picker */}
-                                    <div>
-                                      <label className={`text-xs font-semibold ${theme.textSecondary} uppercase tracking-wide`}>Aspect Ratio</label>
-                                      <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                                        {[
-                                          { value: '1:1', desc: 'Square' },
-                                          { value: '4:5', desc: 'Portrait' },
-                                          { value: '9:16', desc: 'Story' },
-                                          { value: '16:9', desc: 'Landscape' },
-                                          { value: '3:4', desc: 'Portrait' },
-                                          { value: '4:3', desc: 'Landscape' },
-                                        ].map(ratio => (
-                                          <button
-                                            key={ratio.value}
-                                            onClick={() => setCalendarAspectRatio(ratio.value)}
-                                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex flex-col items-center ${
-                                              calendarAspectRatio === ratio.value
-                                                ? 'border-[#ffcc29] bg-[#ffcc29]/10 text-[#ffcc29]'
-                                                : isDarkMode ? 'border-slate-700 text-slate-400 hover:border-slate-500' : 'border-gray-200 text-slate-500 hover:border-gray-300'
-                                            }`}
-                                          >
-                                            <span className="font-bold">{ratio.value}</span>
-                                            <span className={`text-[9px] ${calendarAspectRatio === ratio.value ? 'text-[#ffcc29]/70' : theme.textMuted}`}>{ratio.desc}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-
                                     {!generatedPoster && (
-                                      <p className={`text-[10px] ${theme.textMuted}`}>AI creates a new poster inspired by your reference image · Press Enter to send</p>
+                                      <p className={`text-[10px] ${theme.textMuted}`}>
+                                        AI creates a new poster inspired by your reference image · Press Enter to send
+                                        {calendarSelectedLogo && <span className="ml-1">· Logo: selected</span>}
+                                        {calendarAspectRatio !== '1:1' && <span className="ml-1">· {calendarAspectRatio}</span>}
+                                      </p>
                                     )}
                                   </div>
                                 )}
@@ -4524,7 +4427,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                     {isEditMode ? 'Update' : (scheduleForm.type === 'reminder' ? 'Set Reminder' : 'Schedule Post')}
                                 </button>
                                 <button 
-                                  onClick={() => { setShowScheduleModal(false); setIsEditMode(false); setEditingCampaign(null); }} 
+                                  onClick={() => { setShowScheduleModal(false); setIsEditMode(false); setEditingCampaign(null); setCalendarAIReady(false); setCalendarRefReady(false); }} 
                                   className={`px-5 py-3 border ${isDarkMode ? 'border-slate-700/50 text-slate-400 hover:bg-[#161b22]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'} text-sm font-semibold rounded-xl transition-colors`}
                                 >
                                     Cancel
@@ -4533,6 +4436,86 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Calendar Logo Selector Modal (step 1 of AI/Reference flow) */}
+            <LogoSelector
+              isOpen={showCalendarLogoModal}
+              onClose={() => { setShowCalendarLogoModal(false); setImageMode('upload'); }}
+              onConfirm={(logoUrl) => {
+                setShowCalendarLogoModal(false);
+                setCalendarSelectedLogo(logoUrl);
+                setCalendarAspectRatio('1:1');
+                setShowCalendarAspectModal(true);
+              }}
+            />
+
+            {/* Calendar Aspect Ratio Selector Modal (step 2 of AI/Reference flow) */}
+            {showCalendarAspectModal && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => { setShowCalendarAspectModal(false); setImageMode('upload'); }}>
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[#ffcc29]/20 flex items-center justify-center">
+                        <ImageIcon className="w-5 h-5 text-[#ffcc29]" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-[#0a0f1a]">Select Aspect Ratio</h3>
+                        <p className="text-sm text-slate-500">Choose the image dimensions</p>
+                      </div>
+                    </div>
+                    <button onClick={() => { setShowCalendarAspectModal(false); setImageMode('upload'); }} className="text-slate-400 hover:text-slate-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    {[
+                      { value: '1:1', label: '1:1', desc: 'Square' },
+                      { value: '4:5', label: '4:5', desc: 'Portrait' },
+                      { value: '9:16', label: '9:16', desc: 'Story/Reel' },
+                      { value: '16:9', label: '16:9', desc: 'Landscape' },
+                      { value: '3:4', label: '3:4', desc: 'Portrait' },
+                      { value: '4:3', label: '4:3', desc: 'Landscape' },
+                    ].map(ratio => (
+                      <button
+                        key={ratio.value}
+                        onClick={() => setCalendarAspectRatio(ratio.value)}
+                        className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
+                          calendarAspectRatio === ratio.value
+                            ? 'border-[#ffcc29] bg-[#ffcc29]/10'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="text-sm font-bold text-[#0a0f1a]">{ratio.label}</span>
+                        <span className="text-xs text-slate-500">{ratio.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setShowCalendarAspectModal(false); setImageMode('upload'); }}
+                      className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowCalendarAspectModal(false);
+                        if (imageMode === 'ai') {
+                          setCalendarAIReady(true);
+                        } else if (imageMode === 'reference') {
+                          setCalendarRefReady(true);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-[#ffcc29] text-[#070A12] font-semibold hover:bg-[#e6b825]"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Selected Event Modal */}
