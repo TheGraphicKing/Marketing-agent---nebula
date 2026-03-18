@@ -2304,7 +2304,11 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
     const [eventSelectedPlatform, setEventSelectedPlatform] = useState('instagram');
     const [eventScheduling, setEventScheduling] = useState(false);
     const [showEventPostCreator, setShowEventPostCreator] = useState(false);
-    
+    const [showEventLogoModal, setShowEventLogoModal] = useState(false);
+    const [showEventAspectModal, setShowEventAspectModal] = useState(false);
+    const [eventSelectedLogo, setEventSelectedLogo] = useState<string | null>(null);
+    const [eventAspectRatio, setEventAspectRatio] = useState<string>('1:1');
+
     // Update allCampaigns when props change
     useEffect(() => {
       setAllCampaigns(campaigns);
@@ -4806,30 +4810,9 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                         
                         {/* Create Post Button */}
                         <div className="mt-6">
-                            <button 
-                              onClick={async () => {
-                                setShowEventPostCreator(true);
-                                setEventPostLoading(true);
-                                setEventGeneratedPost(null);
-                                
-                                try {
-                                  const result = await apiService.generateEventPost(selectedHoliday);
-                                  if (result.success && result.post) {
-                                    setEventGeneratedPost(result.post);
-                                    setEventPostCaption(result.post.caption || '');
-                                    setEventPostHashtags(result.post.hashtags || []);
-                                    setEventPostImageUrl(result.post.generatedImageUrl || '');
-                                    setEventPostImagePrompt(result.post.imagePrompt || '');
-                                    // Set default schedule date to the event date
-                                    if (selectedHoliday.date) {
-                                      setEventScheduleDate(selectedHoliday.date.split('T')[0]);
-                                    }
-                                  }
-                                } catch (error) {
-                                  console.error('Failed to generate event post:', error);
-                                } finally {
-                                  setEventPostLoading(false);
-                                }
+                            <button
+                              onClick={() => {
+                                setShowEventLogoModal(true);
                               }}
                               className="w-full py-3 bg-[#ffcc29] hover:bg-[#e6b825] text-black font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                             >
@@ -4846,6 +4829,102 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Event Logo Selector Modal */}
+            <LogoSelector
+              isOpen={showEventLogoModal}
+              onClose={() => setShowEventLogoModal(false)}
+              onConfirm={(logoUrl) => {
+                setShowEventLogoModal(false);
+                setEventSelectedLogo(logoUrl);
+                setEventAspectRatio('1:1');
+                setShowEventAspectModal(true);
+              }}
+            />
+
+            {/* Event Aspect Ratio Modal */}
+            {showEventAspectModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowEventAspectModal(false)}>
+                <div className={`${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white'} border rounded-2xl shadow-2xl w-full max-w-md p-6`} onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[#ffcc29]/20 flex items-center justify-center">
+                        <ImageIcon className="w-5 h-5 text-[#ffcc29]" />
+                      </div>
+                      <div>
+                        <h3 className={`text-lg font-bold ${theme.text}`}>Select Aspect Ratio</h3>
+                        <p className={`text-sm ${theme.textMuted}`}>Choose the image dimensions</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowEventAspectModal(false)} className={`${theme.textMuted} hover:text-slate-600`}>
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    {[
+                      { value: '1:1', label: '1:1', desc: 'Square' },
+                      { value: '4:5', label: '4:5', desc: 'Portrait' },
+                      { value: '9:16', label: '9:16', desc: 'Story/Reel' },
+                      { value: '16:9', label: '16:9', desc: 'Landscape' },
+                      { value: '3:4', label: '3:4', desc: 'Portrait' },
+                      { value: '4:3', label: '4:3', desc: 'Landscape' },
+                    ].map(ratio => (
+                      <button
+                        key={ratio.value}
+                        onClick={() => setEventAspectRatio(ratio.value)}
+                        className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
+                          eventAspectRatio === ratio.value
+                            ? 'border-[#ffcc29] bg-[#ffcc29]/10'
+                            : `${isDarkMode ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'}`
+                        }`}
+                      >
+                        <span className={`text-sm font-bold ${theme.text}`}>{ratio.label}</span>
+                        <span className={`text-xs ${theme.textMuted}`}>{ratio.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowEventAspectModal(false)}
+                      className={`flex-1 py-2.5 rounded-xl border ${isDarkMode ? 'border-slate-700 text-slate-400 hover:bg-[#161b22]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'} font-medium`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setShowEventAspectModal(false);
+                        if (!selectedHoliday) return;
+                        setShowEventPostCreator(true);
+                        setEventPostLoading(true);
+                        setEventGeneratedPost(null);
+                        try {
+                          const result = await apiService.generateEventPost(selectedHoliday, eventSelectedLogo, eventAspectRatio);
+                          if (result.success && result.post) {
+                            setEventGeneratedPost(result.post);
+                            setEventPostCaption(result.post.caption || '');
+                            setEventPostHashtags(result.post.hashtags || []);
+                            setEventPostImageUrl(result.post.generatedImageUrl || '');
+                            setEventPostImagePrompt(result.post.imagePrompt || '');
+                            if (selectedHoliday.date) {
+                              setEventScheduleDate(selectedHoliday.date.split('T')[0]);
+                            }
+                          }
+                        } catch (error) {
+                          console.error('Failed to generate event post:', error);
+                        } finally {
+                          setEventPostLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-[#ffcc29] text-[#070A12] font-semibold hover:bg-[#e6b825]"
+                    >
+                      Generate Post
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Event Post Creator Modal */}

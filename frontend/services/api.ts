@@ -1537,7 +1537,7 @@ export const apiService = {
     }
   },
 
-  generateEventPost: async (event: any): Promise<{
+  generateEventPost: async (event: any, logoUrl?: string | null, aspectRatio?: string): Promise<{
     success: boolean;
     post: {
       caption: string;
@@ -1559,7 +1559,7 @@ export const apiService = {
         '/dashboard/generate-event-post',
         { 
           method: 'POST', 
-          body: JSON.stringify({ event }) 
+          body: JSON.stringify({ event, logoUrl: logoUrl || null, aspectRatio: aspectRatio || '1:1' })
         },
         true
       );

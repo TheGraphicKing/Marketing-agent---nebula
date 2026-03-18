@@ -2986,7 +2986,7 @@ Keep the overall composition and subject matter the same. Only apply the request
  * Generate a complete post for a holiday/festival/event
  * Combines business context with event details
  */
-async function generateEventPost(event, businessProfile) {
+async function generateEventPost(event, businessProfile, logoUrl = null, aspectRatio = '1:1') {
   const companyName = businessProfile.name || 'Your Company';
   const industry = businessProfile.industry || 'General';
   const brandVoice = businessProfile.brandVoice || 'Professional';
@@ -3070,8 +3070,9 @@ Return ONLY valid JSON:
       try {
         console.log('🎨 Generating event image with Nano Banana 2 for:', eventName);
         const imageResult = await generateCampaignImageNanoBanana(parsed.imagePrompt, {
-          aspectRatio: '1:1',
+          aspectRatio: aspectRatio || '1:1',
           brandName: companyName,
+          brandLogo: logoUrl || null,
           industry: industry,
           tone: brandVoice
         });
