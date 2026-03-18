@@ -1548,29 +1548,56 @@ router.post('/template-poster/edit', protect, checkTrial, requireCredits('image_
  */
 router.post('/template-poster/from-reference', protect, checkTrial, requireCredits('image_generated'), async (req, res) => {
   try {
-    const { referenceImage, content, platform } = req.body;
-    
-    if (!referenceImage) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Reference image is required' 
-      });
-    }
-    
+    const { referenceImage, content, platform, logoUrl, aspectRatio } = req.body;
+
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Content is required for the new poster' 
+      return res.status(400).json({
+        success: false,
+        message: 'Content is required for the poster'
       });
     }
-    
+
+    const userId = req.user.userId || req.user.id || req.user._id;
+
+    // AI Generate from scratch (no reference image)
+    if (!referenceImage) {
+      console.log('🎨 Generating poster from scratch with AI (Nano Banana 2)...');
+      console.log('📝 Content:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
+
+      const imageUrl = await generateCampaignImageNanoBanana(content, {
+        aspectRatio: aspectRatio || '1:1',
+        brandName: req.user.companyName || '',
+        brandLogo: logoUrl || null,
+        industry: req.user.industry || '',
+        tone: 'professional'
+      });
+
+      if (imageUrl) {
+        const creditResult = await deductCredits(userId, 'image_generated', 1, 'Generated poster from prompt');
+        return res.json({
+          success: true,
+          imageBase64: imageUrl,
+          imageUrl: imageUrl,
+          model: 'nano-banana-2',
+          creditsRemaining: creditResult.creditsRemaining
+        });
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to generate poster',
+          error: 'Image generation returned no result'
+        });
+      }
+    }
+
+    // Generate from reference image
     console.log('🎨 Generating poster from reference image with AI...');
     console.log('📝 Content:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
-    
+
     const result = await generatePosterFromReference(referenceImage, content, {
       platform: platform || 'instagram'
     });
-    
+
     if (result.success) {
       // Upload to Cloudinary for public URL
       let hostedUrl = null;
@@ -1585,9 +1612,8 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
       }
 
       // Deduct credits for image generation from reference
-      const userId = req.user.userId || req.user.id || req.user._id;
       const refCreditResult = await deductCredits(userId, 'image_generated', 1, 'Generated poster from reference');
-      
+
       return res.json({
         success: true,
         imageBase64: result.imageBase64,
