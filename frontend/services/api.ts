@@ -1087,6 +1087,7 @@ export const apiService = {
       platform?: string; 
       style?: string; 
       useAI?: boolean;
+      aspectRatio?: string;
       logoOverlay?: {
         enabled: boolean;
         logoUrl: string;
@@ -1115,6 +1116,7 @@ export const apiService = {
           platform: options?.platform || 'instagram',
           style: options?.style,
           useAI: options?.useAI || false,
+          aspectRatio: options?.aspectRatio,
           logoOverlay: options?.logoOverlay
         }) 
       },
