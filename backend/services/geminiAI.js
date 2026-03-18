@@ -3065,13 +3065,23 @@ Return ONLY valid JSON:
     });
     const parsed = parseGeminiJSON(response);
     
-    // Generate AI image based on the image prompt
+    // Generate AI image based on the image prompt using Nano Banana 2
     if (parsed && parsed.imagePrompt) {
       try {
-        console.log('🎨 Generating event image for:', eventName);
-        const imageUrl = await generateImageFromCustomPrompt(parsed.imagePrompt);
-        parsed.generatedImageUrl = imageUrl;
-        console.log('✅ Event image generated successfully');
+        console.log('🎨 Generating event image with Nano Banana 2 for:', eventName);
+        const imageResult = await generateCampaignImageNanoBanana(parsed.imagePrompt, {
+          aspectRatio: '1:1',
+          brandName: companyName,
+          industry: industry,
+          tone: brandVoice
+        });
+        const finalUrl = typeof imageResult === 'string' ? imageResult : imageResult?.imageUrl;
+        if (finalUrl) {
+          parsed.generatedImageUrl = finalUrl;
+          console.log('✅ Event image generated with Nano Banana 2 successfully');
+        } else {
+          throw new Error('Nano Banana 2 returned no image');
+        }
       } catch (imgError) {
         console.error('Event image generation error:', imgError);
         // Fallback to relevant stock image
