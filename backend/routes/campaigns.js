@@ -1564,7 +1564,7 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
       console.log('🎨 Generating poster from scratch with AI (Nano Banana 2)...');
       console.log('📝 Content:', content.substring(0, 100) + (content.length > 100 ? '...' : ''));
 
-      const imageUrl = await generateCampaignImageNanoBanana(content, {
+      const imageResult = await generateCampaignImageNanoBanana(content, {
         aspectRatio: aspectRatio || '1:1',
         brandName: req.user.companyName || '',
         brandLogo: logoUrl || null,
@@ -1572,12 +1572,15 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
         tone: 'professional'
       });
 
-      if (imageUrl) {
+      // imageResult can be a string (URL) or object { success, imageUrl }
+      const finalImageUrl = typeof imageResult === 'string' ? imageResult : imageResult?.imageUrl;
+
+      if (finalImageUrl) {
         const creditResult = await deductCredits(userId, 'image_generated', 1, 'Generated poster from prompt');
         return res.json({
           success: true,
-          imageBase64: imageUrl,
-          imageUrl: imageUrl,
+          imageBase64: finalImageUrl,
+          imageUrl: finalImageUrl,
           model: 'nano-banana-2',
           creditsRemaining: creditResult.creditsRemaining
         });
