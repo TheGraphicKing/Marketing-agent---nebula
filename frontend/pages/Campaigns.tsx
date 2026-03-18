@@ -3995,6 +3995,8 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
     
     // Aspect ratio and caption state
     const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>('original');
+    const [customAspectRatio, setCustomAspectRatio] = useState<string>('');
+    const [aspectRatioError, setAspectRatioError] = useState<string | null>(null);
     const [caption, setCaption] = useState('');
     const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -4006,7 +4008,32 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
       { id: '4:5', label: '4:5', ratio: 4/5, desc: 'Portrait (Instagram Max)' },
       { id: '16:9', label: '16:9', ratio: 16/9, desc: 'Landscape (YouTube, Twitter)' },
       { id: '9:16', label: '9:16', ratio: 9/16, desc: 'Story/Reel (Vertical)' },
+      { id: 'custom', label: 'Custom', ratio: null, desc: 'Enter your own (e.g. 3:2)' },
     ];
+
+    const getEffectiveAspectRatio = () => {
+      if (selectedAspectRatio === 'original') return undefined;
+      if (selectedAspectRatio === 'custom') {
+        const trimmed = customAspectRatio.trim();
+        return trimmed || undefined;
+      }
+      return selectedAspectRatio;
+    };
+
+    const validateAspectRatio = (): string | null => {
+      const ratio = getEffectiveAspectRatio();
+      if (!ratio) {
+        return 'Please select or enter an aspect ratio (e.g. 4:5 or 9:16).';
+      }
+
+      const trimmed = ratio.trim();
+      const pattern = /^\d+:\d+$/;
+      if (!pattern.test(trimmed)) {
+        return 'Aspect ratio must be in the format number:number (e.g. 3:2, 4:5, 9:16).';
+      }
+
+      return null;
+    };
 
     const inputClasses = `w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-[#ffcc29] transition-all ${
       isDarkMode 
@@ -4112,6 +4139,15 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
         return;
       }
 
+      const ratioError = validateAspectRatio();
+      if (ratioError) {
+        setAspectRatioError(ratioError);
+        alert(ratioError);
+        return;
+      }
+
+      const effectiveAspectRatio = getEffectiveAspectRatio();
+
       setIsGenerating(true);
       setStep('preview');
 
@@ -4132,7 +4168,9 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
             result = await apiService.generatePosterFromReference(
               poster.templateImage,
               poster.content,
-              selectedPlatforms[0] || 'instagram'
+              selectedPlatforms[0] || 'instagram',
+              null,
+              effectiveAspectRatio
             );
           } else {
             // Normal template generation
@@ -4140,7 +4178,8 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
               poster.templateImage,
               poster.content,
               { 
-                platform: selectedPlatforms[0] || 'instagram'
+                platform: selectedPlatforms[0] || 'instagram',
+                aspectRatio: effectiveAspectRatio
               }
             );
           }
@@ -4257,6 +4296,15 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
       const currentPoster = posters[currentPosterIndex];
       if (!currentPoster.content.trim()) return;
 
+      const ratioError = validateAspectRatio();
+      if (ratioError) {
+        setAspectRatioError(ratioError);
+        alert(ratioError);
+        return;
+      }
+
+      const effectiveAspectRatio = getEffectiveAspectRatio();
+
       setPosters(prev => prev.map((p, idx) => 
         idx === currentPosterIndex ? { ...p, status: 'generating' } : p
       ));
@@ -4265,7 +4313,10 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
         const result = await apiService.generateTemplatePoster(
           currentPoster.templateImage,
           currentPoster.content,
-          { platform: selectedPlatforms[0] || 'instagram' }
+          { 
+            platform: selectedPlatforms[0] || 'instagram',
+            aspectRatio: effectiveAspectRatio
+          }
         );
 
         if (result.success) {
@@ -4836,7 +4887,10 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                     {aspectRatioOptions.map(option => (
                       <button
                         key={option.id}
-                        onClick={() => setSelectedAspectRatio(option.id)}
+                        onClick={() => {
+                          setSelectedAspectRatio(option.id);
+                          setAspectRatioError(null);
+                        }}
                         className={`p-3 rounded-xl border text-center transition-all ${
                           selectedAspectRatio === option.id
                             ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
@@ -4850,6 +4904,28 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                       </button>
                     ))}
                   </div>
+                  {selectedAspectRatio === 'custom' && (
+                    <div className="mt-3">
+                      <input
+                        type="text"
+                        value={customAspectRatio}
+                        onChange={(e) => {
+                          setCustomAspectRatio(e.target.value);
+                          if (aspectRatioError) setAspectRatioError(null);
+                        }}
+                        placeholder="Enter custom ratio, e.g. 3:2 or 9:16"
+                        className={inputClasses}
+                      />
+                      <p className={`text-xs mt-1 ${theme.textSecondary}`}>
+                        Use the format number:number (e.g. 3:2, 4:5, 9:16)
+                      </p>
+                    </div>
+                  )}
+                  {aspectRatioError && (
+                    <p className="text-xs text-red-500 mt-2">
+                      {aspectRatioError}
+                    </p>
+                  )}
                 </div>
 
                 {/* Caption Input */}
@@ -4946,7 +5022,10 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                   <ul className={`text-sm space-y-1 ${theme.textSecondary}`}>
                     <li>• {posters.filter(p => p.status === 'generated').length} poster(s) ready</li>
                     <li>• Platforms: {selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : 'None selected'}</li>
-                    <li>• Aspect Ratio: {aspectRatioOptions.find(o => o.id === selectedAspectRatio)?.label || 'Original'}</li>
+                    <li>• Aspect Ratio: {selectedAspectRatio === 'custom'
+                      ? (customAspectRatio.trim() ? `Custom (${customAspectRatio.trim()})` : 'Custom')
+                      : (aspectRatioOptions.find(o => o.id === selectedAspectRatio)?.label || 'Original')}
+                    </li>
                     <li>• {isScheduleMode ? `Scheduled for ${scheduleDate} ${scheduleTime}` : 'Post immediately'}</li>
                   </ul>
                 </div>
