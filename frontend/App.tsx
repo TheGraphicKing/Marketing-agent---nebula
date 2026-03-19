@@ -100,7 +100,13 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) return;
 
+    let lastReset = 0;
+    const THROTTLE_MS = 5000; // Only reset timer every 5 seconds max to avoid excessive calls
+
     const resetIdleTimer = () => {
+      const now = Date.now();
+      if (now - lastReset < THROTTLE_MS) return; // Throttle resets
+      lastReset = now;
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => {
         console.log('⏰ Auto-logout: user idle for 10 minutes');
@@ -108,12 +114,18 @@ const App: React.FC = () => {
       }, IDLE_TIMEOUT);
     };
 
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
-    events.forEach(e => window.addEventListener(e, resetIdleTimer));
+    const events = ['mousedown', 'mouseup', 'click', 'keydown', 'keyup', 'scroll', 'touchstart', 'touchmove', 'mousemove', 'focus', 'wheel', 'resize'];
+    events.forEach(e => window.addEventListener(e, resetIdleTimer, { passive: true }));
+
+    // Also reset on visibility change (user switches back to tab)
+    const handleVisibility = () => { if (!document.hidden) resetIdleTimer(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     resetIdleTimer(); // start timer on mount
 
     return () => {
       events.forEach(e => window.removeEventListener(e, resetIdleTimer));
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
   }, [user, handleLogout]);
