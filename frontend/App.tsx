@@ -93,31 +93,33 @@ const App: React.FC = () => {
     setTrialExpired({ expired: false, reason: 'time' });
   }, []);
 
-  // Auto-logout after 10 minutes of inactivity
+  // Auto-logout after 30 minutes of inactivity
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+  const lastResetRef = useRef(0);
+  const logoutRef = useRef(handleLogout);
+  logoutRef.current = handleLogout;
+
+  const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  const THROTTLE_MS = 2000;
+
+  // Stable resetIdleTimer that never changes reference
+  const resetIdleTimer = useCallback(() => {
+    const now = Date.now();
+    if (now - lastResetRef.current < THROTTLE_MS) return;
+    lastResetRef.current = now;
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      console.log('⏰ Auto-logout: user idle for 30 minutes');
+      logoutRef.current();
+    }, IDLE_TIMEOUT);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
 
-    let lastReset = 0;
-    const THROTTLE_MS = 5000; // Only reset timer every 5 seconds max to avoid excessive calls
-
-    const resetIdleTimer = () => {
-      const now = Date.now();
-      if (now - lastReset < THROTTLE_MS) return; // Throttle resets
-      lastReset = now;
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = setTimeout(() => {
-        console.log('⏰ Auto-logout: user idle for 10 minutes');
-        handleLogout();
-      }, IDLE_TIMEOUT);
-    };
-
-    const events = ['mousedown', 'mouseup', 'click', 'keydown', 'keyup', 'scroll', 'touchstart', 'touchmove', 'mousemove', 'focus', 'wheel', 'resize'];
+    const events = ['mousedown', 'mouseup', 'click', 'keydown', 'keyup', 'scroll', 'touchstart', 'touchmove', 'mousemove', 'focus', 'wheel', 'resize', 'input', 'change'];
     events.forEach(e => window.addEventListener(e, resetIdleTimer, { passive: true }));
 
-    // Also reset on visibility change (user switches back to tab)
     const handleVisibility = () => { if (!document.hidden) resetIdleTimer(); };
     document.addEventListener('visibilitychange', handleVisibility);
 
@@ -128,7 +130,7 @@ const App: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [user, handleLogout]);
+  }, [!!user, resetIdleTimer]);
 
   const handleOnboardingComplete = (updatedUser: User) => {
       setUser(updatedUser);
