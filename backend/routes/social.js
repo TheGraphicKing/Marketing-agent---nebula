@@ -1123,18 +1123,23 @@ router.get('/status', protect, async (req, res) => {
 router.post('/post', protect, async (req, res) => {
   try {
     const { platforms, content, mediaUrls, scheduledDate } = req.body;
-    
+
     if (!platforms || !content) {
       return res.status(400).json({
         success: false,
         message: 'Platforms and content are required'
       });
     }
-    
+
     const options = {};
     if (mediaUrls) options.mediaUrls = mediaUrls;
     if (scheduledDate) options.scheduleDate = new Date(scheduledDate).toISOString();
-    
+
+    // Pass user's Ayrshare profile key so it posts to their sub-profile
+    if (req.user?.ayrshare?.profileKey) {
+      options.profileKey = req.user.ayrshare.profileKey;
+    }
+
     const result = await postToSocialMedia(platforms, content, options);
     
     res.json({
