@@ -3490,11 +3490,11 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     };
 
     // Update a generated post
-    const handleUpdatePost = (postId: string, updates: Partial<GeneratedPost>) => {
-      setGeneratedPosts(prev => prev.map(post => 
+    const handleUpdatePost = (postId: string, updates: Partial<GeneratedPost>, closeEditor = false) => {
+      setGeneratedPosts(prev => prev.map(post =>
         post.id === postId ? { ...post, ...updates, status: updates.status || 'edited' } : post
       ));
-      setEditingPostId(null);
+      if (closeEditor) setEditingPostId(null);
     };
 
     // State for image editing
@@ -3593,9 +3593,9 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
           try {
             // Create the campaign as DRAFT first — only set to 'scheduled' after Ayrshare confirms
             const createResult = await apiService.createCampaign({
-              name: `${campaignName} - ${post.platform} ${post.suggestedDate}`,
+              name: `${campaignName} - ${platforms.join(', ')} ${post.suggestedDate}`,
               objective: objective as any,
-              platforms: [post.platform.toLowerCase()],
+              platforms: platforms.map(p => p.toLowerCase()),
               status: 'draft',  // Start as draft, update after successful publish
               creative: {
                 type: contentType,
@@ -3638,8 +3638,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
             
             try {
               const publishResult = await apiService.publishCampaign(
-                campaign._id, 
-                [post.platform.toLowerCase()], 
+                campaign._id,
+                platforms.map(p => p.toLowerCase()),
                 scheduledFor
               );
               
@@ -3840,23 +3840,32 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                       { id: 'facebook', label: 'Facebook', icon: <Facebook className="w-4 h-4" /> },
                                       { id: 'twitter', label: 'Twitter/X', icon: <Twitter className="w-4 h-4" /> },
                                       { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="w-4 h-4" /> }
-                                    ].map(p => (
-                                      <button
-                                        key={p.id}
-                                        onClick={() => togglePlatform(p.id)}
-                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all ${
-                                          platforms.includes(p.id)
-                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
-                                            : isDarkMode
-                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
-                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
-                                        }`}
-                                      >
-                                        {p.icon}
-                                        <span className="text-sm font-medium">{p.label}</span>
-                                        {platforms.includes(p.id) && <Check className="w-4 h-4" />}
-                                      </button>
-                                    ))}
+                                    ].map(p => {
+                                      const isConnected = connectedPlatforms.includes(p.id);
+                                      return (
+                                        <button
+                                          key={p.id}
+                                          onClick={() => isConnected && togglePlatform(p.id)}
+                                          disabled={!isConnected}
+                                          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all ${
+                                            !isConnected
+                                              ? isDarkMode
+                                                ? 'border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'
+                                                : 'border-slate-200 text-slate-400 opacity-50 cursor-not-allowed'
+                                              : platforms.includes(p.id)
+                                                ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
+                                                : isDarkMode
+                                                  ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
+                                                  : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                          }`}
+                                        >
+                                          {p.icon}
+                                          <span className="text-sm font-medium">{p.label}</span>
+                                          {!isConnected && <span className="text-[10px] opacity-70">Not Connected</span>}
+                                          {isConnected && platforms.includes(p.id) && <Check className="w-4 h-4" />}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                                 
@@ -4293,9 +4302,9 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                                       <Check className="w-4 h-4" />
                                                     </button>
                                                     <button
-                                                      onClick={() => handleRegenerateImage(post.id)}
+                                                      onClick={() => setGeneratedPosts(prev => prev.filter(p => p.id !== post.id))}
                                                       className="p-2 rounded-lg bg-red-500/20 text-red-500 hover:bg-red-500/30 transition-colors"
-                                                      title="Reject & regenerate image"
+                                                      title="Remove post"
                                                     >
                                                       <X className="w-4 h-4" />
                                                     </button>
