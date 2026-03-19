@@ -21,8 +21,8 @@ const sectionInfo: Record<string, { title: string; description: string }> = {
     description: 'View your connected social media accounts at a glance. Track followers, engagement rates, and growth across all your platforms. Connect more accounts to unlock full analytics and one-click posting.'
   },
   brandScore: {
-    title: 'AI Brand Score',
-    description: 'Your Brand Score (0-100) is an AI-calculated metric that measures your overall marketing health based on engagement rates, content consistency, audience growth, and campaign performance across all connected platforms.'
+    title: 'Brand Score',
+    description: 'Your Brand Score (0-100) measures your overall marketing health based on engagement rates, content consistency, audience growth, and campaign performance across all connected platforms.'
   },
   competitorRadar: {
     title: 'Competitor Radar',
@@ -115,7 +115,7 @@ const SectionButtons: React.FC<{
                 {sectionType === 'brandScore' ? (
                   <div className="space-y-3">
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      Your <strong>AI Brand Score</strong> (0-100) measures your brand's overall marketing health, calculated in real-time from your connected platforms.
+                      Your <strong>Brand Score</strong> (0-100) measures your brand's overall marketing health, calculated in real-time from your connected platforms.
                     </p>
                     
                     {/* Weightage Breakdown */}
@@ -1452,7 +1452,7 @@ const Dashboard: React.FC = () => {
                       sectionData={{ suggestions: strategicSuggestions }} 
                     />
                 </div>
-                <span className="text-[10px] bg-gradient-to-r from-[#ffcc29]/20 to-orange-500/20 text-[#ffcc29] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide">AI Content Strategist</span>
+                <span className="text-[10px] bg-gradient-to-r from-[#ffcc29]/20 to-orange-500/20 text-[#ffcc29] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide">Content Strategist</span>
             </div>
             
             {/* Business context indicator */}
@@ -1606,7 +1606,7 @@ const Dashboard: React.FC = () => {
                       <Lightbulb className="w-6 h-6 text-[#ffcc29]" />
                     </div>
                     <p className={`text-sm font-medium mb-1 ${theme.textSecondary}`}>No content ideas yet</p>
-                    <p className={`text-xs mb-4 ${theme.textMuted}`}>Generate AI-powered content suggestions based on trends & events</p>
+                    <p className={`text-xs mb-4 ${theme.textMuted}`}>Generate content suggestions based on trends & events</p>
                   </div>
                 )}
                 
@@ -1729,7 +1729,7 @@ const Dashboard: React.FC = () => {
                   <div>
                     <h3 className={`text-lg font-bold ${theme.text}`}>Create Post</h3>
                     <p className={`text-xs ${theme.textMuted}`}>
-                      {selectedSuggestion?.title || 'AI-generated content'}
+                      {selectedSuggestion?.title || 'Generated content'}
                     </p>
                   </div>
                 </div>
@@ -1796,7 +1796,7 @@ const Dashboard: React.FC = () => {
                     
                     {/* Image Refinement */}
                     <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
-                      <label className={`block text-xs mb-2 ${theme.textMuted}`}>Refine image with AI</label>
+                      <label className={`block text-xs mb-2 ${theme.textMuted}`}>Refine image</label>
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -2146,7 +2146,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <p className={`text-lg font-semibold ${theme.text} mb-2`}>Crafting Your Viral Post</p>
                   <p className={`text-sm ${theme.textMuted} text-center max-w-sm`}>
-                    Our AI is analyzing the competitor's content and creating a unique, engaging post that will help you stand out...
+                    Gravity is analyzing the competitor's content and creating a unique, engaging post that will help you stand out...
                   </p>
                   <div className="flex items-center gap-2 mt-4">
                     <div className="w-2 h-2 rounded-full bg-[#ffcc29] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -2176,7 +2176,7 @@ const Dashboard: React.FC = () => {
                             : `${isDarkMode ? 'bg-[#161b22] text-white hover:bg-[#21262d]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`
                         }`}
                       >
-                        <Sparkles className="w-3 h-3" /> AI Image
+                        <Sparkles className="w-3 h-3" /> Generate Image
                       </button>
                       <button
                         onClick={() => setImageMode('upload')}
@@ -4177,7 +4177,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 <div className="flex gap-1 mt-1.5 mb-3">
                                   {([
                                     { key: 'upload' as const, label: 'Upload', icon: <Upload className="w-3.5 h-3.5" /> },
-                                    { key: 'ai' as const, label: 'AI Generate', icon: <Sparkles className="w-3.5 h-3.5" /> },
+                                    { key: 'ai' as const, label: 'Gravity Generate', icon: <Sparkles className="w-3.5 h-3.5" /> },
                                     { key: 'reference' as const, label: 'From Reference', icon: <ImageIcon className="w-3.5 h-3.5" /> },
                                   ]).map(tab => (
                                     <button
@@ -4270,7 +4270,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           alt="Generated poster"
                                           className={`w-full max-h-80 object-contain rounded-xl border ${isDarkMode ? 'border-slate-700/50 bg-[#161b22]' : 'border-slate-200 bg-slate-50'}`}
                                         />
-                                        <span className="absolute top-2 left-2 bg-purple-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">AI Generated</span>
+                                        <span className="absolute top-2 left-2 bg-purple-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">Gravity Generated</span>
                                         <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                                           <button
                                             onClick={async () => {
@@ -4316,7 +4316,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           value={generatedPoster ? posterEditInstructions : posterContent}
                                           onChange={(e) => generatedPoster ? setPosterEditInstructions(e.target.value) : setPosterContent(e.target.value)}
                                           placeholder={generatedPoster
-                                            ? 'Tell AI what to change... e.g., Make the title bigger, use blue theme'
+                                            ? 'Tell Gravity what to change... e.g., Make the title bigger, use blue theme'
                                             : 'Describe what poster to create... e.g., Dark-themed marketing poster for a ChatGPT workshop'
                                           }
                                           rows={2}
@@ -4349,7 +4349,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
 
                                     {!generatedPoster && (
                                       <p className={`text-[10px] ${theme.textMuted}`}>
-                                        AI generates a poster from your description · Press Enter to send
+                                        Gravity generates a poster from your description · Press Enter to send
                                         {calendarSelectedLogo && <span className="ml-1">· Logo: selected</span>}
                                         {calendarAspectRatio !== '1:1' && <span className="ml-1">· {calendarAspectRatio}</span>}
                                       </p>
@@ -4369,7 +4369,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           className={`w-full max-h-80 object-contain rounded-xl border ${isDarkMode ? 'border-slate-700/50 bg-[#161b22]' : 'border-slate-200 bg-slate-50'}`}
                                         />
                                         {generatedPoster && (
-                                          <span className="absolute top-2 left-2 bg-purple-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">AI Generated</span>
+                                          <span className="absolute top-2 left-2 bg-purple-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md">Gravity Generated</span>
                                         )}
                                         {!generatedPoster && (
                                           <span className={`absolute top-2 left-2 ${isDarkMode ? 'bg-slate-800/90 text-slate-300' : 'bg-white/90 text-slate-600'} text-[10px] font-bold px-2 py-0.5 rounded-md`}>Reference</span>
@@ -4423,7 +4423,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                       >
                                         <ImageIcon className={`w-8 h-8 mx-auto mb-2 ${theme.textMuted}`} />
                                         <p className={`text-sm font-medium ${theme.text}`}>Upload a reference image</p>
-                                        <p className={`text-xs ${theme.textMuted} mt-1`}>AI will create a new poster inspired by this · Max 10MB</p>
+                                        <p className={`text-xs ${theme.textMuted} mt-1`}>Gravity will create a new poster inspired by this · Max 10MB</p>
                                       </div>
                                     )}
 
@@ -4440,8 +4440,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                           value={generatedPoster ? posterEditInstructions : posterContent}
                                           onChange={(e) => generatedPoster ? setPosterEditInstructions(e.target.value) : setPosterContent(e.target.value)}
                                           placeholder={generatedPoster
-                                            ? 'Tell AI what to change... e.g., Make the title bigger, use blue theme, add my phone number'
-                                            : 'Tell AI what poster to create from this reference... e.g., Dark-themed marketing poster for a ChatGPT workshop'
+                                            ? 'Tell Gravity what to change... e.g., Make the title bigger, use blue theme, add my phone number'
+                                            : 'Tell Gravity what poster to create from this reference... e.g., Dark-themed marketing poster for a ChatGPT workshop'
                                           }
                                           rows={2}
                                           className={`flex-1 px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-purple-400 resize-none ${isDarkMode ? 'bg-[#161b22] border-slate-700/50 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400'}`}
@@ -4473,7 +4473,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
 
                                     {!generatedPoster && (
                                       <p className={`text-[10px] ${theme.textMuted}`}>
-                                        AI creates a new poster inspired by your reference image · Press Enter to send
+                                        Gravity creates a new poster inspired by your reference image · Press Enter to send
                                         {calendarSelectedLogo && <span className="ml-1">· Logo: selected</span>}
                                         {calendarAspectRatio !== '1:1' && <span className="ml-1">· {calendarAspectRatio}</span>}
                                       </p>
@@ -4494,16 +4494,16 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                         ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-sm' 
                                         : `${isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400'} cursor-not-allowed`
                                     }`}
-                                    title={(!scheduleImage && !generatedPoster) ? 'Upload an image first to generate AI caption' : 'Generate caption & hashtags from image'}
+                                    title={(!scheduleImage && !generatedPoster) ? 'Upload an image first to generate caption' : 'Generate caption & hashtags from image'}
                                   >
                                     {aiGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                                    {aiGenerating ? 'Generating...' : 'AI Generate'}
+                                    {aiGenerating ? 'Generating...' : 'Gravity Generate'}
                                   </button>
                                 </div>
                                 <textarea
                                   value={scheduleForm.description}
                                   onChange={(e) => setScheduleForm(prev => ({ ...prev, description: e.target.value }))}
-                                  placeholder="Write your caption or let AI generate one from your image..."
+                                  placeholder="Write your caption or generate one from your image..."
                                   rows={3}
                                   className={`w-full mt-1.5 px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-[#ffcc29] resize-none ${isDarkMode ? 'bg-[#161b22] border-slate-700/50 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400'}`}
                                 />
@@ -4519,7 +4519,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                   placeholder={aiGenerating ? 'Generating...' : '#marketing #brand #growth'}
                                   className={`w-full mt-1.5 px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-[#ffcc29] ${isDarkMode ? 'bg-[#161b22] border-slate-700/50 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-800 placeholder-slate-400'}`}
                                 />
-                                <p className={`text-[10px] mt-1 ${theme.textMuted}`}>Auto-generated by AI or edit manually</p>
+                                <p className={`text-[10px] mt-1 ${theme.textMuted}`}>Auto-generated or edit manually</p>
                               </div>
                             </>
                           )}
@@ -5049,7 +5049,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 <span className="text-3xl">{selectedHoliday.emoji}</span>
                                 <div>
                                     <h2 className={`text-xl font-bold ${theme.text}`}>Create Post for {selectedHoliday.name}</h2>
-                                    <p className={`text-sm ${theme.textMuted}`}>AI-generated content ready for your review</p>
+                                    <p className={`text-sm ${theme.textMuted}`}>Generated content ready for your review</p>
                                 </div>
                             </div>
                             <button onClick={() => { setShowEventPostCreator(false); setSelectedHoliday(null); }} className={`p-2 ${isDarkMode ? 'hover:bg-[#161b22]' : 'hover:bg-slate-100'} rounded-lg`}>
@@ -5112,7 +5112,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                         
                                         {/* Image Refinement */}
                                         <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
-                                            <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-2 block`}>Edit Image with AI</label>
+                                            <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-2 block`}>Edit Image</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="text"

@@ -150,7 +150,7 @@ const LandingPage: React.FC = () => {
 
             {/* Subheadline */}
             <p className={`text-lg md:text-xl leading-relaxed mb-10 max-w-2xl mx-auto ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
-              Nebulaa Gravity uses advanced AI to automate your marketing campaigns, analyze competitors, and find the perfect influencers — all from one beautiful dashboard.
+              Nebulaa Gravity automates your marketing campaigns, analyzes competitors, and finds the perfect influencers — all from one beautiful dashboard.
             </p>
 
             {/* CTAs */}
@@ -389,7 +389,7 @@ const LandingPage: React.FC = () => {
               {
                 step: "02",
                 title: "Set your goals",
-                description: "Tell us what you want to achieve and our AI will create a personalized strategy."
+                description: "Tell us what you want to achieve and Gravity will create a personalized strategy."
               },
               {
                 step: "03",

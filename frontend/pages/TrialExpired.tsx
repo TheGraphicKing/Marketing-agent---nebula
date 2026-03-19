@@ -275,10 +275,10 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
 
   // ─── Feature lists ───
   const features = [
-    { icon: <Bot className="w-4 h-4" />, text: 'AI credits loaded instantly on production' },
+    { icon: <Bot className="w-4 h-4" />, text: '1,000 credits loaded instantly on production' },
     { icon: <Target className="w-4 h-4" />, text: '+10 daily login bonus credits' },
     { icon: <Globe className="w-4 h-4" />, text: 'All your demo data migrated' },
-    { icon: <Megaphone className="w-4 h-4" />, text: 'AI campaign & content generation' },
+    { icon: <Megaphone className="w-4 h-4" />, text: 'Campaign & content generation' },
     { icon: <Globe className="w-4 h-4" />, text: 'Multi-platform social posting' },
     { icon: <Users className="w-4 h-4" />, text: 'Competitor intelligence & tracking' },
     { icon: <BarChart3 className="w-4 h-4" />, text: 'Analytics & performance insights' },
