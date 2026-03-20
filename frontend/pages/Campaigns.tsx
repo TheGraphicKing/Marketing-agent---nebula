@@ -4487,7 +4487,7 @@ interface PosterItem {
 }
 
 const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSuccess, isDarkMode, theme, connectedPlatforms }) => {
-    const [step, setStep] = useState<'upload' | 'preview' | 'schedule'>('upload');
+    const [step, setStep] = useState<'upload' | 'preview'>('upload');
     const [posters, setPosters] = useState<PosterItem[]>([]);
     const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -5032,8 +5032,7 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                 <h2 className={`text-lg font-bold ${theme.text}`}>Template Poster Creator</h2>
                 <p className={`text-xs ${theme.textSecondary}`}>
                   {step === 'upload' && 'Upload templates and add content'}
-                  {step === 'preview' && 'Review and refine your posters'}
-                  {step === 'schedule' && 'Schedule or post your posters'}
+                  {step === 'preview' && 'Review, refine, and publish your posters'}
                 </p>
               </div>
             </div>
@@ -5139,346 +5138,252 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
               </div>
             )}
 
-            {/* STEP 2: Preview & Edit */}
+            {/* STEP 2: Preview & Edit (merged with schedule — strategic advisor layout) */}
             {step === 'preview' && (
-              <div className="flex gap-6">
-                {/* Poster Preview */}
-                <div className="flex-1 min-w-0">
-                  {currentPoster && (
-                    <div className="space-y-4">
-                      {/* Main Preview */}
-                      <div 
-                        className={`relative rounded-xl overflow-hidden border cursor-pointer ${
-                          isDarkMode ? 'border-slate-700' : 'border-slate-200'
-                        }`}
-                        onClick={() => currentPoster.generatedImage && setFullPreviewImage(currentPoster.generatedImage)}
-                      >
-                        {currentPoster.status === 'generating' || currentPoster.status === 'editing' ? (
-                          <div className="aspect-square flex items-center justify-center bg-slate-900/50">
-                            <div className="text-center">
-                              <Loader2 className="w-12 h-12 animate-spin text-[#ffcc29] mx-auto mb-3" />
-                              <p className="text-white font-medium">
-                                {currentPoster.status === 'editing' ? 'Applying changes...' : 'Generating poster...'}
-                              </p>
-                            </div>
-                          </div>
-                        ) : currentPoster.generatedImage ? (
-                          <>
-                            <img 
-                              src={currentPoster.generatedImage} 
-                              alt="Generated poster"
-                              className="w-full"
-                            />
-                            <div className="absolute top-3 right-3 flex gap-2">
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); setFullPreviewImage(currentPoster.generatedImage); }}
-                                className="p-2 bg-black/50 rounded-lg text-white hover:bg-black/70"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <a
-                                href={currentPoster.generatedImage}
-                                download={`poster-${currentPosterIndex + 1}.png`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="p-2 bg-black/50 rounded-lg text-white hover:bg-black/70"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
-                            </div>
-                          </>
-                        ) : currentPoster.status === 'error' ? (
-                          <div className="aspect-square flex items-center justify-center bg-red-500/10">
-                            <div className="text-center p-6">
-                              <X className="w-12 h-12 text-red-500 mx-auto mb-3" />
-                              <p className="text-red-500 font-medium mb-2">Generation Failed</p>
-                              <p className={`text-sm ${theme.textSecondary}`}>{currentPoster.error}</p>
-                              <button 
-                                onClick={handleRegenerate}
-                                className="mt-4 px-4 py-2 bg-[#ffcc29] text-black rounded-lg font-medium text-sm"
-                              >
-                                Try Again
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="aspect-square flex items-center justify-center">
-                            <img 
-                              src={currentPoster.templateImage} 
-                              alt="Template"
-                              className="w-full h-full object-contain opacity-50"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Edit Controls */}
-                      {currentPoster.status === 'generated' && currentPoster.generatedImage && (
-                        <div className="space-y-3">
-                          {/* Reference Image Preview (if uploaded) */}
-                          {editReferenceImage && (
-                            <div className={`p-3 rounded-xl border ${isDarkMode ? 'border-purple-500/30 bg-purple-500/10' : 'border-purple-300 bg-purple-50'}`}>
-                              <div className="flex items-center gap-3">
-                                <img 
-                                  src={editReferenceImage} 
-                                  alt="Reference" 
-                                  className="w-16 h-16 rounded-lg object-cover border-2 border-purple-500"
-                                />
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-purple-500">✨ Reference Image Added</p>
-                                  <p className={`text-xs ${theme.textSecondary}`}>Gravity will recreate poster using this style</p>
-                                </div>
-                                <button 
-                                  onClick={clearEditReference}
-                                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-500"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Edit Input Row */}
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={editInstruction}
-                              onChange={(e) => setEditInstruction(e.target.value)}
-                              placeholder={editReferenceImage 
-                                ? "Optional: Add specific instructions for the reference style..." 
-                                : "Describe changes (e.g., 'Make title bigger', 'Change color to blue')"
-                              }
-                              className={`${inputClasses} flex-1`}
-                              onKeyDown={(e) => e.key === 'Enter' && handleEditPoster()}
-                            />
-                            <button
-                              onClick={handleEditPoster}
-                              disabled={isEditing || (!editInstruction.trim() && !editReferenceImage)}
-                              className={`px-4 py-2 rounded-lg font-medium disabled:opacity-50 flex items-center gap-2 ${
-                                editReferenceImage 
-                                  ? 'bg-purple-500 text-white hover:bg-purple-600' 
-                                  : 'bg-[#ffcc29] text-black'
-                              }`}
-                            >
-                              {isEditing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                              Apply
-                            </button>
-                          </div>
-                          
-                          {/* Action Buttons Row */}
-                          <div className="flex gap-2">
-                            {/* Upload Reference Button */}
-                            <input
-                              type="file"
-                              accept="image/*,video/*"
-                              onChange={handleEditReferenceUpload}
-                              className="hidden"
-                              id="edit-reference-upload"
-                            />
-                            <label
-                              htmlFor="edit-reference-upload"
-                              className={`flex-1 py-2 rounded-lg font-medium flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-                                editReferenceImage
-                                  ? 'bg-purple-500/20 text-purple-500 border border-purple-500/30'
-                                  : isDarkMode 
-                                    ? 'bg-slate-700 hover:bg-purple-500/20 hover:text-purple-400 text-white' 
-                                    : 'bg-slate-100 hover:bg-purple-500/10 hover:text-purple-500 text-slate-700'
-                              }`}
-                            >
-                              <Sparkles className="w-4 h-4" /> 
-                              {editReferenceImage ? 'Change Reference' : 'Use Reference'}
-                            </label>
-                            
-                            <button
-                              onClick={handleRegenerate}
-                              className={`flex-1 py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
-                                isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                              }`}
-                            >
-                              <RefreshCw className="w-4 h-4" /> Regenerate
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Thumbnails Sidebar */}
-                <div className={`w-48 shrink-0 border-l pl-4 ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                  <h4 className={`text-sm font-medium mb-3 ${theme.text}`}>All Posters ({posters.length})</h4>
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              <div className="space-y-4">
+                {/* Poster Thumbnails Strip (if multiple) */}
+                {posters.length > 1 && (
+                  <div className="flex gap-2 overflow-x-auto pb-2">
                     {posters.map((poster, index) => (
                       <div
                         key={poster.id}
                         onClick={() => setCurrentPosterIndex(index)}
-                        className={`relative rounded-lg overflow-hidden cursor-pointer border-2 transition-colors ${
-                          index === currentPosterIndex 
-                            ? 'border-[#ffcc29]' 
+                        className={`relative rounded-lg overflow-hidden cursor-pointer border-2 transition-colors shrink-0 w-16 h-16 ${
+                          index === currentPosterIndex
+                            ? 'border-[#ffcc29]'
                             : isDarkMode ? 'border-slate-700 hover:border-slate-600' : 'border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        <img 
-                          src={poster.generatedImage || poster.templateImage} 
+                        <img
+                          src={poster.generatedImage || poster.templateImage}
                           alt={`Poster ${index + 1}`}
-                          className="w-full aspect-square object-cover"
+                          className="w-full h-full object-cover"
                         />
                         {poster.status === 'generating' && (
                           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                            <Loader2 className="w-6 h-6 animate-spin text-white" />
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
                           </div>
                         )}
                         {poster.status === 'generated' && (
-                          <div className="absolute top-1 right-1 p-1 bg-green-500 rounded-full">
-                            <Check className="w-3 h-3 text-white" />
+                          <div className="absolute top-0.5 right-0.5 p-0.5 bg-green-500 rounded-full">
+                            <Check className="w-2 h-2 text-white" />
                           </div>
                         )}
                         {poster.status === 'error' && (
-                          <div className="absolute top-1 right-1 p-1 bg-red-500 rounded-full">
-                            <X className="w-3 h-3 text-white" />
+                          <div className="absolute top-0.5 right-0.5 p-0.5 bg-red-500 rounded-full">
+                            <X className="w-2 h-2 text-white" />
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 3: Schedule */}
-            {step === 'schedule' && (
-              <div className="max-w-lg mx-auto space-y-6">
-                {/* Platform Selection */}
-                <div>
-                  <label className={`block text-sm font-medium mb-3 ${theme.text}`}>Select Platforms</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['instagram', 'facebook', 'linkedin', 'x'].map(platform => {
-                      const isConnected = connectedPlatforms.includes(platform);
-                      const isSelected = selectedPlatforms.includes(platform);
-                      return (
-                        <button
-                          key={platform}
-                          onClick={() => isConnected && setSelectedPlatforms(prev => 
-                            prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
-                          )}
-                          disabled={!isConnected}
-                          className={`px-4 py-2 rounded-lg font-medium capitalize transition-colors flex items-center gap-2 ${
-                            isSelected 
-                              ? 'bg-[#ffcc29] text-black' 
-                              : isConnected
-                                ? isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                : 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400'
-                          }`}
-                        >
-                          {platform === 'instagram' && <Instagram className="w-4 h-4" />}
-                          {platform === 'facebook' && <Facebook className="w-4 h-4" />}
-                          {platform === 'linkedin' && <Linkedin className="w-4 h-4" />}
-                          {platform === 'x' && <Twitter className="w-4 h-4" />}
-                          {platform}
-                          {!isConnected && <span className="text-xs">(Not connected)</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-
-                {/* Caption Input */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className={`block text-sm font-medium ${theme.text}`}>
-                      Caption *
-                    </label>
-                    <button
-                      onClick={handleGenerateCaption}
-                      disabled={isGeneratingCaption || posters.filter(p => p.status === 'generated').length === 0}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        !isGeneratingCaption && posters.filter(p => p.status === 'generated').length > 0
-                          ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
-                          : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {isGeneratingCaption ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          Generate with AI
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <textarea
-                    value={caption}
-                    onChange={(e) => setCaption(e.target.value)}
-                    placeholder="Write your caption or click 'Generate with AI' to auto-create from your poster..."
-                    rows={4}
-                    className={`${inputClasses} resize-none ${selectedPlatforms.some(p => caption.length > (PLATFORM_LIMITS[p.toLowerCase()]?.charLimit || 99999)) ? 'border-red-500 focus:ring-red-500' : ''}`}
-                  />
-                  <CaptionCharCounter caption={caption} platforms={selectedPlatforms} isDarkMode={isDarkMode} />
-                </div>
-
-                {/* Schedule Toggle */}
-                <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-slate-800' : 'bg-slate-50'}`}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <Calendar className={`w-5 h-5 ${theme.textSecondary}`} />
-                      <span className={`font-medium ${theme.text}`}>Schedule for later</span>
-                    </div>
-                    <button
-                      onClick={() => setIsScheduleMode(!isScheduleMode)}
-                      className={`relative w-12 h-6 rounded-full transition-colors ${
-                        isScheduleMode ? 'bg-[#ffcc29]' : isDarkMode ? 'bg-slate-600' : 'bg-slate-300'
-                      }`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${
-                        isScheduleMode ? 'left-7' : 'left-1'
-                      }`} />
-                    </button>
-                  </div>
-
-                  {isScheduleMode && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="date"
-                        value={scheduleDate}
-                        onChange={(e) => setScheduleDate(e.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
-                        className={inputClasses}
-                      />
-                      <input
-                        type="time"
-                        value={scheduleTime}
-                        onChange={(e) => setScheduleTime(e.target.value)}
-                        className={inputClasses}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Publish Result */}
-                {publishResult && (
-                  <div className={`p-4 rounded-xl ${
-                    publishResult.success ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      {publishResult.success ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
-                      <span className="font-medium">{publishResult.message}</span>
-                    </div>
-                  </div>
                 )}
 
-                {/* Summary */}
-                <div className={`p-4 rounded-xl border ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                  <h4 className={`font-medium mb-2 ${theme.text}`}>Summary</h4>
-                  <ul className={`text-sm space-y-1 ${theme.textSecondary}`}>
-                    <li>• {posters.filter(p => p.status === 'generated').length} poster(s) ready</li>
-                    <li>• Platforms: {selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : 'None selected'}</li>
-                    <li>• Aspect Ratio: {selectedAspectRatio || '1:1'}</li>
-                    <li>• {isScheduleMode ? `Scheduled for ${scheduleDate} ${scheduleTime}` : 'Post immediately'}</li>
-                  </ul>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left Column — Image */}
+                  <div>
+                    <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${theme.textSecondary}`}>Image</label>
+                    {currentPoster && currentPoster.status === 'generating' || currentPoster?.status === 'editing' ? (
+                      <div className={`aspect-square rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-slate-900/50' : 'bg-slate-100'}`}>
+                        <div className="text-center">
+                          <Loader2 className="w-12 h-12 animate-spin text-[#ffcc29] mx-auto mb-3" />
+                          <p className={`font-medium ${theme.text}`}>
+                            {currentPoster?.status === 'editing' ? 'Applying changes...' : 'Generating poster...'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : currentPoster?.generatedImage ? (
+                      <div className="relative rounded-xl overflow-hidden mb-3">
+                        <img src={currentPoster.generatedImage} alt="Generated poster" className="w-full object-contain max-h-[500px]" />
+                        <div className="absolute top-2 right-2 flex gap-2">
+                          <button
+                            onClick={() => setFullPreviewImage(currentPoster.generatedImage)}
+                            className="p-2 bg-black/50 rounded-lg text-white hover:bg-black/70"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <a
+                            href={currentPoster.generatedImage}
+                            download={`poster-${currentPosterIndex + 1}.png`}
+                            className="p-2 bg-black/60 hover:bg-black/80 rounded-lg text-white transition-colors"
+                            title="Download"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fetch(currentPoster.generatedImage!)
+                                .then(res => res.blob())
+                                .then(blob => {
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `poster-${currentPosterIndex + 1}.png`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                })
+                                .catch(() => window.open(currentPoster.generatedImage!, '_blank'));
+                              e.preventDefault();
+                            }}
+                          >
+                            <Download className="w-4 h-4" />
+                          </a>
+                        </div>
+                      </div>
+                    ) : currentPoster?.status === 'error' ? (
+                      <div className={`aspect-square rounded-xl flex items-center justify-center bg-red-500/10`}>
+                        <div className="text-center p-6">
+                          <X className="w-12 h-12 text-red-500 mx-auto mb-3" />
+                          <p className="text-red-500 font-medium mb-2">Generation Failed</p>
+                          <p className={`text-sm ${theme.textSecondary}`}>{currentPoster.error}</p>
+                          <button onClick={handleRegenerate} className="mt-4 px-4 py-2 bg-[#ffcc29] text-black rounded-lg font-medium text-sm">
+                            Try Again
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`aspect-square rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-100'}`}>
+                        <ImageIcon className={`w-12 h-12 ${theme.textMuted}`} />
+                      </div>
+                    )}
+
+                    {/* Refine Image */}
+                    {currentPoster?.status === 'generated' && currentPoster.generatedImage && (
+                      <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
+                        <label className={`block text-xs mb-2 ${theme.textMuted}`}>Refine image</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={editInstruction}
+                            onChange={(e) => setEditInstruction(e.target.value)}
+                            placeholder="e.g. make title bigger, change colors..."
+                            className={`flex-1 px-3 py-2 text-sm rounded-lg border ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50 text-white' : 'bg-white border-slate-200'}`}
+                            onKeyDown={(e) => e.key === 'Enter' && handleEditPoster()}
+                          />
+                          <button
+                            onClick={handleEditPoster}
+                            disabled={isEditing || (!editInstruction.trim() && !editReferenceImage)}
+                            className="px-3 py-2 bg-[#ffcc29] hover:bg-[#e6b825] text-black text-xs font-semibold rounded-lg disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {isEditing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                            Refine
+                          </button>
+                        </div>
+                        {/* Reference + Regenerate */}
+                        <div className="flex gap-2 mt-2">
+                          <input type="file" accept="image/*,video/*" onChange={handleEditReferenceUpload} className="hidden" id="edit-reference-upload" />
+                          <label
+                            htmlFor="edit-reference-upload"
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                              editReferenceImage
+                                ? 'bg-purple-500/20 text-purple-500 border border-purple-500/30'
+                                : isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <Sparkles className="w-3 h-3" /> {editReferenceImage ? 'Change Reference' : 'Use Reference'}
+                          </label>
+                          <button
+                            onClick={handleRegenerate}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
+                              isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <RefreshCw className="w-3 h-3" /> Regenerate
+                          </button>
+                        </div>
+                        {editReferenceImage && (
+                          <div className={`mt-2 p-2 rounded-lg flex items-center gap-2 ${isDarkMode ? 'bg-purple-500/10 border border-purple-500/30' : 'bg-purple-50 border border-purple-200'}`}>
+                            <img src={editReferenceImage} alt="Reference" className="w-10 h-10 rounded object-cover border-2 border-purple-500" />
+                            <p className="text-xs text-purple-500 flex-1">Reference image added</p>
+                            <button onClick={clearEditReference} className="p-1 text-red-500 hover:bg-red-500/20 rounded"><X className="w-3 h-3" /></button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column — Platform, Caption, Schedule */}
+                  <div className="space-y-4">
+                    {/* Platform Selection */}
+                    <div>
+                      <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${theme.textSecondary}`}>Platform</label>
+                      <div className="flex flex-wrap gap-2">
+                        {['instagram', 'facebook', 'linkedin', 'x'].map(platform => {
+                          const isConnected = connectedPlatforms.includes(platform);
+                          const isSelected = selectedPlatforms.includes(platform);
+                          return (
+                            <button
+                              key={platform}
+                              onClick={() => isConnected && setSelectedPlatforms(prev =>
+                                prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
+                              )}
+                              disabled={!isConnected}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
+                                isSelected
+                                  ? 'bg-[#ffcc29] text-black'
+                                  : isConnected
+                                    ? isDarkMode ? 'bg-[#161b22] text-white border border-slate-700/50' : 'bg-white text-slate-700 border border-slate-200'
+                                    : 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400'
+                              }`}
+                            >
+                              {platform}
+                              {!isConnected && <span className="text-xs ml-1">(N/A)</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Caption */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className={`block text-xs font-semibold uppercase tracking-wide ${theme.textSecondary}`}>Caption</label>
+                        <button
+                          onClick={handleGenerateCaption}
+                          disabled={isGeneratingCaption || posters.filter(p => p.status === 'generated').length === 0}
+                          className={`flex items-center gap-1 text-xs ${theme.textMuted} hover:text-[#ffcc29] transition-colors`}
+                        >
+                          {isGeneratingCaption ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                          Generate
+                        </button>
+                      </div>
+                      <textarea
+                        value={caption}
+                        onChange={(e) => setCaption(e.target.value)}
+                        placeholder="Write your caption..."
+                        rows={4}
+                        className={`w-full p-3 rounded-lg text-sm ${isDarkMode ? 'bg-[#161b22] border-slate-700/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} border focus:ring-2 focus:ring-[#ffcc29]/50 focus:border-[#ffcc29] transition-all resize-none`}
+                      />
+                      <CaptionCharCounter caption={caption} platforms={selectedPlatforms} isDarkMode={isDarkMode} />
+                    </div>
+
+                    {/* Schedule (Optional) */}
+                    <div>
+                      <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${theme.textSecondary}`}>Schedule (Optional)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={scheduleDate}
+                          onChange={(e) => setScheduleDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className={`flex-1 p-2.5 rounded-lg text-sm ${isDarkMode ? 'bg-[#161b22] border-slate-700/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} border`}
+                        />
+                        <input
+                          type="time"
+                          value={scheduleTime}
+                          onChange={(e) => setScheduleTime(e.target.value)}
+                          className={`w-32 p-2.5 rounded-lg text-sm ${isDarkMode ? 'bg-[#161b22] border-slate-700/50 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} border`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Publish Result */}
+                    {publishResult && (
+                      <div className={`p-3 rounded-lg ${publishResult.success ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                        <div className="flex items-center gap-2">
+                          {publishResult.success ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                          <span className="text-sm font-medium">{publishResult.message}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -5486,11 +5391,10 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
 
           {/* Footer */}
           <div className={`flex justify-between items-center p-5 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
-            <button 
+            <button
               onClick={() => {
                 if (step === 'upload') onClose();
-                else if (step === 'preview') setStep('upload');
-                else setStep('preview');
+                else setStep('upload');
               }}
               className={`px-4 py-2 rounded-lg font-medium ${theme.textSecondary} hover:bg-slate-100 dark:hover:bg-slate-800`}
             >
@@ -5498,7 +5402,7 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
             </button>
 
             {step === 'upload' && (
-              <button 
+              <button
                 onClick={handleGeneratePosters}
                 disabled={isGenerating || posters.length === 0 || posters.every(p => !p.content.trim())}
                 className="px-6 py-2.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2"
@@ -5509,33 +5413,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
 
             {step === 'preview' && (
               <div className="flex items-center gap-3">
-                <button 
-                  onClick={handleSaveToDraft}
-                  disabled={isSavingDraft || posters.filter(p => p.status === 'generated').length === 0}
-                  className={`px-5 py-2.5 rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2 ${
-                    isDarkMode 
-                      ? 'bg-slate-700 text-white hover:bg-slate-600' 
-                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                  }`}
-                >
-                  {isSavingDraft ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-                  ) : (
-                    <><Save className="w-4 h-4" /> Save to Draft</>
-                  )}
-                </button>
-                <button 
-                  onClick={() => setStep('schedule')}
-                  disabled={posters.filter(p => p.status === 'generated').length === 0}
-                  className="px-6 py-2.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2"
-                >
-                  Continue to Publish <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {step === 'schedule' && (
-              <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowTemplatePreview(true)}
                   className={`px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 ${
@@ -5544,20 +5421,46 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                 >
                   <Eye className="w-4 h-4" /> Preview
                 </button>
-                <button 
-                  onClick={handlePublish}
-                disabled={isPublishing || selectedPlatforms.length === 0 || selectedPlatforms.some(p => caption.length > (PLATFORM_LIMITS[p.toLowerCase()]?.charLimit || 99999))}
-                title={selectedPlatforms.some(p => caption.length > (PLATFORM_LIMITS[p.toLowerCase()]?.charLimit || 99999)) ? 'Caption exceeds character limit' : ''}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2"
-              >
-                {isPublishing ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</>
-                ) : isScheduleMode ? (
-                  <><Calendar className="w-4 h-4" /> Schedule</>
-                ) : (
-                  <><Send className="w-4 h-4" /> Post Now</>
+                <button
+                  onClick={handleSaveToDraft}
+                  disabled={isSavingDraft || posters.filter(p => p.status === 'generated').length === 0}
+                  className={`px-5 py-2.5 rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2 ${
+                    isDarkMode
+                      ? 'bg-slate-700 text-white hover:bg-slate-600'
+                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                  }`}
+                >
+                  {isSavingDraft ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                  ) : (
+                    <><Save className="w-4 h-4" /> Save as Draft</>
+                  )}
+                </button>
+                {scheduleDate && (
+                  <button
+                    onClick={() => { setIsScheduleMode(true); handlePublish(); }}
+                    disabled={isPublishing || selectedPlatforms.length === 0 || selectedPlatforms.some(p => caption.length > (PLATFORM_LIMITS[p.toLowerCase()]?.charLimit || 99999))}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isPublishing ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Scheduling...</>
+                    ) : (
+                      <><Calendar className="w-4 h-4" /> Schedule</>
+                    )}
+                  </button>
                 )}
-              </button>
+                <button
+                  onClick={() => { setIsScheduleMode(false); handlePublish(); }}
+                  disabled={isPublishing || selectedPlatforms.length === 0 || selectedPlatforms.some(p => caption.length > (PLATFORM_LIMITS[p.toLowerCase()]?.charLimit || 99999))}
+                  title={selectedPlatforms.some(p => caption.length > (PLATFORM_LIMITS[p.toLowerCase()]?.charLimit || 99999)) ? 'Caption exceeds character limit' : ''}
+                  className="px-6 py-2.5 bg-gradient-to-r from-[#ffcc29] to-[#ffa500] text-black rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isPublishing && !scheduleDate ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Publishing...</>
+                  ) : (
+                    <><Send className="w-4 h-4" /> Post Now</>
+                  )}
+                </button>
               </div>
             )}
           </div>
