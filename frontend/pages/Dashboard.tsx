@@ -1957,92 +1957,6 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
                     
-                    {/* Trending Audio */}
-                    {generatedPost.trendingAudio && generatedPost.trendingAudio.length > 0 && (
-                      <div className="mt-4">
-                        <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${theme.textSecondary}`}>
-                          <Music className="w-4 h-4 inline mr-1" /> Trending Audio
-                        </label>
-                        <div className="space-y-2">
-                          {generatedPost.trendingAudio.slice(0, 3).map((audio: any, i: number) => (
-                            <div 
-                              key={i} 
-                              className={`p-3 rounded-lg flex items-center justify-between group transition-all duration-200 ${isDarkMode ? 'bg-[#161b22] hover:bg-[#1f2937]' : 'bg-slate-50 hover:bg-slate-100'} ${playingAudio === audio.name ? 'ring-2 ring-[#ffcc29]' : ''}`}
-                            >
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                {/* Play/Pause Button */}
-                                <button
-                                  onClick={() => handlePlayAudio(audio.name)}
-                                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${playingAudio === audio.name ? 'bg-[#ffcc29] text-black' : 'bg-[#ffcc29]/20 text-[#ffcc29] hover:bg-[#ffcc29] hover:text-black'}`}
-                                >
-                                  {playingAudio === audio.name ? (
-                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                      <rect x="6" y="4" width="4" height="16" rx="1" />
-                                      <rect x="14" y="4" width="4" height="16" rx="1" />
-                                    </svg>
-                                  ) : (
-                                    <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                                      <path d="M8 5v14l11-7z" />
-                                    </svg>
-                                  )}
-                                </button>
-                                
-                                {/* Audio Info */}
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm font-medium truncate ${theme.text}`}>{audio.name}</p>
-                                  <p className={`text-xs truncate ${theme.textMuted}`}>by {audio.artist || 'Various Artists'}</p>
-                                </div>
-                              </div>
-                              
-                              {/* Waveform Animation when playing */}
-                              {playingAudio === audio.name && (
-                                <div className="flex items-center gap-0.5 ml-3">
-                                  {[1,2,3,4,5].map((bar) => (
-                                    <div 
-                                      key={bar} 
-                                      className="w-1 bg-[#ffcc29] rounded-full animate-pulse"
-                                      style={{
-                                        height: `${Math.random() * 16 + 8}px`,
-                                        animationDelay: `${bar * 0.1}s`,
-                                        animationDuration: '0.5s'
-                                      }}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                              
-                              {/* Use Audio Button */}
-                              <button
-                                className={`ml-3 px-2.5 py-1 text-xs rounded-lg font-medium transition-all opacity-0 group-hover:opacity-100 ${isDarkMode ? 'bg-[#ffcc29]/20 text-[#ffcc29] hover:bg-[#ffcc29] hover:text-black' : 'bg-[#ffcc29]/20 text-[#b8941e] hover:bg-[#ffcc29] hover:text-black'}`}
-                              >
-                                Use
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        
-                        {/* Volume Control */}
-                        {playingAudio && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <Music className={`w-3 h-3 ${theme.textMuted}`} />
-                            <input
-                              type="range"
-                              min="0"
-                              max="1"
-                              step="0.1"
-                              value={audioVolume}
-                              onChange={(e) => {
-                                const vol = parseFloat(e.target.value);
-                                setAudioVolume(vol);
-                                if (audioRef.current) audioRef.current.volume = vol;
-                              }}
-                              className="flex-1 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#ffcc29]"
-                            />
-                            <span className={`text-xs ${theme.textMuted}`}>{Math.round(audioVolume * 100)}%</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                   
                   {/* Caption & Details */}
@@ -5319,27 +5233,6 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                             </div>
                                         </div>
                                         
-                                        {/* Trending Audio */}
-                                        {eventGeneratedPost.trendingAudio && eventGeneratedPost.trendingAudio.length > 0 && (
-                                            <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-[#161b22]' : 'bg-slate-50'}`}>
-                                                <label className={`text-xs font-semibold uppercase ${theme.textMuted} mb-2 block flex items-center gap-1`}>
-                                                    <Music className="w-3 h-3" /> Trending Audio Suggestions
-                                                </label>
-                                                <div className="space-y-2">
-                                                    {eventGeneratedPost.trendingAudio.slice(0, 3).map((audio: any, idx: number) => (
-                                                        <div key={idx} className={`flex items-center justify-between p-2 rounded-lg ${isDarkMode ? 'bg-[#0d1117]' : 'bg-white'}`}>
-                                                            <div>
-                                                                <p className={`text-sm font-medium ${theme.text}`}>{audio.name}</p>
-                                                                <p className={`text-xs ${theme.textMuted}`}>{audio.artist} • {audio.mood}</p>
-                                                            </div>
-                                                            <span className={`text-xs px-2 py-0.5 rounded ${audio.platform === 'instagram' ? 'bg-pink-500/20 text-pink-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                                                                {audio.platform}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
                                     </div>
                                     
                                     {/* Right Column: Caption & Details */}
