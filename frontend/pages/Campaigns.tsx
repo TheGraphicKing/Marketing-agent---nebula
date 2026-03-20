@@ -22,6 +22,94 @@ const PLATFORM_LIMITS: Record<string, { charLimit: number; label: string; imageM
   youtube:   { charLimit: 5000,   label: 'YouTube',    imageMaxMB: 2,  videoMaxMB: 12800, bestRatio: '16:9' },
 };
 
+const PLATFORM_CONTENT_TEMPLATES: Record<string, { id: string; label: string; structure: string }[]> = {
+  instagram: [
+    { 
+      id: 'standard', 
+      label: 'Standard Post', 
+      structure: "🎯 CAMPAIGN: {name}\n• About: {desc}\n• Goal: {obj}\n\n📸 KEY HIGHLIGHTS:\n• [Key Point 1]\n• [Key Point 2]\n\n🔗 CTA:\n[Your CTA Link]" 
+    },
+    { 
+      id: 'promotional', 
+      label: 'Promo/Sale', 
+      structure: "🔥 LIMITED TIME: {name}\n\n✨ WHAT'S NEW:\n{desc}\n\n⏳ DON'T MISS OUT:\n• [Offer 1]\n• [Offer 2]\n\n🔗 SHOP NOW: [Link]" 
+    },
+    { 
+      id: 'educational', 
+      label: 'Tips & Value', 
+      structure: "💡 DID YOU KNOW? \n\n{name}\n\n🚀 3 TIPS TO {obj}:\n1. [Tip 1]\n2. [Tip 2]\n3. [Tip 3]\n\n💬 Save this for later!" 
+    }
+  ],
+  linkedin: [
+    { 
+      id: 'professional', 
+      label: 'Professional', 
+      structure: "💼 CAMPAIGN: {name}\n• Overview: {desc}\n• Strategy: {obj}\n\n📊 DISCUSSION POINTS:\n1. [Point 1]\n2. [Point 2]\n\n🚀 OUTCOMES:\n• [Outcome]\n\n🔗 CTA:\n[Link]" 
+    },
+    { 
+      id: 'thought_leadership', 
+      label: 'Thought Leadership', 
+      structure: "🚨 THE FUTURE OF {obj}\n\nI've been thinking about {name} lately. \n\n💡 KEY INSIGHTS:\n• {desc}\n\nWhat are your thoughts? 👇\n\n#ProfessionalInsights" 
+    },
+    { 
+      id: 'case_study', 
+      label: 'Case Study', 
+      structure: "📈 HOW WE ACHIEVED {obj}\n\nProject: {name}\n\n❓ THE CHALLENGE:\n{desc}\n\n✅ THE SOLUTION:\n• [Action 1]\n• [Action 2]\n\n🏆 THE RESULT:\n• [Achievement]\n\nRead the full story: [Link]" 
+    }
+  ],
+  twitter: [
+    { 
+      id: 'punchy', 
+      label: 'Punchy Update', 
+      structure: "🚀 Introducing {name}: {desc}\n\nKey Goal: {obj}\n\nCheck it out here: [Link]\n\n#TwitterX #Launch" 
+    },
+    { 
+      id: 'thread_hook', 
+      label: 'Thread Hook', 
+      structure: "I just discovered the secret to {obj} 🧵\n\n{name} is changing everything we know about {desc}.\n\nHere are 3 reasons why:\n\n1/3..." 
+    }
+  ],
+  facebook: [
+    { 
+      id: 'community', 
+      label: 'Community Engagement', 
+      structure: "Hey guys! We're excited to share {name} with you. 😊\n\n{desc}\n\nWe're aiming to {obj}. What do you think about [Point]? Let us know in the comments! 👇" 
+    },
+    { 
+      id: 'event', 
+      label: 'Event/Announcement', 
+      structure: "📢 ANNOUNCEMENT: {name}\n\nDetails: {desc}\nGoal: {obj}\n\nWhen: [Date/Time]\nWhere: [Location]\n\nSee you there! 👋" 
+    }
+  ],
+  youtube: [
+    { 
+      id: 'thumbnail', 
+      label: 'Thumbnail Strategy', 
+      structure: "TITLE: {name}\nHOOK: {desc}\nCALLOUT: {obj}\n\n(Note: This text is for visual layout on the thumbnail image)" 
+    },
+    { 
+      id: 'description', 
+      label: 'Video Description', 
+      structure: "In this video, we dive into {name}.\n\n{desc}\n\nOur mission: {obj}\n\nTIMESTAMPS:\n0:00 Intro\n[Add more timestamps...]\n\n🔗 LINKS: [Link]" 
+    }
+  ]
+};
+
+const applyTemplate = (structure: string, name: string, desc: string, obj: string) => {
+  return structure
+    .replace(/{name}/g, name || '[Campaign Name]')
+    .replace(/{desc}/g, desc || '[Description]')
+    .replace(/{obj}/g, obj || '[Objective]');
+};
+
+const PLATFORM_DISPLAY_DATA: Record<string, { icon: string; color: string; borderColor: string; bgColor: string; darkBgColor: string }> = {
+  instagram: { icon: '📸', color: 'from-pink-500 to-purple-600', borderColor: 'border-pink-500/40', bgColor: 'bg-pink-50', darkBgColor: 'bg-pink-500/10' },
+  linkedin:  { icon: '💼', color: 'from-blue-600 to-blue-800', borderColor: 'border-blue-500/40', bgColor: 'bg-blue-50', darkBgColor: 'bg-blue-500/10' },
+  twitter:   { icon: '🐦', color: 'from-sky-400 to-sky-600', borderColor: 'border-sky-500/40', bgColor: 'bg-sky-50', darkBgColor: 'bg-sky-500/10' },
+  facebook:  { icon: '👍', color: 'from-blue-500 to-indigo-600', borderColor: 'border-blue-400/40', bgColor: 'bg-blue-50', darkBgColor: 'bg-blue-400/10' },
+  youtube:   { icon: '▶️', color: 'from-red-500 to-red-700', borderColor: 'border-red-500/40', bgColor: 'bg-red-50', darkBgColor: 'bg-red-500/10' },
+};
+
 /** Reusable character counter bar for caption textareas */
 const CaptionCharCounter: React.FC<{
   caption: string;
@@ -3337,6 +3425,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [contentType, setContentType] = useState<'image' | 'video' | 'carousel' | 'story'>('image');
     const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>('1:1');
     const [platformContents, setPlatformContents] = useState<Record<string, string>>({});
+    const [selectedTemplateIds, setSelectedTemplateIds] = useState<Record<string, string>>({});
     const [callToAction, setCallToAction] = useState('');
     const [productLogo, setProductLogo] = useState<string | null>(null);
     const [productLogoName, setProductLogoName] = useState<string>('');
@@ -3363,18 +3452,15 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const labelClasses = `block text-xs font-bold uppercase tracking-wide mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`;
 
     const getTemplateForPlatform = (platform: string, name: string, desc: string, obj: string) => {
+      const templates = PLATFORM_CONTENT_TEMPLATES[platform];
+      if (templates && templates.length > 0) {
+        return applyTemplate(templates[0].structure, name, desc, obj);
+      }
+      
       const pName = name || '[Campaign Name]';
       const pDesc = desc || '[Description]';
       const pObj = obj || '[Objective]';
-      
-      switch(platform) {
-        case 'instagram': return `🎯 CAMPAIGN: ${pName}\n• About: ${pDesc}\n• Goal: ${pObj}\n\n📸 KEY HIGHLIGHTS:\n• \n• \n\n🔗 CTA:\n`;
-        case 'linkedin': return `💼 CAMPAIGN: ${pName}\n• Overview: ${pDesc}\n• Strategy: ${pObj}\n\n📊 DISCUSSION POINTS:\n1. \n2. \n\n🚀 OUTCOMES:\n• \n\n🔗 CTA:\n`;
-        case 'twitter': return `🐦 CAMPAIGN: ${pName}\n🎯 Goal: ${pObj}\n\n✨ HIGHLIGHTS:\n• \n• \n\n🔗 CTA:\n`;
-        case 'facebook': return `👍 CAMPAIGN: ${pName}\n• About: ${pDesc}\n• Goal: ${pObj}\n\n🌟 VALUE PROPOSITION:\n• \n• \n\n💬 QUESTION FOR COMMUNITY:\n\n🔗 CTA:\n`;
-        case 'youtube': return `▶️ VIDEO CAMPAIGN: ${pName}\n• Focus: ${pObj}\n• Overview: ${pDesc}\n\n📝 OUTLINE:\n1. Hook (0:00-0:15):\n2. Core (0:15-1:00):\n3. Outro (1:00-1:30):\n\n🔗 CTA:\n`;
-        default: return `Campaign: ${pName}\nDescription: ${pDesc}\nObjective: ${pObj}\n\nNotes:\n`;
-      }
+      return `Campaign: ${pName}\nDescription: ${pDesc}\nObjective: ${pObj}\n\nNotes:\n`;
     };
 
     useEffect(() => {
@@ -3386,6 +3472,22 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
             if (next[p] === undefined) {
               next[p] = getTemplateForPlatform(p, campaignName, campaignDescription, objective);
               updated = true;
+            }
+          });
+          return updated ? next : curr;
+        });
+
+        // Set default selected template IDs if they don't exist
+        setSelectedTemplateIds(curr => {
+          let updated = false;
+          const next = { ...curr };
+          platforms.forEach(p => {
+            if (next[p] === undefined) {
+              const templates = PLATFORM_CONTENT_TEMPLATES[p];
+              if (templates && templates.length > 0) {
+                next[p] = templates[0].id;
+                updated = true;
+              }
             }
           });
           return updated ? next : curr;
@@ -3864,7 +3966,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                       { id: 'instagram', label: 'Instagram', icon: <Instagram className="w-4 h-4" /> },
                                       { id: 'facebook', label: 'Facebook', icon: <Facebook className="w-4 h-4" /> },
                                       { id: 'twitter', label: 'Twitter/X', icon: <Twitter className="w-4 h-4" /> },
-                                      { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="w-4 h-4" /> }
+                                      { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="w-4 h-4" /> },
+                                      { id: 'youtube', label: 'YouTube', icon: <Youtube className="w-4 h-4" /> }
                                     ].map(p => (
                                       <button
                                         key={p.id}
@@ -3964,21 +4067,54 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                       const charLimit = PLATFORM_LIMITS[p]?.charLimit || 2200;
                                       const count = (platformContents[p] || '').length;
                                       const isOver = count > charLimit;
+                                      const templates = PLATFORM_CONTENT_TEMPLATES[p] || [];
                                       return (
                                         <div key={p} className={`border rounded-xl overflow-hidden shadow-sm transition-all focus-within:ring-2 ${isOver ? 'focus-within:ring-red-500' : 'focus-within:ring-[#ffcc29]'} ${isDarkMode ? 'border-slate-700 bg-[#161b22]' : 'border-slate-200 bg-slate-50'}`}>
-                                          <div className={`px-3 py-2 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-100'}`}>
-                                            <div className="flex items-center gap-2">
-                                              {p === 'instagram' ? <Instagram className="w-4 h-4 text-pink-500" /> :
-                                               p === 'linkedin' ? <Linkedin className="w-4 h-4 text-blue-600" /> :
-                                               p === 'twitter' ? <Twitter className="w-4 h-4 text-sky-500" /> :
-                                               p === 'facebook' ? <Facebook className="w-4 h-4 text-blue-500" /> :
-                                               <Youtube className="w-4 h-4 text-red-500" />}
-                                              <span className={`text-xs font-bold capitalize ${theme.text}`}>{p} Template</span>
+                                          <div className={`px-3 py-2 border-b flex flex-col gap-2 ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-100'}`}>
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex items-center gap-2">
+                                                {p === 'instagram' ? <Instagram className="w-4 h-4 text-pink-500" /> :
+                                                 p === 'linkedin' ? <Linkedin className="w-4 h-4 text-blue-600" /> :
+                                                 p === 'twitter' ? <Twitter className="w-4 h-4 text-sky-500" /> :
+                                                 p === 'facebook' ? <Facebook className="w-4 h-4 text-blue-500" /> :
+                                                 <Youtube className="w-4 h-4 text-red-500" />}
+                                                <span className={`text-xs font-bold capitalize ${theme.text}`}>{p} Template</span>
+                                              </div>
+                                              <span className={`text-[10px] font-mono whitespace-nowrap px-2 py-0.5 rounded-full ${isOver ? 'bg-red-500/10 text-red-500 font-bold' : isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>
+                                                {count.toLocaleString()} / {charLimit.toLocaleString()} chars
+                                                {isOver && ' ⚠️'}
+                                              </span>
                                             </div>
-                                            <span className={`text-[10px] font-mono whitespace-nowrap px-2 py-0.5 rounded-full ${isOver ? 'bg-red-500/10 text-red-500 font-bold' : isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>
-                                              {count.toLocaleString()} / {charLimit.toLocaleString()} chars
-                                              {isOver && ' ⚠️'}
-                                            </span>
+                                            
+                                            {/* Template Selection */}
+                                            <div className="flex flex-wrap gap-1.5 pb-1">
+                                              {templates.map(t => {
+                                                const isActive = selectedTemplateIds[p] === t.id;
+                                                return (
+                                                  <button
+                                                    key={t.id}
+                                                    onClick={() => {
+                                                      const content = applyTemplate(t.structure, campaignName, campaignDescription, objective);
+                                                      setPlatformContents(curr => ({ ...curr, [p]: content }));
+                                                      setSelectedTemplateIds(curr => ({ ...curr, [p]: t.id }));
+                                                    }}
+                                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1.5 ${
+                                                      isActive 
+                                                        ? isDarkMode 
+                                                          ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29] scale-105 shadow-md shadow-[#ffcc29]/10' 
+                                                          : 'bg-[#ffcc29]/10 border-[#ffcc29] text-black scale-105 shadow-md shadow-[#ffcc29]/10'
+                                                        : isDarkMode 
+                                                          ? 'bg-slate-700 border-slate-600 text-slate-400 hover:border-[#ffcc29]/50 hover:text-slate-300' 
+                                                          : 'bg-white border-slate-200 text-slate-500 hover:border-[#ffcc29]/50 hover:text-slate-700'
+                                                    }`}
+                                                  >
+                                                    {isActive && <Check className="w-3 h-3" />}
+                                                    {t.label}
+                                                    {isActive && <span className="text-[8px] opacity-70 uppercase tracking-tighter"></span>}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
                                           </div>
                                           <textarea
                                             className={`w-full p-4 text-sm resize-none outline-none ${isDarkMode ? 'bg-[#0d1117] text-white' : 'bg-white text-slate-800'}`}
@@ -4563,102 +4699,17 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
 
     // Platform template picker state
     const [activePlatformPickerId, setActivePlatformPickerId] = useState<string | null>(null);
-
-    // Predefined platform-based content templates
-    const platformTemplates = [
-      {
-        platform: 'instagram',
-        label: 'Instagram Post',
-        icon: '📸',
-        color: 'from-pink-500 to-purple-600',
-        borderColor: 'border-pink-500/40',
-        bgColor: isDarkMode ? 'bg-pink-500/10' : 'bg-pink-50',
-        charLimit: 2200,
-        template: `Event Name: [Your Event/Product Name]
-Date: [DD.MM.YYYY]
-Time: [HH:MM AM/PM]
-Venue: [Location]
-Highlight: [Key attraction or offer]
-CTA: Register Now / Shop Now / Learn More
-Tagline: [Catchy one-liner]`
-      },
-      {
-        platform: 'linkedin',
-        label: 'LinkedIn Post',
-        icon: '💼',
-        color: 'from-blue-600 to-blue-800',
-        borderColor: 'border-blue-500/40',
-        bgColor: isDarkMode ? 'bg-blue-500/10' : 'bg-blue-50',
-        charLimit: 3000,
-        template: `Title: [Professional Event/Announcement]
-Organization: [Company Name]
-Date: [DD.MM.YYYY]
-Time: [HH:MM AM/PM]
-Venue: [Location / Virtual Link]
-Speaker: [Speaker Name & Designation]
-Key Topics: [Topic 1, Topic 2, Topic 3]
-Registration: [Link or Instructions]
-CTA: Join Us / Register Today`
-      },
-      {
-        platform: 'twitter',
-        label: 'Twitter / X Post',
-        icon: '🐦',
-        color: 'from-sky-400 to-sky-600',
-        borderColor: 'border-sky-500/40',
-        bgColor: isDarkMode ? 'bg-sky-500/10' : 'bg-sky-50',
-        charLimit: 280,
-        template: `Headline: [Short punchy headline]
-Date: [DD.MM.YYYY]
-Highlight: [Key info in under 280 chars]
-Link: [URL]
-CTA: Join Now / Check it out`
-      },
-      {
-        platform: 'facebook',
-        label: 'Facebook Post',
-        icon: '👍',
-        color: 'from-blue-500 to-indigo-600',
-        borderColor: 'border-blue-400/40',
-        bgColor: isDarkMode ? 'bg-blue-400/10' : 'bg-blue-50',
-        charLimit: 2000,
-        template: `Event Name: [Your Event/Offer Name]
-Date: [DD.MM.YYYY]
-Time: [HH:MM AM/PM]
-Venue: [Location / Online]
-Description: [Brief event or offer description]
-Special Offer: [Discount/Freebie details]
-CTA: RSVP / Book Now / Learn More`
-      },
-      {
-        platform: 'youtube',
-        label: 'YouTube Thumbnail',
-        icon: '▶️',
-        color: 'from-red-500 to-red-700',
-        borderColor: 'border-red-500/40',
-        bgColor: isDarkMode ? 'bg-red-500/10' : 'bg-red-50',
-        charLimit: 500,
-        template: `Video Title: [Compelling Title]
-Subtitle: [Short supporting text]
-Highlight Text: [Key stat or hook]
-Channel Name: [Your Channel]
-Episode: [Ep. Number / Series Name]`
-      },
-    
-    ];
-
-    // Character limit lookup by platform
-    const platformCharLimits: Record<string, { limit: number; label: string; tip: string }> = {
-      instagram: { limit: 2200, label: 'Instagram', tip: 'Instagram allows up to 2,200 characters per post.' },
-      linkedin:  { limit: 3000, label: 'LinkedIn',  tip: 'LinkedIn allows up to 3,000 characters per post.' },
-      twitter:   { limit: 280,  label: 'Twitter/X', tip: 'Twitter/X allows up to 280 characters per post.' },
-      facebook:  { limit: 2000, label: 'Facebook',  tip: 'Facebook allows up to 2,000 characters per post.' },
-      youtube:   { limit: 500,  label: 'YouTube',   tip: 'YouTube thumbnail text should stay under 500 characters.' },
-    };
+    const [selectedPlatformForTemplates, setSelectedPlatformForTemplates] = useState<string | null>(null);
 
     const getCharLimitForPoster = (poster: PosterItem): { limit: number; label: string; tip: string } | null => {
-      if (poster.selectedPlatform && platformCharLimits[poster.selectedPlatform]) {
-        return platformCharLimits[poster.selectedPlatform];
+      const platform = (poster.selectedPlatform || '').toLowerCase();
+      const limitInfo = PLATFORM_LIMITS[platform];
+      if (limitInfo) {
+        return {
+          limit: limitInfo.charLimit,
+          label: limitInfo.label,
+          tip: `${limitInfo.label} allows up to ${limitInfo.charLimit.toLocaleString()} characters per post.`
+        };
       }
       return null;
     };
@@ -5305,25 +5356,56 @@ Episode: [Ep. Number / Series Name]`
                                 <div className={`mb-2 p-2 rounded-lg border ${
                                   isDarkMode ? 'border-slate-700 bg-[#161b22]' : 'border-slate-200 bg-slate-50'
                                 }`}>
-                                  <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.textMuted}`}>Choose a platform format</p>
-                                  <div className="grid grid-cols-3 gap-1.5">
-                                    {platformTemplates.map((pt) => (
-                                      <button
-                                        key={pt.platform}
-                                        onClick={() => {
-                                          updatePosterContent(poster.id, pt.template);
-                                          setPosters(prev => prev.map(p => p.id === poster.id ? { ...p, selectedPlatform: pt.platform } : p));
-                                          setActivePlatformPickerId(null);
-                                        }}
-                                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs font-medium transition-all hover:scale-[1.02] hover:shadow-sm ${
-                                          pt.borderColor
-                                        } ${pt.bgColor}`}
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className={`text-[10px] font-semibold uppercase tracking-wider ${theme.textMuted}`}>
+                                      {selectedPlatformForTemplates ? `${selectedPlatformForTemplates} Templates` : 'Choose a platform'}
+                                    </p>
+                                    {selectedPlatformForTemplates && (
+                                      <button 
+                                        onClick={() => setSelectedPlatformForTemplates(null)}
+                                        className="text-[10px] text-[#ffcc29] hover:underline"
                                       >
-                                        <span className="text-sm">{pt.icon}</span>
-                                        <span className={theme.text}>{pt.label}</span>
+                                        Back
                                       </button>
-                                    ))}
+                                    )}
                                   </div>
+
+                                  {!selectedPlatformForTemplates ? (
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {Object.entries(PLATFORM_DISPLAY_DATA).map(([platform, data]) => (
+                                        <button
+                                          key={platform}
+                                          onClick={() => setSelectedPlatformForTemplates(platform)}
+                                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs font-medium transition-all hover:scale-[1.02] hover:shadow-sm ${
+                                            data.borderColor
+                                          } ${isDarkMode ? data.darkBgColor : data.bgColor}`}
+                                        >
+                                          <span className="text-sm">{data.icon}</span>
+                                          <span className={theme.text}>{platform.charAt(0).toUpperCase() + platform.slice(1)}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      {(PLATFORM_CONTENT_TEMPLATES[selectedPlatformForTemplates] || []).map(t => (
+                                        <button
+                                          key={t.id}
+                                          onClick={() => {
+                                            const content = applyTemplate(t.structure, '', '', '');
+                                            updatePosterContent(poster.id, content);
+                                            setPosters(prev => prev.map(p => p.id === poster.id ? { ...p, selectedPlatform: selectedPlatformForTemplates } : p));
+                                            setActivePlatformPickerId(null);
+                                            setSelectedPlatformForTemplates(null);
+                                          }}
+                                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[10px] font-medium transition-all hover:bg-[#ffcc29]/10 ${
+                                            PLATFORM_DISPLAY_DATA[selectedPlatformForTemplates].borderColor
+                                          } ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}
+                                        >
+                                          <span className={theme.text}>{t.label}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
