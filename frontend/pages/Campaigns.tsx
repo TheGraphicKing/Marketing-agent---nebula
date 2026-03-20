@@ -5196,12 +5196,6 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                       <div className="relative rounded-xl overflow-hidden mb-3">
                         <img src={currentPoster.generatedImage} alt="Generated poster" className="w-full object-contain max-h-[500px]" />
                         <div className="absolute top-2 right-2 flex gap-2">
-                          <button
-                            onClick={() => setFullPreviewImage(currentPoster.generatedImage)}
-                            className="p-2 bg-black/50 rounded-lg text-white hover:bg-black/70"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
                           <a
                             href={currentPoster.generatedImage}
                             download={`poster-${currentPosterIndex + 1}.png`}
