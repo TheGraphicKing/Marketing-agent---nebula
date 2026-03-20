@@ -2309,6 +2309,17 @@ const Dashboard: React.FC = () => {
                   </div>
                 </div>
               ) : rivalPost ? (
+                <div className="space-y-4">
+                  {/* Original Competitor Post — collapsible */}
+                  <details className={`rounded-xl ${isDarkMode ? 'bg-[#161b22] border-slate-700/50' : 'bg-slate-50 border-slate-200'} border`}>
+                    <summary className={`px-4 py-3 cursor-pointer text-xs font-semibold uppercase tracking-wide ${theme.textSecondary} flex items-center gap-1.5 select-none`}>
+                      <Eye className="w-3.5 h-3.5" /> Original Competitor Post
+                    </summary>
+                    <div className={`px-4 pb-3`}>
+                      <p className={`text-sm ${theme.textSecondary} italic`}>"{rivalPost.originalContent}"</p>
+                    </div>
+                  </details>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Left Column — Image */}
                   <div>
@@ -2468,6 +2479,7 @@ const Dashboard: React.FC = () => {
                       </p>
                     </div>
                   </div>
+                </div>
                 </div>
               ) : null}
             </div>
