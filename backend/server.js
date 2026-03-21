@@ -129,10 +129,10 @@ app.use(cors({
 // ============================================
 // Security: Rate Limiting
 // ============================================
-// General API rate limit — 100 requests per 15 minutes per IP
+// General API rate limit — 200 requests per 15 minutes per IP
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' }
@@ -147,10 +147,10 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts, please try again later.' }
 });
 
-// AI generation rate limit — 30 requests per 15 minutes (expensive API calls)
+// AI generation rate limit — 100 requests per 15 minutes (campaigns can generate 14+ posts per run)
 const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many AI generation requests, please try again later.' }
