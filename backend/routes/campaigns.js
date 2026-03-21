@@ -1103,7 +1103,7 @@ Brand Voice: ${brandProfile.brandVoice || 'Professional'}`;
     // Use Gemini to analyze image and generate caption
     const { callGemini } = require('../services/geminiAI');
     
-    // Extract base64 data
+    // Extract base64 data — handle URLs, data URIs, and raw base64
     let imageData = image;
     let mimeType = 'image/png';
     if (image.startsWith('data:')) {
@@ -1111,6 +1111,18 @@ Brand Voice: ${brandProfile.brandVoice || 'Professional'}`;
       if (matches) {
         mimeType = matches[1];
         imageData = matches[2];
+      }
+    } else if (image.startsWith('http://') || image.startsWith('https://')) {
+      const fetchImg = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+      try {
+        const imgResponse = await fetchImg(image);
+        const buffer = await imgResponse.buffer();
+        imageData = buffer.toString('base64');
+        const contentType = imgResponse.headers.get('content-type');
+        if (contentType) mimeType = contentType.split(';')[0];
+      } catch (fetchErr) {
+        console.error('Failed to fetch image URL:', fetchErr);
+        return res.status(400).json({ success: false, message: 'Failed to fetch image from URL' });
       }
     }
     
@@ -1236,7 +1248,7 @@ router.post('/process-aspect-ratio', protect, async (req, res) => {
       });
     }
     
-    // Extract base64 data
+    // Extract base64 data — handle URLs, data URIs, and raw base64
     let imageData = image;
     let mimeType = 'image/png';
     if (image.startsWith('data:')) {
@@ -1244,6 +1256,18 @@ router.post('/process-aspect-ratio', protect, async (req, res) => {
       if (matches) {
         mimeType = matches[1];
         imageData = matches[2];
+      }
+    } else if (image.startsWith('http://') || image.startsWith('https://')) {
+      const fetchImg = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+      try {
+        const imgResponse = await fetchImg(image);
+        const buffer = await imgResponse.buffer();
+        imageData = buffer.toString('base64');
+        const contentType = imgResponse.headers.get('content-type');
+        if (contentType) mimeType = contentType.split(';')[0];
+      } catch (fetchErr) {
+        console.error('Failed to fetch image URL:', fetchErr);
+        return res.status(400).json({ success: false, message: 'Failed to fetch image from URL' });
       }
     }
     
