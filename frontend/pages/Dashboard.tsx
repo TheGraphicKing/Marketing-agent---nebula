@@ -5427,48 +5427,6 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                         <FileText className="w-4 h-4" />
                                         Save as Draft
                                     </button>
-                                    <button 
-                                        onClick={async () => {
-                                            if (!eventScheduleDate) {
-                                                alert('Please select a schedule date');
-                                                return;
-                                            }
-                                            setEventScheduling(true);
-                                            try {
-                                                await apiService.createCampaign({
-                                                    name: `${selectedHoliday.name} Post`,
-                                                    objective: 'engagement',
-                                                    platforms: eventSelectedPlatform,
-                                                    status: 'scheduled',
-                                                    creative: {
-                                                        type: 'image',
-                                                        textContent: eventPostCaption,
-                                                        imageUrls: eventPostImageUrl ? [eventPostImageUrl] : [],
-                                                        captions: eventPostCaption,
-                                                        hashtags: eventPostHashtags
-                                                    },
-                                                    scheduling: {
-                                                        startDate: eventScheduleDate,
-                                                        postTime: eventScheduleTime || '10:00'
-                                                    }
-                                                });
-                                                alert('Post scheduled successfully!');
-                                                setShowEventPostCreator(false);
-                                                setSelectedHoliday(null);
-                                                if (onCampaignCreated) onCampaignCreated();
-                                            } catch (error) {
-                                                console.error('Failed to schedule post:', error);
-                                                alert('Failed to schedule post. Please try again.');
-                                            } finally {
-                                                setEventScheduling(false);
-                                            }
-                                        }}
-                                        disabled={eventScheduling}
-                                        className="flex-1 py-3 bg-[#ffcc29] hover:bg-[#e6b825] text-black font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        {eventScheduling ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarIcon className="w-4 h-4" />}
-                                        Schedule Post
-                                    </button>
                                     <button
                                         onClick={async () => {
                                             if (!eventPostImageUrl) {
@@ -5484,29 +5442,52 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                             }
                                             setEventScheduling(true);
                                             try {
-                                                const createResult = await apiService.createCampaign({
-                                                    name: `${selectedHoliday.name} Post`,
-                                                    objective: 'engagement',
-                                                    platforms: connectedSelected,
-                                                    status: 'draft',
-                                                    creative: {
-                                                        type: 'image',
-                                                        textContent: eventPostCaption,
-                                                        imageUrls: eventPostImageUrl ? [eventPostImageUrl] : [],
-                                                        captions: eventPostCaption,
-                                                        hashtags: eventPostHashtags
-                                                    }
-                                                });
-                                                const campaign = createResult.campaign;
-                                                if (campaign?._id) {
-                                                    const publishResult = await apiService.publishCampaign(
-                                                        campaign._id,
-                                                        connectedSelected
-                                                    );
-                                                    if (publishResult.success) {
-                                                        alert('Post published successfully!');
-                                                    } else {
-                                                        alert(publishResult.message || 'Failed to publish');
+                                                if (eventScheduleDate && eventScheduleTime) {
+                                                    // Schedule mode
+                                                    await apiService.createCampaign({
+                                                        name: `${selectedHoliday.name} Post`,
+                                                        objective: 'engagement',
+                                                        platforms: connectedSelected,
+                                                        status: 'scheduled',
+                                                        creative: {
+                                                            type: 'image',
+                                                            textContent: eventPostCaption,
+                                                            imageUrls: eventPostImageUrl ? [eventPostImageUrl] : [],
+                                                            captions: eventPostCaption,
+                                                            hashtags: eventPostHashtags
+                                                        },
+                                                        scheduling: {
+                                                            startDate: eventScheduleDate,
+                                                            postTime: eventScheduleTime
+                                                        }
+                                                    });
+                                                    alert('Post scheduled successfully!');
+                                                } else {
+                                                    // Post now mode
+                                                    const createResult = await apiService.createCampaign({
+                                                        name: `${selectedHoliday.name} Post`,
+                                                        objective: 'engagement',
+                                                        platforms: connectedSelected,
+                                                        status: 'draft',
+                                                        creative: {
+                                                            type: 'image',
+                                                            textContent: eventPostCaption,
+                                                            imageUrls: eventPostImageUrl ? [eventPostImageUrl] : [],
+                                                            captions: eventPostCaption,
+                                                            hashtags: eventPostHashtags
+                                                        }
+                                                    });
+                                                    const campaign = createResult.campaign;
+                                                    if (campaign?._id) {
+                                                        const publishResult = await apiService.publishCampaign(
+                                                            campaign._id,
+                                                            connectedSelected
+                                                        );
+                                                        if (publishResult.success) {
+                                                            alert('Post published successfully!');
+                                                        } else {
+                                                            alert(publishResult.message || 'Failed to publish');
+                                                        }
                                                     }
                                                 }
                                                 setShowEventPostCreator(false);
@@ -5514,7 +5495,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                                 if (onCampaignCreated) onCampaignCreated();
                                             } catch (error) {
                                                 console.error('Failed to post:', error);
-                                                alert('Failed to post. Please try again.');
+                                                alert('Failed. Please try again.');
                                             } finally {
                                                 setEventScheduling(false);
                                             }
@@ -5522,8 +5503,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                         disabled={eventScheduling || !eventPostImageUrl}
                                         className="flex-1 py-3 bg-[#ffcc29] hover:bg-[#e6b825] text-black font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                                     >
-                                        {eventScheduling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                        Post Now
+                                        {eventScheduling ? <Loader2 className="w-4 h-4 animate-spin" /> : (eventScheduleDate && eventScheduleTime) ? <CalendarIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                                        {(eventScheduleDate && eventScheduleTime) ? 'Schedule Post' : 'Post Now'}
                                     </button>
                                 </div>
                             </div>
