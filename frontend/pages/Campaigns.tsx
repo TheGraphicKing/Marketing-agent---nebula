@@ -4312,15 +4312,17 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                               {/* Content */}
                                               <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                                    post.platform === 'instagram' ? 'bg-pink-100 text-pink-700' :
-                                                    post.platform === 'facebook' ? 'bg-blue-100 text-blue-700' :
-                                                    post.platform === 'twitter' ? 'bg-sky-100 text-sky-700' :
-                                                    post.platform === 'linkedin' ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-slate-100 text-slate-700'
-                                                  }`}>
-                                                    {post.platform}
-                                                  </span>
+                                                  {platforms.map(plat => (
+                                                    <span key={plat} className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                                      plat === 'instagram' ? 'bg-pink-100 text-pink-700' :
+                                                      plat === 'facebook' ? 'bg-blue-100 text-blue-700' :
+                                                      plat === 'twitter' ? 'bg-sky-100 text-sky-700' :
+                                                      plat === 'linkedin' ? 'bg-blue-100 text-blue-800' :
+                                                      'bg-slate-100 text-slate-700'
+                                                    }`}>
+                                                      {plat}
+                                                    </span>
+                                                  ))}
                                                   <span className={`text-xs ${theme.textMuted}`}>
                                                     {post.suggestedDate} at {post.suggestedTime}
                                                   </span>
