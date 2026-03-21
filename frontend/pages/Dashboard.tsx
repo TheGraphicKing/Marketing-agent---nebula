@@ -2713,6 +2713,15 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
     const timeSlots = Array.from({ length: 24 }, (_, i) => i);
     const scrollBodyRef = useRef<HTMLDivElement>(null);
 
+    // Auto-scroll calendar to current hour on mount
+    useEffect(() => {
+      if (scrollBodyRef.current) {
+        const currentHour = new Date().getHours();
+        const scrollTo = Math.max(0, (currentHour - 2) * 40); // 40px per slot, show 2 hours before current
+        scrollBodyRef.current.scrollTop = scrollTo;
+      }
+    }, [viewType]);
+
     // Indian Holidays, Festivals & Marketing Events (2025-2026)
     // This includes national holidays, major festivals, and important marketing dates
     const getIndianHolidays = (year: number): Array<{
@@ -3839,7 +3848,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
               </div>
             ) : viewType === 'day' ? (
               // Day View
-              <div className="flex overflow-y-auto" style={{ height: '520px' }}>
+              <div className="flex overflow-y-auto" style={{ height: '572px' }}>
                 {/* Time Column */}
                 <div className={`flex-shrink-0 w-20 border-r ${isDarkMode ? 'border-slate-700/50 bg-[#0d1117]' : 'border-slate-200 bg-[#f5f5f5]'}`}>
                   {timeSlots.map(hour => (
@@ -3976,7 +3985,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                 </div>
 
                 {/* Scrollable Body: Time Column + Day Grid */}
-                <div className="flex flex-1" ref={scrollBodyRef}>
+                <div className="flex flex-1 overflow-y-auto" ref={scrollBodyRef}>
                   {/* Time Column */}
                   <div className={`flex-shrink-0 w-16 border-r ${isDarkMode ? 'border-slate-700/50 bg-[#0d1117]' : 'border-slate-200 bg-[#f5f5f5]'}`}>
                     {timeSlots.map(hour => (
