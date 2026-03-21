@@ -385,7 +385,7 @@ const Dashboard: React.FC = () => {
       const dashboardData = await apiService.getDashboardOverview(refresh);
       setData(dashboardData);
       hasFetchedDashboard.current = true;
-      console.log(`Dashboard ${refresh ? 'refreshed' : 'loaded'} in ${Date.now() - startTime}ms`);
+      // Dashboard loaded/refreshed
     } catch (error) {
       console.error("Failed to load dashboard", error);
     } finally {
@@ -403,13 +403,10 @@ const Dashboard: React.FC = () => {
   // Fetch Strategic Advisor suggestions (lazy load after dashboard is ready)
   const fetchStrategicSuggestions = async (force = false) => {
     if (hasFetchedStrategic.current && !force) return;
-    console.log('[Strategic] Fetching suggestions...');
     setStrategicLoading(true);
     try {
       const result = await apiService.getStrategicSuggestions(force);
-      console.log('[Strategic] API result:', result);
       if (result.success) {
-        console.log('[Strategic] Setting suggestions:', result.suggestions?.length, 'items');
         setStrategicSuggestions(result.suggestions || []);
         setTrendingNow(result.trendingNow || []);
         setUpcomingEvents(result.upcomingEvents || []);

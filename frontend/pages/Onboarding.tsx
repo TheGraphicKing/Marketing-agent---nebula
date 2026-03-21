@@ -235,10 +235,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         try {
             const result = await apiService.analyzeWebsite(formData.website);
             
-            console.log('Website analysis result:', result);
-            
             if (result.success && result.data) {
-                console.log('Extracted data:', result.data);
                 
                 // Auto-fill form with analyzed data including businessType and businessLocation
                 // Handle brandVoice - ensure it's always an array
@@ -267,7 +264,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     marketingGoals: result.data.suggestedGoals?.length > 0 ? result.data.suggestedGoals : formData.marketingGoals
                 };
                 
-                console.log('New form data:', newFormData);
                 setFormData(newFormData);
                 
                 // Store the full analysis for use throughout the app
