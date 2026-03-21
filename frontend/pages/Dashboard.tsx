@@ -2561,6 +2561,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
       platform: 'instagram',
       hashtags: '',
     });
+    const [quickScheduleDate, setQuickScheduleDate] = useState('');
+    const [quickScheduleTime, setQuickScheduleTime] = useState('');
     
     // Image upload & AI generation state
     const [scheduleImage, setScheduleImage] = useState<string | null>(null);
@@ -4613,58 +4615,16 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                 <div className="grid grid-cols-2 gap-3 mt-1.5">
                                   <input
                                     type="date"
-                                    value={selectedSlot.date.toISOString().split('T')[0]}
-                                    onChange={(e) => {
-                                      const newDate = new Date(e.target.value);
-                                      newDate.setHours(selectedSlot.hour, selectedSlot.minute, 0, 0);
-                                      setSelectedSlot({ date: newDate, hour: selectedSlot.hour, minute: selectedSlot.minute });
-                                    }}
+                                    value={quickScheduleDate}
+                                    onChange={(e) => setQuickScheduleDate(e.target.value)}
                                     className={`px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#ffcc29] ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50 text-white' : 'bg-white border-slate-200 text-slate-800'}`}
                                   />
-                                  <div className="flex gap-1.5">
-                                    <input type="number" min="1" max="12"
-                                      value={(() => { const h = selectedSlot.hour; return h === 0 ? 12 : h > 12 ? h - 12 : h; })()}
-                                      onChange={(e) => {
-                                        let hour12 = parseInt(e.target.value) || 1;
-                                        if (hour12 < 1) hour12 = 1; if (hour12 > 12) hour12 = 12;
-                                        const isPM = selectedSlot.hour >= 12;
-                                        let hour24 = hour12;
-                                        if (isPM && hour12 !== 12) hour24 = hour12 + 12;
-                                        if (!isPM && hour12 === 12) hour24 = 0;
-                                        const newDate = new Date(selectedSlot.date); newDate.setHours(hour24, selectedSlot.minute, 0, 0);
-                                        setSelectedSlot({ date: newDate, hour: hour24, minute: selectedSlot.minute });
-                                      }}
-                                      className={`w-12 px-1.5 py-2 border rounded-lg text-sm text-center focus:outline-none focus:border-[#ffcc29] ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50 text-white' : 'bg-white border-slate-200 text-slate-800'}`}
-                                    />
-                                    <span className={`flex items-center text-xs ${theme.text}`}>:</span>
-                                    <input type="number" min="0" max="59"
-                                      value={String(selectedSlot.minute).padStart(2, '0')}
-                                      onChange={(e) => {
-                                        let minute = parseInt(e.target.value) || 0;
-                                        if (minute < 0) minute = 0; if (minute > 59) minute = 59;
-                                        const newDate = new Date(selectedSlot.date); newDate.setHours(selectedSlot.hour, minute, 0, 0);
-                                        setSelectedSlot({ date: newDate, hour: selectedSlot.hour, minute });
-                                      }}
-                                      className={`w-12 px-1.5 py-2 border rounded-lg text-sm text-center focus:outline-none focus:border-[#ffcc29] ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50 text-white' : 'bg-white border-slate-200 text-slate-800'}`}
-                                    />
-                                    <select value={selectedSlot.hour >= 12 ? 'PM' : 'AM'}
-                                      onChange={(e) => {
-                                        const newPeriod = e.target.value;
-                                        const currentPeriod = selectedSlot.hour >= 12 ? 'PM' : 'AM';
-                                        if (newPeriod !== currentPeriod) {
-                                          let newHour = selectedSlot.hour;
-                                          if (newPeriod === 'PM' && selectedSlot.hour < 12) newHour += 12;
-                                          else if (newPeriod === 'AM' && selectedSlot.hour >= 12) newHour -= 12;
-                                          const newDate = new Date(selectedSlot.date); newDate.setHours(newHour, selectedSlot.minute, 0, 0);
-                                          setSelectedSlot({ date: newDate, hour: newHour, minute: selectedSlot.minute });
-                                        }
-                                      }}
-                                      className={`w-14 px-0.5 py-2 border rounded-lg text-xs text-center focus:outline-none focus:border-[#ffcc29] ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50 text-white' : 'bg-white border-slate-200 text-slate-800'}`}
-                                    >
-                                      <option value="AM">AM</option>
-                                      <option value="PM">PM</option>
-                                    </select>
-                                  </div>
+                                  <input
+                                    type="time"
+                                    value={quickScheduleTime}
+                                    onChange={(e) => setQuickScheduleTime(e.target.value)}
+                                    className={`px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#ffcc29] ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50 text-white' : 'bg-white border-slate-200 text-slate-800'}`}
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -4753,17 +4713,10 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                       const platformsArr = scheduleForm.platform.split(',').filter(Boolean);
                                       if (platformsArr.length === 0) {
                                         alert('Please select at least one platform');
+                                        setLoading(false);
                                         return;
                                       }
-                                      const scheduledFor = new Date(selectedSlot!.date);
-                                      scheduledFor.setHours(selectedSlot!.hour, selectedSlot!.minute, 0, 0);
-                                      const now = new Date();
-                                      const isSchedule = scheduledFor > now;
-
-                                      const year = scheduledFor.getFullYear();
-                                      const month = String(scheduledFor.getMonth() + 1).padStart(2, '0');
-                                      const day = String(scheduledFor.getDate()).padStart(2, '0');
-                                      const localDateStr = `${year}-${month}-${day}`;
+                                      const isSchedule = !!(quickScheduleDate && quickScheduleTime);
 
                                       const result = await apiService.createCampaign({
                                         name: scheduleForm.title || 'Quick Post',
@@ -4779,17 +4732,18 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                         },
                                         ...(isSchedule ? {
                                           scheduling: {
-                                            startDate: localDateStr,
-                                            postTime: `${String(selectedSlot!.hour).padStart(2, '0')}:${String(selectedSlot!.minute).padStart(2, '0')}`
+                                            startDate: quickScheduleDate,
+                                            postTime: quickScheduleTime
                                           }
                                         } : {}),
                                       });
 
                                       if (result.campaign?._id) {
+                                        const scheduledFor = isSchedule ? new Date(`${quickScheduleDate}T${quickScheduleTime}:00`).toISOString() : undefined;
                                         const publishResult = await apiService.publishCampaign(
                                           result.campaign._id,
                                           platformsArr,
-                                          isSchedule ? scheduledFor.toISOString() : undefined
+                                          scheduledFor
                                         );
                                         if (publishResult.success) {
                                           alert(isSchedule ? 'Post scheduled successfully!' : 'Post published successfully!');
@@ -4806,6 +4760,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                       setCalendarAIReady(false);
                                       setCalendarRefReady(false);
                                       setSelectedSlot(null);
+                                      setQuickScheduleDate('');
+                                      setQuickScheduleTime('');
                                     } catch (e) {
                                       console.error('Failed:', e);
                                       alert('Failed to post. Please try again.');
@@ -4816,8 +4772,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                   disabled={!scheduleForm.title.trim() || loading}
                                   className="flex-1 py-3 bg-[#ffcc29] hover:bg-[#e6b825] disabled:bg-slate-300 disabled:cursor-not-allowed text-[#070A12] text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
                                 >
-                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditMode ? <Check className="w-4 h-4" /> : scheduleForm.type === 'reminder' ? <Bell className="w-4 h-4" /> : (() => { const s = new Date(selectedSlot!.date); s.setHours(selectedSlot!.hour, selectedSlot!.minute, 0, 0); return s > new Date(); })() ? <CalendarIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                                    {isEditMode ? 'Update' : scheduleForm.type === 'reminder' ? 'Set Reminder' : (() => { const s = new Date(selectedSlot!.date); s.setHours(selectedSlot!.hour, selectedSlot!.minute, 0, 0); return s > new Date(); })() ? 'Schedule Post' : 'Post Now'}
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditMode ? <Check className="w-4 h-4" /> : scheduleForm.type === 'reminder' ? <Bell className="w-4 h-4" /> : (quickScheduleDate && quickScheduleTime) ? <CalendarIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                                    {isEditMode ? 'Update' : scheduleForm.type === 'reminder' ? 'Set Reminder' : (quickScheduleDate && quickScheduleTime) ? 'Schedule Post' : 'Post Now'}
                                 </button>
                                 <button 
                                   onClick={() => { setShowScheduleModal(false); setIsEditMode(false); setEditingCampaign(null); setCalendarAIReady(false); setCalendarRefReady(false); }} 
