@@ -5138,6 +5138,8 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                         setShowEventPostCreator(true);
                         setEventPostLoading(true);
                         setEventGeneratedPost(null);
+                        const connectedNames = followerData.map(f => f.platform.toLowerCase());
+                        setEventSelectedPlatform(connectedNames.length > 0 ? [connectedNames[0]] : []);
                         try {
                           const result = await apiService.generateEventPost(selectedHoliday, eventSelectedLogo, eventAspectRatio);
                           if (result.success && result.post) {
@@ -5318,7 +5320,7 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                                                 prev.includes(platform) ? prev.filter(x => x !== platform) : [...prev, platform]
                                                             )}
                                                             disabled={!isConnected}
-                                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium capitalize transition-all flex items-center justify-center gap-1 ${
+                                                            className={`py-2 px-4 rounded-lg text-sm font-medium capitalize transition-all flex items-center gap-1 ${
                                                                 isSelected
                                                                     ? 'bg-[#ffcc29] text-black'
                                                                     : isConnected
