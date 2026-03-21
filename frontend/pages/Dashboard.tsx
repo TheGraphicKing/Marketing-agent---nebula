@@ -4738,12 +4738,86 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
                                   </button>
                                 )}
                                 <button
-                                  onClick={isEditMode ? handleUpdateCampaign : handleCreateEvent}
+                                  onClick={async () => {
+                                    if (isEditMode) {
+                                      handleUpdateCampaign();
+                                      return;
+                                    }
+                                    if (scheduleForm.type === 'reminder') {
+                                      handleCreateEvent();
+                                      return;
+                                    }
+                                    // Campaign post
+                                    setLoading(true);
+                                    try {
+                                      const platformsArr = scheduleForm.platform.split(',').filter(Boolean);
+                                      if (platformsArr.length === 0) {
+                                        alert('Please select at least one platform');
+                                        return;
+                                      }
+                                      const scheduledFor = new Date(selectedSlot!.date);
+                                      scheduledFor.setHours(selectedSlot!.hour, selectedSlot!.minute, 0, 0);
+                                      const now = new Date();
+                                      const isSchedule = scheduledFor > now;
+
+                                      const year = scheduledFor.getFullYear();
+                                      const month = String(scheduledFor.getMonth() + 1).padStart(2, '0');
+                                      const day = String(scheduledFor.getDate()).padStart(2, '0');
+                                      const localDateStr = `${year}-${month}-${day}`;
+
+                                      const result = await apiService.createCampaign({
+                                        name: scheduleForm.title || 'Quick Post',
+                                        objective: 'engagement',
+                                        platforms: platformsArr,
+                                        status: isSchedule ? 'scheduled' : 'draft',
+                                        creative: {
+                                          type: 'image',
+                                          textContent: scheduleForm.description,
+                                          imageUrls: (generatedPoster || scheduleImage) ? [generatedPoster || scheduleImage!] : [],
+                                          hashtags: scheduleForm.hashtags ? scheduleForm.hashtags.split(/[\s,]+/).filter(Boolean).map(h => h.startsWith('#') ? h : `#${h}`) : [],
+                                          captions: scheduleForm.description + (scheduleForm.hashtags ? '\n\n' + scheduleForm.hashtags : '')
+                                        },
+                                        ...(isSchedule ? {
+                                          scheduling: {
+                                            startDate: localDateStr,
+                                            postTime: `${String(selectedSlot!.hour).padStart(2, '0')}:${String(selectedSlot!.minute).padStart(2, '0')}`
+                                          }
+                                        } : {}),
+                                      });
+
+                                      if (result.campaign?._id) {
+                                        const publishResult = await apiService.publishCampaign(
+                                          result.campaign._id,
+                                          platformsArr,
+                                          isSchedule ? scheduledFor.toISOString() : undefined
+                                        );
+                                        if (publishResult.success) {
+                                          alert(isSchedule ? 'Post scheduled successfully!' : 'Post published successfully!');
+                                        } else {
+                                          alert(publishResult.message || 'Failed to publish');
+                                        }
+                                      }
+
+                                      if (result.campaign) {
+                                        setAllCampaigns(prev => [result.campaign, ...prev]);
+                                      }
+
+                                      setShowScheduleModal(false);
+                                      setCalendarAIReady(false);
+                                      setCalendarRefReady(false);
+                                      setSelectedSlot(null);
+                                    } catch (e) {
+                                      console.error('Failed:', e);
+                                      alert('Failed to post. Please try again.');
+                                    } finally {
+                                      setLoading(false);
+                                    }
+                                  }}
                                   disabled={!scheduleForm.title.trim() || loading}
                                   className="flex-1 py-3 bg-[#ffcc29] hover:bg-[#e6b825] disabled:bg-slate-300 disabled:cursor-not-allowed text-[#070A12] text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
                                 >
-                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditMode ? <Check className="w-4 h-4" /> : scheduleForm.type === 'reminder' ? <Bell className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                                    {isEditMode ? 'Update' : (scheduleForm.type === 'reminder' ? 'Set Reminder' : 'Post Now')}
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isEditMode ? <Check className="w-4 h-4" /> : scheduleForm.type === 'reminder' ? <Bell className="w-4 h-4" /> : (() => { const s = new Date(selectedSlot!.date); s.setHours(selectedSlot!.hour, selectedSlot!.minute, 0, 0); return s > new Date(); })() ? <CalendarIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                                    {isEditMode ? 'Update' : scheduleForm.type === 'reminder' ? 'Set Reminder' : (() => { const s = new Date(selectedSlot!.date); s.setHours(selectedSlot!.hour, selectedSlot!.minute, 0, 0); return s > new Date(); })() ? 'Schedule Post' : 'Post Now'}
                                 </button>
                                 <button 
                                   onClick={() => { setShowScheduleModal(false); setIsEditMode(false); setEditingCampaign(null); setCalendarAIReady(false); setCalendarRefReady(false); }} 
