@@ -3178,14 +3178,16 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
           setCalendarEvents(events || []);
         } else {
           // Create a campaign/post with image support
+          const platformsArr = scheduleForm.platform.split(',').filter(Boolean);
+
           const result = await apiService.createCampaign({
             name: scheduleForm.title,
             objective: 'engagement',
-            platforms: [scheduleForm.platform],
+            platforms: platformsArr,
             status: 'scheduled',
-            creative: { 
-              type: 'image', 
-              textContent: scheduleForm.description, 
+            creative: {
+              type: 'image',
+              textContent: scheduleForm.description,
               imageUrls: (generatedPoster || scheduleImage) ? [generatedPoster || scheduleImage!] : [],
               hashtags: scheduleForm.hashtags ? scheduleForm.hashtags.split(/[\s,]+/).filter(Boolean).map(h => h.startsWith('#') ? h : `#${h}`) : [],
               captions: scheduleForm.description + (scheduleForm.hashtags ? '\n\n' + scheduleForm.hashtags : '')
@@ -3196,12 +3198,12 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
             },
           });
 
-          // Actually publish to social media via Ayrshare
+          // Publish to social media via Ayrshare
           if (result.campaign?._id) {
             try {
               await apiService.publishCampaign(
                 result.campaign._id,
-                [scheduleForm.platform],
+                platformsArr,
                 scheduledFor.toISOString()
               );
             } catch (publishErr) {
