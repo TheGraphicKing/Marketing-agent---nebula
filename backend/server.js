@@ -112,7 +112,8 @@ const allowedOrigins = [
   'https://demo.nebulaa.ai',
   'https://www.demo.nebulaa.ai',
   'https://test.nebulaa.ai',
-  'https://www.test.nebulaa.ai'
+  'https://www.test.nebulaa.ai',
+  'https://marketing-agent-nebula-1.onrender.com'
 ];
 
 app.use(cors({
