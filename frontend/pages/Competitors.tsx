@@ -422,7 +422,7 @@ const Competitors: React.FC = () => {
           setLocation(contextRes.businessLocation);
         }
       } catch (error) {
-        console.log('Could not load business location');
+        // Could not load business location
       }
     };
     loadBusinessLocation();

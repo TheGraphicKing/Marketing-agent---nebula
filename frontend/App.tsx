@@ -109,7 +109,6 @@ const App: React.FC = () => {
     lastResetRef.current = now;
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     idleTimerRef.current = setTimeout(() => {
-      console.log('⏰ Auto-logout: user idle for 30 minutes');
       logoutRef.current();
     }, IDLE_TIMEOUT);
   }, []);
