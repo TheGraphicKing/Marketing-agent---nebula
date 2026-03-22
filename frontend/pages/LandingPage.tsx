@@ -18,7 +18,8 @@ import {
   Layers,
   PieChart,
   Sun,
-  Moon
+  Moon,
+  Mail
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
@@ -26,6 +27,7 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [scrollY, setScrollY] = useState(0);
   const [isVisible, setIsVisible] = useState<{[key: string]: boolean}>({});
+  const [showContact, setShowContact] = useState(false);
   const observerRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
   const { theme, toggleTheme } = useTheme();
 
@@ -423,7 +425,7 @@ const LandingPage: React.FC = () => {
             <div className={`flex items-center gap-8 text-sm ${theme === 'dark' ? 'text-[#ededed]/70' : 'text-gray-600'}`}>
               <a href="/#/privacy-policy" className={`transition-colors ${theme === 'dark' ? 'hover:text-[#ffcc29]' : 'hover:text-[#070A12]'}`}>Privacy</a>
               <a href="/#/terms" className={`transition-colors ${theme === 'dark' ? 'hover:text-[#ffcc29]' : 'hover:text-[#070A12]'}`}>Terms</a>
-              <a href="#" className={`transition-colors ${theme === 'dark' ? 'hover:text-[#ffcc29]' : 'hover:text-[#070A12]'}`}>Contact</a>
+              <button onClick={() => setShowContact(true)} className={`transition-colors ${theme === 'dark' ? 'hover:text-[#ffcc29]' : 'hover:text-[#070A12]'}`}>Contact</button>
             </div>
             <div className={`text-sm ${theme === 'dark' ? 'text-[#ededed]/50' : 'text-gray-500'}`}>
               © 2025 Nebulaa Gravity. All rights reserved.
@@ -431,6 +433,25 @@ const LandingPage: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {/* Contact Modal */}
+      {showContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowContact(false)}>
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-sm mx-4 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-[#070A12] rounded-full flex items-center justify-center mx-auto mb-4">
+              <Mail className="w-6 h-6 text-[#ffcc29]" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Contact Us</h3>
+            <p className="text-gray-500 text-sm mb-4">Reach out to us anytime</p>
+            <a href="mailto:support@nebulaa.ai" className="text-[#070A12] font-semibold text-lg hover:text-[#ffcc29] transition-colors">
+              support@nebulaa.ai
+            </a>
+            <button onClick={() => setShowContact(false)} className="mt-6 block w-full py-2.5 bg-[#070A12] text-white rounded-lg font-medium hover:bg-[#0f1526] transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
