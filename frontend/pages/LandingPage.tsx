@@ -242,7 +242,7 @@ const LandingPage: React.FC = () => {
               {
                 icon: <Target className="w-6 h-6" />,
                 title: "Smart Campaigns",
-                description: "AI-powered campaign creation that adapts to your audience in real-time.",
+                description: "Automated campaign creation that adapts to your audience in real-time.",
                 bgColor: theme === 'dark' ? "bg-violet-500/10" : "bg-violet-50",
                 iconColor: "text-[#ffcc29]"
               },
@@ -251,13 +251,6 @@ const LandingPage: React.FC = () => {
                 title: "Advanced Analytics",
                 description: "Deep insights into performance with actionable recommendations.",
                 bgColor: theme === 'dark' ? "bg-[#ffcc29]/10" : "bg-[#ffcc29]/10",
-                iconColor: "text-[#ffcc29]"
-              },
-              {
-                icon: <Users className="w-6 h-6" />,
-                title: "Influencer Matching",
-                description: "Find creators who align perfectly with your brand values.",
-                bgColor: theme === 'dark' ? "bg-blue-500/10" : "bg-blue-50",
                 iconColor: "text-[#ffcc29]"
               },
               {
@@ -270,7 +263,7 @@ const LandingPage: React.FC = () => {
               {
                 icon: <Globe className="w-6 h-6" />,
                 title: "Multi-Platform",
-                description: "Manage all channels from Instagram to YouTube in one place.",
+                description: "Manage all channels from Instagram to LinkedIn in one place.",
                 bgColor: theme === 'dark' ? "bg-teal-500/10" : "bg-teal-50",
                 iconColor: "text-teal-600"
               },
@@ -416,7 +409,7 @@ const LandingPage: React.FC = () => {
                 <div className="text-slate-400 text-sm">1,000 credits included</div>
               </div>
               <ul className="space-y-3 mb-8">
-                {['AI-powered campaign generation', 'Multi-platform posting', 'Competitor analysis', 'Influencer discovery', 'Advanced analytics', 'Priority support'].map((item, i) => (
+                {['Automated campaign generation', 'Multi-platform posting', 'Competitor analysis', 'Advanced analytics', 'Instant publishing', 'Priority support'].map((item, i) => (
                   <li key={i} className="flex items-center gap-3 text-sm">
                     <CheckCircle2 className="w-4 h-4 text-[#ffcc29] shrink-0" />
                     <span className="text-slate-300">{item}</span>
