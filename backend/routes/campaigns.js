@@ -306,11 +306,13 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
     const preferredDays = Array.isArray(daysInput) ? daysInput : (daysInput ? daysInput.split(',') : ['monday', 'wednesday', 'friday']);
     const startDate = startDateParam || new Date().toISOString().split('T')[0];
     const weeks = duration === '2weeks' ? 2 : 1;
-    const totalPosts = Math.min(preferredDays.length * weeks, 14);
+    const numSlots = Math.min(preferredDays.length * weeks, 14);
+    // Support multi-platform: Generate posts for all platforms for every slot
+    const totalPosts = numSlots * platforms.length;
 
-    // Deduct credits: 1 text generation + 1 per image
-    const creditCost = totalPosts * 7; // 7 per post (5 image + 2 caption)
-    const creditResult = await deductCredits(userId, 'campaign_full', totalPosts, `AI campaign generation (${totalPosts} posts with images)`);
+    // Deduct credits: 7 per individual post generated
+    const creditCost = totalPosts * 7; 
+    const creditResult = await deductCredits(userId, 'campaign_full', totalPosts, `AI campaign generation (${totalPosts} posts across ${platforms.length} platforms)`);
     if (!creditResult.success) {
       sendEvent('error', { message: creditResult.error, creditsExhausted: true });
       return res.end();
@@ -318,24 +320,33 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
 
     sendEvent('status', { message: 'Generating campaign content...', totalPosts });
 
-    // Generate schedule dates
-    const scheduleDates = [];
+    // Generate unique slot dates
+    const slotDates = [];
     const start = new Date(startDate);
-    let postsCreated = 0;
-    let currentDay = 0;
-    while (postsCreated < totalPosts && currentDay < 100) {
+    let dayIdx = 0;
+    while (slotDates.length < numSlots && dayIdx < 100) {
       const checkDate = new Date(start);
-      checkDate.setDate(start.getDate() + currentDay);
+      checkDate.setDate(start.getDate() + dayIdx);
       const dayName = checkDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       if (preferredDays.includes(dayName)) {
-        scheduleDates.push({
+        slotDates.push({
           date: checkDate.toISOString().split('T')[0],
           time: '10:00',
-          week: postsCreated < preferredDays.length ? 1 : 2
+          week: slotDates.length < preferredDays.length ? 1 : 2
         });
-        postsCreated++;
       }
-      currentDay++;
+      dayIdx++;
+    }
+
+    // Expand unique slots into per-post schedule mappings
+    const scheduleDates = [];
+    for (const slot of slotDates) {
+      for (const platform of platforms) {
+        scheduleDates.push({
+          ...slot,
+          platform: platform.trim().toLowerCase()
+        });
+      }
     }
 
     // Step 1: Generate all captions via Gemini (ROCI format prompt)
@@ -361,23 +372,25 @@ CONTEXT:
 ${keyMessages ? `- MANDATORY CONTENT STRUCTURES (STRICTLY FOLLOW THESE):\n${keyMessages}` : ''}
 
 INSTRUCTIONS:
-1. Create exactly ${totalPosts} posts. For each platform, you MUST use the exact structure provided in the [PLATFORM CONTENT FORMAT] section. 
-2. Fill every single piece of structured data (bullet points, numbered lists) with high-value, specific content for the brand.
-3. Within the structure, provide unique and engaging content for each post (e.g., different hooks, different industry-specific tips, different social proof details) while keeping the format 100% consistent with the template.
-4. Captions must be platform-native: ${platforms.includes('twitter') ? 'Twitter posts under 280 chars.' : ''} ${platforms.includes('instagram') ? 'Instagram captions with hook in first line.' : ''} ${platforms.includes('linkedin') ? 'LinkedIn posts that open with a bold statement or question.' : ''}
-5. Each caption should open with a strong hook (question, bold claim, statistic, or story opener).
-6. Include 3-5 relevant hashtags per post. Mix broad and niche hashtags. Never use generic tags like #marketing or #business alone.
-7. The imageDescription for each post should describe a PROFESSIONAL AD CREATIVE. Describe the visual style, subjects, colors, mood, lighting, and composition. Do NOT mention metadata.
+1. Create exactly ${totalPosts} campaign posts.
+2. For EACH of the ${slotDates.length} scheduled slots, you MUST generate exactly one post for EVERY selected platform: ${platforms.join(', ')}.
+3. This means if there are 2 platforms selected, you will generate 2 posts for every scheduled date.
+4. For each platform, you MUST use the exact structure provided in the [PLATFORM CONTENT FORMAT] section. 
+5. Captions must be platform-native: ${platforms.includes('twitter') ? 'Twitter posts under 280 chars.' : ''} ${platforms.includes('instagram') ? 'Instagram captions with hook in first line.' : ''} ${platforms.includes('linkedin') ? 'LinkedIn posts that open with a bold statement or question.' : ''}
+6. Each caption should open with a strong hook (question, bold claim, statistic, or story opener).
+7. Include 3-5 relevant hashtags per post. Mix broad and niche hashtags. Never use generic tags like #marketing or #business alone.
+8. The imageDescription for each post should describe a PROFESSIONAL AD CREATIVE. Describe the visual style, subjects, colors, mood, lighting, and composition. Do NOT mention metadata.
+9. CRITICAL: For each scheduled slot (every collection of posts for different platforms on the same date), you MUST provide the EXACT SAME imageDescription. This ensures the same visual is used across all platforms for that slot.
 
 Return ONLY valid JSON (no markdown, no backticks):
 {
   "posts": [
     {
-      "platform": "${platforms[0] || 'instagram'}",
+      "platform": "instagram|linkedin|twitter|facebook",
       "caption": "The full caption text with emojis and line breaks",
       "hashtags": ["#tag1", "#tag2", "#tag3"],
       "contentTheme": "educational|promotional|engagement|storytelling|social_proof|problem_solution",
-      "imageDescription": "Detailed visual description for AI image generation — describe the creative direction, visual style, subjects, colors, mood, composition. No metadata or placeholder text."
+      "imageDescription": "Detailed visual description for AI image generation"
     }
   ]
 }`;
@@ -480,33 +493,44 @@ Return ONLY valid JSON (no markdown, no backticks):
 
     // Step 2: Generate images one by one and stream each
     const postsToProcess = parsed.posts.slice(0, totalPosts);
+    const slotImageCache = new Map();
 
     for (let i = 0; i < postsToProcess.length; i++) {
       if (aborted) break;
 
       const post = postsToProcess[i];
-      const schedule = scheduleDates[i] || { date: startDate, time: '10:00', week: 1 };
+      const schedule = scheduleDates[i] || { date: startDate, time: '10:00', week: 1, platform: platforms[i % platforms.length] };
+      
+      // Calculate which slot this belongs to (grouped by platforms per date)
+      const slotIndex = Math.floor(i / platforms.length);
 
-      sendEvent('generating', { index: i, total: postsToProcess.length, message: `Generating image ${i + 1} of ${postsToProcess.length}...` });
-
-      // Generate image with Nano Banana 2
-      const imageResult = await generateCampaignImageNanoBanana(post.imageDescription, {
-        aspectRatio: aspectRatio || '1:1',
-        brandName: bp.companyName || bp.name || '',
-        brandLogo: productLogo || null,
-        industry: bp.industry || '',
-        tone: tone || 'professional',
-        postIndex: i,
-        totalPosts: postsToProcess.length,
-        campaignTheme: campaignName,
-        keyMessages: keyMessages || ''
-      });
+      // Only generate a new image if we haven't created one for this slot yet
+      let imageResult;
+      if (slotImageCache.has(slotIndex)) {
+        imageResult = slotImageCache.get(slotIndex);
+      } else {
+        sendEvent('generating', { index: i, total: postsToProcess.length, message: `Generating image for slot ${slotIndex + 1}...` });
+        
+        imageResult = await generateCampaignImageNanoBanana(post.imageDescription, {
+          aspectRatio: aspectRatio || '1:1',
+          brandName: bp.companyName || bp.name || '',
+          brandLogo: productLogo || null,
+          industry: bp.industry || '',
+          tone: tone || 'professional',
+          postIndex: slotIndex, // Use slot index for image context
+          totalPosts: numSlots,
+          campaignTheme: campaignName,
+          keyMessages: keyMessages || ''
+        });
+        
+        slotImageCache.set(slotIndex, imageResult);
+      }
 
       const postData = {
         id: `post-${i + 1}`,
         index: i,
         week: schedule.week,
-        platform: post.platform?.toLowerCase() || platforms[i % platforms.length],
+        platform: post.platform?.toLowerCase() || schedule.platform,
         caption: post.caption,
         hashtags: Array.isArray(post.hashtags)
           ? post.hashtags.map(h => h.startsWith('#') ? h : `#${h}`)
