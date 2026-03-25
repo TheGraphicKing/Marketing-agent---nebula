@@ -23,6 +23,7 @@ import {
   PenTool,
   Layers
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 import { User } from '../types';
 import NotificationBell from './NotificationBell';
 import { apiService } from '../services/api';
@@ -54,8 +55,8 @@ const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
 };
 
 const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
+  const { isDarkMode } = useTheme();
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [trialInfo, setTrialInfo] = useState<TrialData | null>(null);
   const [showCreditPanel, setShowCreditPanel] = useState(false);
   const creditPanelRef = useRef<HTMLDivElement>(null);
@@ -115,17 +116,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showCreditPanel]);
 
-  useEffect(() => {
-    // Check for saved theme preference or default to light
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
-    } else {
-      setIsDarkMode(false);
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
+
 
 
 
@@ -169,7 +160,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
         <div className="flex flex-col h-full">
             <div className="p-6">
                 <div className={`flex items-center gap-3 mb-2 ${isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}`}>
-                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className="w-12 h-12" />
+                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className={`w-12 h-12 ${isDarkMode ? 'brightness-0 invert' : ''}`} />
                     <div className="flex flex-col">
                         <span className="font-bold text-xl tracking-tight leading-tight">Nebulaa</span>
                         <span className="font-semibold text-lg tracking-tight leading-tight">Gravity</span>
