@@ -22,6 +22,213 @@ const PLATFORM_LIMITS: Record<string, { charLimit: number; label: string; imageM
   youtube:   { charLimit: 5000,   label: 'YouTube',    imageMaxMB: 2,  videoMaxMB: 12800, bestRatio: '16:9' },
 };
 
+const PLATFORM_CONTENT_TEMPLATES: Record<string, { id: string; label: string; structure: string; tone: string }[]> = {
+  instagram: [
+    // PROFESSIONAL
+    { 
+      id: 'ig_prof_1', 
+      tone: 'professional',
+      label: 'Strategic Standard', 
+      structure: "🎯 STRATEGIC OVERVIEW: {name}\n• Core Mission: {desc}\n• Key Objective: {obj}\n\n📸 KEY HIGHLIGHTS:\n• [Strategic Point 1]\n• [Business Value 2]\n\n🔗 LEARN MORE: [Link]" 
+    },
+    { 
+      id: 'ig_prof_2', 
+      tone: 'professional',
+      label: 'Executive Summary', 
+      structure: "📊 EXECUTIVE ANALYSIS: {name}\n\nSummary:\n{desc}\n\n🚀 PROJECTED OUTCOMES:\n• [Impact 1]\n• [Impact 2]\n\nGoal: {obj}\n\n🔗 VIEW DETAILS: [Your CTA Link]" 
+    },
+    { 
+      id: 'ig_prof_3', 
+      tone: 'professional',
+      label: 'Corporate Update', 
+      structure: "💼 OFFICIAL ANNOUNCEMENT: {name}\n\nWe are focusing on {obj} through our latest initiative: {desc}.\n\n✅ KEY PILLARS:\n• [Pillar 1]\n• [Pillar 2]\n\n🔗 READ MORE: [Link]" 
+    },
+    // CASUAL
+    { 
+      id: 'ig_cas_1', 
+      tone: 'casual',
+      label: 'Friendly BTS', 
+      structure: "Hey friends! 👋 Just wanted to share what we've been working on: {name}.\n\n{desc}\n\nOur big goal is to {obj}. 🚀\n\n✨ COOL STUFF:\n• [Fun Fact 1]\n• [Behind the scenes 2]\n\nDrop a comment below! 👇\n\n[Link]" 
+    },
+    { 
+      id: 'ig_cas_2', 
+      tone: 'casual',
+      label: 'Real Talk', 
+      structure: "Let's be real for a second... {obj} is tough. 🛋️\n\nThat's why we built {name}. {desc}\n\n🌈 WHY IT MATTERS:\n• [Reason 1]\n• [Reason 2]\n\nWhat do you think? ✨ [Link]" 
+    },
+    // INSPIRATIONAL
+    { 
+      id: 'ig_insp_1', 
+      tone: 'inspirational',
+      label: 'Brand Story', 
+      structure: "✨ BELIEVE IN {name}\n\nIt started with a simple idea: {desc}\n\nToday, we're on a mission to {obj}.\n\n💡 DAILY WISDOM:\n\"[Inspirational Quote]\"\n\n🔗 JOIN THE JOURNEY: [Link]" 
+    },
+    { 
+      id: 'ig_insp_2', 
+      tone: 'inspirational',
+      label: 'Big Dreams', 
+      structure: "🚀 DREAMING BIG: {obj}\n\nWe believe {name} is the key to {desc}.\n\n✨ VISION:\n• [Vision Point 1]\n• [Impact 2]\n\nStay inspired. ✨ [Link]" 
+    },
+    // EDUCATIONAL
+    { 
+      id: 'ig_edu_1', 
+      tone: 'educational',
+      label: 'Expert Tips', 
+      structure: "💡 DID YOU KNOW? \n\n{name}\n\n🚀 3 TIPS TO {obj}:\n1. [Expert Tip 1]\n2. [Advanced Strategy 2]\n3. [Quick Win 3]\n\n💬 Save this for later!" 
+    },
+    { 
+      id: 'ig_edu_2', 
+      tone: 'educational',
+      label: 'Step-by-Step', 
+      structure: "📖 HOW TO {obj} WITH {name}\n\nStep 1: [Action 1]\nStep 2: [Action 2]\nStep 3: [Action 3]\n\n{desc}\n\nFull guide: [Link] 🎓" 
+    },
+    // HUMOROUS
+    { 
+      id: 'ig_hum_1', 
+      tone: 'humorous',
+      label: 'Witty Observation', 
+      structure: "Me trying to {obj} without {name} 🤡\n\nSeriously though, {desc} is a game changer.\n\n😂 THE STRUGGLE IS REAL:\n• [Funny Point 1]\n• [Witty Observation 2]\n\n🔗 DON'T BE A CLOWN: [Link]" 
+    },
+    { 
+      id: 'ig_hum_2', 
+      tone: 'humorous',
+      label: 'Relatable Meme', 
+      structure: "Current Status: Trying to {obj}. 🕺\n\n{name} entered the chat: {desc}\n\n🤌 CHEF'S KISS:\n• [Funny Highlight 1]\n• [Relatable Moment 2]\n\n🔗 CHECK IT OUT: [Link]" 
+    },
+    // BOLD
+    { 
+      id: 'ig_bold_1', 
+      tone: 'bold',
+      label: 'Bold Launch', 
+      structure: "🔥 THE FUTURE IS HERE: {name}\n\nStop settling for less. We are here to {obj}.\n\n💥 WHY WE WIN:\n• [Disruptive Feature 1]\n• [Dominant Result 2]\n\n🔗 WITNESS THE POWER: [Link]" 
+    },
+    { 
+      id: 'ig_bold_2', 
+      tone: 'bold',
+      label: 'Manifesto', 
+      structure: "⚠️ UNPOPULAR OPINION: {obj} shouldn't be this hard.\n\nEnter {name}. {desc}\n\n🔥 THE NEW RULES:\n1. [Rule 1]\n2. [Rule 2]\n\nGET ON BOARD: [Link]" 
+    }
+  ],
+  linkedin: [
+    // PROFESSIONAL
+    { 
+      id: 'li_prof_1', 
+      tone: 'professional',
+      label: 'Standard Executive', 
+      structure: "Innovation is the difference between a leader and a follower. Today, we're choosing to lead. 🚀\n\n💼 STRATEGIC INITIATIVE: {name}\n• Executive Summary: {desc}\n• Core Objective: {obj}\n\n📊 CORPORATE ANALYSIS:\n1. [Market Positioning 1]\n2. [Operational Impact 2]\n\n🚀 KEY DELIVERABLES:\n• [Outcome]\n\n🔗 FULL REPORT: [Link]" 
+    },
+    { 
+      id: 'li_prof_2', 
+      tone: 'professional',
+      label: 'Leadership Angle', 
+      structure: "The signal is often lost in the noise. It's time to talk about the future of {obj}. 📡\n\n🚨 THE FUTURE OF {obj}\n\nI've been analyzing {name} lately. \n\n💡 STRATEGIC INSIGHTS:\n• {desc}\n\nWhat are your thoughts on this industry shift? 👇\n\n#Leadership #Innovation" 
+    },
+    { 
+      id: 'li_prof_3', 
+      tone: 'professional',
+      label: 'Business Win', 
+      structure: "Operational excellence is table stakes. Real growth comes from a relentless focus on {obj}. 📈\n\n📈 BUSINESS UPDATE: Achieving {obj}\n\nThrilled to share how {name} is driving results.\n\n✅ KEY TAKEAWAYS:\n• [Point 1]\n• [Point 2]\n\n{desc}\n\n🔗 DETAILS: [Link]" 
+    },
+    // EDUCATIONAL
+    { 
+      id: 'li_edu_1', 
+      tone: 'educational',
+      label: 'Expert Guide', 
+      structure: "Knowledge is only potential power. Execution is where the value lives. Here's your roadmap for {obj}. 🎓\n\n🎓 MASTERING {obj}\n\n{name} is the framework we've been using to solve {desc}.\n\n💡 LESSONS LEARNED:\n1. [Insight 1]\n2. [Strategy 2]\n3. [Tactic 3]\n\nFull case study: [Link]" 
+    },
+    { 
+      id: 'li_edu_2', 
+      tone: 'educational',
+      label: 'Case Study', 
+      structure: "Data tells a story, but results build a legacy. Our journey with {obj} is proof. 📊\n\n📈 CASE STUDY: Optimizing {obj}\n\nProject: {name}\n\n❓ THE CHALLENGE:\n{desc}\n\n🏆 THE RESULTS:\n• [Achievement 1]\n• [Achievement 2]\n\nRead the breakdown: [Link]" 
+    },
+    // BOLD
+    { 
+      id: 'li_bold_1', 
+      tone: 'bold',
+      label: 'Industry Shakeup', 
+      structure: "Disruption isn't about doing things differently; it's about making the old ways obsolete. ⚡\n\n⚠️ THE INDUSTRY IS CHANGED: {name}\n\nWe're officially disrupting {obj}.\n\n🔥 WHY THIS MATTERS:\n• [Point 1]\n• [Point 2]\n\n{desc}\n\nJoin the discussion: [Link]" 
+    }
+  ],
+  twitter: [
+    // CASUAL
+    { 
+      id: 'tw_cas_1', 
+      tone: 'casual',
+      label: 'Punchy News', 
+      structure: "Ship first. Refine later. {name} is live. 🔥\n\n🚀 Introducing {name}: {desc}\n\nKey Goal: {obj}\n\nCheck it out here: [Link]\n\n#Launch #Tech #Innovation" 
+    },
+    { 
+      id: 'tw_cas_2', 
+      tone: 'casual',
+      label: 'Quick Thought', 
+      structure: "Most people overthink {obj}. We just solved it. 🚀\n\n{name} is finally here! 🥳\n\nWe're helping people {obj} like never before.\n\n{desc}\n\n👇 [Link]" 
+    },
+    // PROFESSIONAL
+    { 
+      id: 'tw_prof_1', 
+      tone: 'professional',
+      label: 'Official Update', 
+      structure: "Performance is the only metric that matters. {name} update. 📢\n\n📢 STRATEGIC UPDATE: {name}\n\nWe're optimizing for {obj} through {desc}.\n\nKey pillars:\n• [Pillar 1]\n• [Pillar 2]\n\nDetails: [Link]" 
+    },
+    { 
+      id: 'tw_prof_2', 
+      tone: 'professional',
+      label: 'Data Point', 
+      structure: "Numbers > Opinions. Check the impact of {obj}. 📊\n\n📊 DATA INSIGHT: {obj}\n\nOur latest launch, {name}, is addressing {desc}.\n\nKey metric impact:\n• [Metric 1]: +[X]%\n• [Metric 2]: -[Y]%\n\nRead more: [Link]" 
+    },
+    // EDUCATIONAL
+    { 
+      id: 'tw_edu_1', 
+      tone: 'educational',
+      label: 'Thread Hook', 
+      structure: "The ROI of {obj} is misunderstood. Here's the truth. 🧵\n\nI just discovered the secret to {obj} 🧵\n\n{name} is changing how we view {desc}.\n\nHere are 3 reasons why:\n\n1/ [Expert Point 1]\n2/ [Advanced Tip 2]\n3/ [Quick Win 3]\n\nClick to read more: [Link]" 
+    },
+    { 
+      id: 'tw_edu_2', 
+      tone: 'educational',
+      label: 'Quick Tips', 
+      structure: "Low effort. High leverage. 3 ways to win at {obj}. 💡\n\n💡 Quick Tips for {obj}:\n\n1️⃣ Use {name}\n2️⃣ Focus on {desc}\n3️⃣ [Tip 3]\n\nSimple but effective. ✅ [Link]" 
+    },
+    // BOLD
+    { 
+      id: 'tw_bold_1', 
+      tone: 'bold',
+      label: 'Bold Claims', 
+      structure: "Average is the enemy. Stop settling for less in {obj}. 🛑\n\nSTOP doing [Common Mistake]. 🛑\n\n{name} is here to {obj}. \n\n{desc}\n\nNo more excuses. [Link]" 
+    }
+  ],
+  facebook: [
+    { 
+      id: 'fb_prof_1', 
+      tone: 'professional',
+      label: 'Announcement', 
+      structure: "📢 ANNOUNCEMENT: {name}\n\nDetails: {desc}\nGoal: {obj}\n\nLearn more: [Link] 👋" 
+    },
+    { 
+      id: 'fb_cas_1', 
+      tone: 'casual',
+      label: 'Community Engagement', 
+      structure: "Hey guys! We're excited to share {name} with you today. 😊\n\n{desc}\n\nWe're aiming to {obj}. What do you think about [Point]? 👇" 
+    }
+  ]
+};
+
+const applyTemplate = (structure: string, name: string, desc: string, obj: string) => {
+  return structure
+    .replace(/{name}/g, name || '[Campaign Name]')
+    .replace(/{desc}/g, desc || '[Description]')
+    .replace(/{obj}/g, obj || '[Objective]');
+};
+
+const PLATFORM_DISPLAY_DATA: Record<string, { icon: string; color: string; borderColor: string; bgColor: string; darkBgColor: string }> = {
+  instagram: { icon: '📸', color: 'from-pink-500 to-purple-600', borderColor: 'border-pink-500/40', bgColor: 'bg-pink-50', darkBgColor: 'bg-pink-500/10' },
+  linkedin:  { icon: '💼', color: 'from-blue-600 to-blue-800', borderColor: 'border-blue-500/40', bgColor: 'bg-blue-50', darkBgColor: 'bg-blue-500/10' },
+  twitter:   { icon: '🐦', color: 'from-sky-400 to-sky-600', borderColor: 'border-sky-500/40', bgColor: 'bg-sky-50', darkBgColor: 'bg-sky-500/10' },
+  facebook:  { icon: '👍', color: 'from-blue-500 to-indigo-600', borderColor: 'border-blue-400/40', bgColor: 'bg-blue-50', darkBgColor: 'bg-blue-400/10' },
+  youtube:   { icon: '▶️', color: 'from-red-500 to-red-700', borderColor: 'border-red-500/40', bgColor: 'bg-red-50', darkBgColor: 'bg-red-500/10' },
+};
+
 /** Reusable character counter bar for caption textareas */
 const CaptionCharCounter: React.FC<{
   caption: string;
@@ -2164,7 +2371,7 @@ Generated by Nebulaa Gravity Marketing Agent
               className={`pb-4 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
                 activeTab === tab.id 
                   ? 'border-[#ffcc29] text-[#ffcc29]' 
-                  : `border-transparent ${theme.textSecondary} hover:text-[#ffcc29] hover:border-[#ffcc29]/30`
+                  : `border-transparent ${theme.text} hover:text-[#ffcc29] hover:border-[#ffcc29]/30`
               }`}
             >
               {tab.icon && <tab.icon className="w-4 h-4" />}
@@ -3391,6 +3598,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
     const [editingPostId, setEditingPostId] = useState<string | null>(null);
     const [savingPosts, setSavingPosts] = useState(false);
+    const [previewPost, setPreviewPost] = useState<{ platform: string, caption: string, imageUrl: string } | null>(null);
     
     // Step 1: Campaign Details
     const [campaignName, setCampaignName] = useState('');
@@ -3409,11 +3617,46 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [contentTone, setContentTone] = useState<'professional' | 'casual' | 'humorous' | 'inspirational' | 'educational'>('professional');
     const [contentType, setContentType] = useState<'image' | 'video' | 'carousel' | 'story'>('image');
     const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>('1:1');
-    const [keyMessages, setKeyMessages] = useState('');
+    const [platformContents, setPlatformContents] = useState<Record<string, string>>({});
+    const [selectedTemplateIds, setSelectedTemplateIds] = useState<Record<string, string>>({});
     const [callToAction, setCallToAction] = useState('');
     const [productLogo, setProductLogo] = useState<string | null>(null);
     const [productLogoName, setProductLogoName] = useState<string>('');
     const [showBrandLogoSelector, setShowBrandLogoSelector] = useState(false);
+    const [isPopulating, setIsPopulating] = useState<Record<string, boolean>>({});
+    const manuallyEditedTemplates = useRef<Set<string>>(new Set());
+
+    const smartPopulateTemplate = async (platform: string, templateText: string) => {
+      const apiBaseUrl = window.location.hostname !== 'localhost' ? '' : 'http://localhost:5000';
+      const token = localStorage.getItem('authToken');
+      
+      setIsPopulating(curr => ({ ...curr, [platform]: true }));
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/campaigns/smart-populate-template`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            template: templateText,
+            campaignName,
+            campaignDescription,
+            objective
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          setPlatformContents(curr => ({ ...curr, [platform]: data.filledContent }));
+          return data.filledContent;
+        }
+      } catch (err) {
+        console.error('Smart populate failed:', err);
+      } finally {
+        setIsPopulating(curr => ({ ...curr, [platform]: false }));
+      }
+      return null;
+    };
     
     // Step 4: Scheduling Preferences
     const [campaignDuration, setCampaignDuration] = useState<'1week' | '2weeks' | '1month' | '3months'>('2weeks');
@@ -3434,6 +3677,83 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     }`;
     
     const labelClasses = `block text-xs font-bold uppercase tracking-wide mb-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`;
+
+    const getTemplateForPlatform = (platform: string, name: string, desc: string, obj: string) => {
+      const templates = PLATFORM_CONTENT_TEMPLATES[platform];
+      if (templates && templates.length > 0) {
+        return applyTemplate(templates[0].structure, name, desc, obj);
+      }
+      
+      const pName = name || '[Campaign Name]';
+      const pDesc = desc || '[Description]';
+      const pObj = obj || '[Objective]';
+      return `Campaign: ${pName}\nDescription: ${pDesc}\nObjective: ${pObj}\n\nNotes:\n`;
+    };
+
+    useEffect(() => {
+      const autoPopulate = async () => {
+        if (step === 2 && campaignName && campaignDescription) {
+          for (const p of platforms) {
+            // If the content is currently empty or just a default template (has brackets), auto-populate it
+            const currentContent = platformContents[p] || '';
+            const hasPlaceholders = /\[[^\]]*[A-Z0-9][^\]]*\]/.test(currentContent);
+            const isFilled = isPopulating[p] || manuallyEditedTemplates.current.has(p);
+
+            if ((!currentContent || hasPlaceholders) && !isFilled) {
+              const activeTemplate = PLATFORM_CONTENT_TEMPLATES[p]?.find(t => t.id === selectedTemplateIds[p]) || PLATFORM_CONTENT_TEMPLATES[p]?.[0];
+              if (activeTemplate) {
+                const base = applyTemplate(activeTemplate.structure, campaignName, campaignDescription, objective);
+                smartPopulateTemplate(p, base);
+              }
+            }
+          }
+        }
+      };
+
+      if (step === 2) {
+        setPlatformContents(curr => {
+          let updated = false;
+          const next = { ...curr };
+          platforms.forEach(p => {
+            // Re-apply if not edited or manually reset? Actually, if tone changes, we should update.
+            const currentToneTemplates = (PLATFORM_CONTENT_TEMPLATES[p] || []).filter(t => t.tone === contentTone);
+            const template = currentToneTemplates.find(t => t.id === selectedTemplateIds[p]) || currentToneTemplates[0] || (PLATFORM_CONTENT_TEMPLATES[p] || [])[0];
+            
+            if (next[p] === undefined || !manuallyEditedTemplates.current.has(p)) {
+              if (template) {
+                next[p] = applyTemplate(template.structure, campaignName, campaignDescription, objective);
+                updated = true;
+              }
+            }
+          });
+          return updated ? next : curr;
+        });
+
+        // Set default selected template IDs if they don't exist OR if current one doesn't match tone
+        setSelectedTemplateIds(curr => {
+          let updated = false;
+          const next = { ...curr };
+          platforms.forEach(p => {
+            const currentToneTemplates = (PLATFORM_CONTENT_TEMPLATES[p] || []).filter(t => t.tone === contentTone);
+            const currentId = next[p];
+            const isCurrentToneMatch = currentToneTemplates.some(t => t.id === currentId);
+
+            if (next[p] === undefined || !isCurrentToneMatch) {
+              if (currentToneTemplates.length > 0) {
+                next[p] = currentToneTemplates[0].id;
+                updated = true;
+              } else if (PLATFORM_CONTENT_TEMPLATES[p]?.length > 0) {
+                next[p] = PLATFORM_CONTENT_TEMPLATES[p][0].id;
+                updated = true;
+              }
+            }
+          });
+          return updated ? next : curr;
+        });
+        
+        autoPopulate();
+      }
+    }, [step, platforms, campaignName, campaignDescription, objective]);
 
     const togglePlatform = (platform: string) => {
       setPlatforms(prev => prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]);
@@ -3482,7 +3802,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
         platforms,
         tone: contentTone || 'professional',
         aspectRatio: selectedAspectRatio || '1:1',
-        keyMessages: keyMessages || '',
+        keyMessages: platforms.map(p => `[${p.toUpperCase()} CONTENT FORMAT]\n${platformContents[p] || ''}`).join('\n\n---\n\n'),
         duration: campaignDuration || '1week',
         startDate: startDate || new Date().toISOString().split('T')[0],
         preferredDays,
@@ -3750,6 +4070,11 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
       }
     };
 
+    const getPreviewUrl = (platform: string) => {
+      // Return campaign image if available, else placeholder
+      return productLogo || null;
+    };
+
     const stepTitles = [
       'Campaign Details',
       'Content Preferences',
@@ -3826,7 +4151,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                 
                 {/* Main Content */}
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-y-auto p-8">
+                    <div className="flex-1 flex overflow-hidden">
+                        <div className="flex-1 overflow-y-auto p-8">
                         {/* Step 1: Campaign Details */}
                         {step === 1 && (
                             <div className="space-y-6 animate-in fade-in duration-300">
@@ -3901,33 +4227,25 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                       { id: 'instagram', label: 'Instagram', icon: <Instagram className="w-4 h-4" /> },
                                       { id: 'facebook', label: 'Facebook', icon: <Facebook className="w-4 h-4" /> },
                                       { id: 'twitter', label: 'Twitter/X', icon: <Twitter className="w-4 h-4" /> },
-                                      { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="w-4 h-4" /> }
-                                    ].map(p => {
-                                      const isConnected = connectedPlatforms.includes(p.id);
-                                      return (
-                                        <button
-                                          key={p.id}
-                                          onClick={() => isConnected && togglePlatform(p.id)}
-                                          disabled={!isConnected}
-                                          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all ${
-                                            !isConnected
-                                              ? isDarkMode
-                                                ? 'border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'
-                                                : 'border-slate-200 text-slate-400 opacity-50 cursor-not-allowed'
-                                              : platforms.includes(p.id)
-                                                ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
-                                                : isDarkMode
-                                                  ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
-                                                  : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
-                                          }`}
-                                        >
-                                          {p.icon}
-                                          <span className="text-sm font-medium">{p.label}</span>
-                                          {!isConnected && <span className="text-[10px] opacity-70">Not Connected</span>}
-                                          {isConnected && platforms.includes(p.id) && <Check className="w-4 h-4" />}
-                                        </button>
-                                      );
-                                    })}
+                                      { id: 'linkedin', label: 'LinkedIn', icon: <Linkedin className="w-4 h-4" /> },
+                                      { id: 'youtube', label: 'YouTube', icon: <Youtube className="w-4 h-4" /> }
+                                    ].map(p => (
+                                      <button
+                                        key={p.id}
+                                        onClick={() => togglePlatform(p.id)}
+                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all ${
+                                          platforms.includes(p.id)
+                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29]'
+                                            : isDarkMode
+                                              ? 'border-slate-700 text-slate-400 hover:border-[#ffcc29]/50'
+                                              : 'border-slate-200 text-slate-600 hover:border-[#ffcc29]/50'
+                                        }`}
+                                      >
+                                        {p.icon}
+                                        <span className="text-sm font-medium">{p.label}</span>
+                                        {platforms.includes(p.id) && <Check className="w-4 h-4" />}
+                                      </button>
+                                    ))}
                                   </div>
                                 </div>
                                 
@@ -4001,14 +4319,90 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                 </div>
 
                                 <div>
-                                  <label className={labelClasses}>Key Messages to Convey</label>
-                                  <textarea
-                                    className={`${inputClasses} resize-none`}
-                                    rows={3}
-                                    placeholder="What are the main points you want to communicate? e.g., Quality, value for money, innovation..."
-                                    value={keyMessages}
-                                    onChange={e => setKeyMessages(e.target.value)}
-                                  />
+                                  <label className={labelClasses}>Platform Content Strategy</label>
+                                  <p className={`text-xs mb-3 ${theme.textSecondary}`}>
+                                    Customize the content structure for each platform. AI will use this to generate the final posts.
+                                  </p>
+                                  <div className="space-y-4">
+                                    {platforms.map(p => {
+                                      const charLimit = PLATFORM_LIMITS[p]?.charLimit || 2200;
+                                      const count = (platformContents[p] || '').length;
+                                      const isOver = count > charLimit;
+                                      const templates = PLATFORM_CONTENT_TEMPLATES[p] || [];
+                                      return (
+                                        <div key={p} className={`border rounded-xl overflow-hidden shadow-sm transition-all focus-within:ring-2 ${isOver ? 'focus-within:ring-red-500' : 'focus-within:ring-[#ffcc29]'} ${isDarkMode ? 'border-slate-700 bg-[#161b22]' : 'border-slate-200 bg-slate-50'}`}>
+                                          <div className={`px-3 py-2 border-b flex flex-col gap-2 ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-100'}`}>
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex items-center gap-2">
+                                                {p === 'instagram' ? <Instagram className="w-4 h-4 text-pink-500" /> :
+                                                 p === 'linkedin' ? <Linkedin className="w-4 h-4 text-blue-600" /> :
+                                                 p === 'twitter' ? <Twitter className="w-4 h-4 text-sky-500" /> :
+                                                 p === 'facebook' ? <Facebook className="w-4 h-4 text-blue-500" /> :
+                                                 <Youtube className="w-4 h-4 text-red-500" />}
+                                                <span className={`text-xs font-bold capitalize ${theme.text}`}>{p} Template</span>
+                                              </div>
+                                              <span className={`text-[10px] font-mono whitespace-nowrap px-2 py-0.5 rounded-full ${isOver ? 'bg-red-500/10 text-red-500 font-bold' : isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>
+                                                {count.toLocaleString()} / {charLimit.toLocaleString()} chars
+                                                {isOver && ' ⚠️'}
+                                              </span>
+                                            </div>
+                                            
+                                            <div className="flex items-center justify-between mt-2">
+                                              <div className="flex flex-wrap gap-1.5">
+                                                {((PLATFORM_CONTENT_TEMPLATES[p] || []).filter(t => t.tone === contentTone).length > 0 
+                                                  ? (PLATFORM_CONTENT_TEMPLATES[p] || []).filter(t => t.tone === contentTone)
+                                                  : (PLATFORM_CONTENT_TEMPLATES[p] || []).filter(t => t.tone === 'professional')
+                                                ).map(t => {
+                                                  const isActive = selectedTemplateIds[p] === t.id;
+                                                  return (
+                                                    <button
+                                                      key={t.id}
+                                                      onClick={() => {
+                                                        const content = applyTemplate(t.structure, campaignName, campaignDescription, objective);
+                                                        setPlatformContents(curr => ({ ...curr, [p]: content }));
+                                                        setSelectedTemplateIds(curr => ({ ...curr, [p]: t.id }));
+                                                        // After switching template, trigger auto-population for the new structure
+                                                        smartPopulateTemplate(p, content);
+                                                      }}
+                                                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1.5 ${
+                                                        isActive 
+                                                          ? isDarkMode 
+                                                            ? 'bg-[#ffcc29]/20 border-[#ffcc29] text-[#ffcc29] scale-105 shadow-md shadow-[#ffcc29]/10' 
+                                                            : 'bg-[#ffcc29]/10 border-[#ffcc29] text-black scale-105 shadow-md shadow-[#ffcc29]/10'
+                                                          : isDarkMode 
+                                                            ? 'bg-slate-700 border-slate-600 text-slate-400 hover:border-[#ffcc29]/50 hover:text-slate-300' 
+                                                            : 'bg-white border-slate-200 text-slate-500 hover:border-[#ffcc29]/50 hover:text-slate-700'
+                                                      }`}
+                                                    >
+                                                      {isActive && <Check className="w-3 h-3" />}
+                                                      {t.label}
+                                                    </button>
+                                                  );
+                                                })}
+                                              </div>
+                                              
+                                              {isPopulating[p] && (
+                                                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-[#ffcc29]/10 text-[#ffcc29] border border-[#ffcc29]/20 animate-pulse">
+                                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                                  AI is tailor-fitting...
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <textarea
+                                            className={`w-full p-4 text-sm resize-none outline-none ${isDarkMode ? 'bg-[#0d1117] text-white' : 'bg-white text-slate-800'}`}
+                                            rows={9}
+                                            value={platformContents[p] || ''}
+                                            onChange={e => {
+                                              setPlatformContents(curr => ({ ...curr, [p]: e.target.value }));
+                                              manuallyEditedTemplates.current.add(p);
+                                            }}
+                                            placeholder="Write out your template structure here..."
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                                 
                                 {/* Product Logo Upload */}
@@ -4401,6 +4795,13 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                                     >
                                                       <Sparkles className="w-4 h-4 text-purple-500" />
                                                     </button>
+                                                    <button
+                                                      onClick={() => setPreviewPost({ platform: post.platform, caption: post.caption, imageUrl: post.imageUrl || getPreviewUrl(post.platform) || '' })}
+                                                      className={`p-2 rounded-lg ${isDarkMode ? 'bg-blue-900/30 hover:bg-blue-900/50' : 'bg-blue-50 hover:bg-blue-100'} transition-colors`}
+                                                      title="Preview exactly how this looks on the platform"
+                                                    >
+                                                      <Eye className="w-4 h-4 text-blue-500" />
+                                                    </button>
                                                   </>
                                                 )}
                                               </div>
@@ -4432,26 +4833,41 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                             </div>
                         )}
                     </div>
-                    
-                    {/* Footer */}
-                    <div className={`flex justify-between items-center p-6 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                        <button 
-                          onClick={step === 1 ? onClose : () => setStep(s => s - 1)} 
-                          className={`px-4 py-2 rounded-lg font-medium ${theme.textSecondary} hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors`}
-                        >
-                          {step === 1 ? 'Cancel' : 'Back'}
-                        </button>
-                        
-                        {step < 4 && (
+                </div>
+                
+                {/* Modal Footer */}
+                <div className={`p-6 border-t flex items-center justify-between ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
                           <button 
-                            onClick={() => setStep(s => s + 1)} 
-                            disabled={step === 1 && !campaignName}
-                            className="px-6 py-2.5 bg-[#ffcc29] text-black rounded-lg font-semibold hover:bg-[#e6b825] transition-colors disabled:opacity-50 flex items-center gap-2"
+                            onClick={step === 1 ? onClose : () => setStep(s => s - 1)} 
+                            className={`px-4 py-2 rounded-lg font-medium ${theme.textSecondary} hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors mr-auto`}
                           >
-                            Next
-                            <ChevronRight className="w-4 h-4" />
+                            {step === 1 ? 'Cancel' : 'Back'}
                           </button>
-                        )}
+                          
+                          {step >= 2 && step <= 4 && platforms.length > 0 && (
+                            <button
+                              onClick={() => setPreviewPost({
+                                platform: platforms[0],
+                                caption: platformContents[platforms[0]] || '',
+                                imageUrl: getPreviewUrl(platforms[0]) || ''
+                              })}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium mr-4 border ${isDarkMode ? 'border-slate-700/50 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'} transition-colors`}
+                            >
+                              <Eye className="w-4 h-4 text-[#ffcc29]" />
+                              Preview Layout
+                            </button>
+                          )}
+                          
+                          {step < 4 && (
+                            <button 
+                              onClick={() => setStep(s => s + 1)} 
+                              disabled={step === 1 && !campaignName}
+                              className="px-6 py-2.5 bg-[#ffcc29] text-black rounded-lg font-semibold hover:bg-[#e6b825] transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                              Next
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          )}
                         
                         {step === 4 && (
                           <button 
@@ -4505,10 +4921,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                           </div>
                         )}
                     </div>
-                </div>
-            </div>
-
-            {/* Logo Selector for Campaign */}
+                    
+                    {/* Footer */}
             <LogoSelector
               isOpen={showBrandLogoSelector}
               onClose={() => setShowBrandLogoSelector(false)}
@@ -4523,6 +4937,20 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
               subtitle="Choose a logo from your Brand Assets"
             />
 
+            {/* Popup Real-Time Platform Preview */}
+            {previewPost && (
+              <PlatformPreview
+                platform={previewPost.platform}
+                caption={previewPost.caption}
+                brandName={campaignName || 'Your Brand'}
+                imageUrl={previewPost.imageUrl}
+                isDarkMode={isDarkMode}
+                inline={false}
+                onClose={() => setPreviewPost(null)}
+              />
+            )}
+                </div>
+            </div>
         </div>
     );
 };
@@ -4546,6 +4974,7 @@ interface PosterItem {
   error?: string;
   editHistory: Array<{ instruction: string; image: string }>;
   useAsReference?: boolean; // If true, use image as style reference instead of exact template
+  selectedPlatform?: string; // Track which platform template was chosen for char-limit validation
 }
 
 const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSuccess, isDarkMode, theme, connectedPlatforms }) => {
@@ -4579,6 +5008,23 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
     const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
     const [isProcessingImage, setIsProcessingImage] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
+
+    // Platform template picker state
+    const [activePlatformPickerId, setActivePlatformPickerId] = useState<string | null>(null);
+    const [selectedPlatformForTemplates, setSelectedPlatformForTemplates] = useState<string | null>(null);
+
+    const getCharLimitForPoster = (poster: PosterItem): { limit: number; label: string; tip: string } | null => {
+      const platform = (poster.selectedPlatform || '').toLowerCase();
+      const limitInfo = PLATFORM_LIMITS[platform];
+      if (limitInfo) {
+        return {
+          limit: limitInfo.charLimit,
+          label: limitInfo.label,
+          tip: `${limitInfo.label} allows up to ${limitInfo.charLimit.toLocaleString()} characters per post.`
+        };
+      }
+      return null;
+    };
     
     const aspectRatioOptions = [
       { id: 'original', label: 'Original', ratio: null, desc: 'Keep as-is' },
@@ -4716,6 +5162,22 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
         alert('Please add content to at least one template');
         return;
       }
+
+      // Validate character limits for posters with a selected platform
+      const overLimitPosters = pendingPosters.filter(p => {
+        const charInfo = getCharLimitForPoster(p);
+        return charInfo && p.content.length > charInfo.limit;
+      });
+
+      if (overLimitPosters.length > 0) {
+        const details = overLimitPosters.map(p => {
+          const charInfo = getCharLimitForPoster(p)!;
+          return `• ${charInfo.label}: ${p.content.length}/${charInfo.limit} chars`;
+        }).join('\n');
+        alert(`Some posters exceed the platform character limit:\n\n${details}\n\nPlease shorten the content before generating.`);
+        return;
+      }
+
       setShowAspectRatioModal(true);
     };
 
@@ -5176,20 +5638,125 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                                 <span className={`text-xs font-medium ${poster.useAsReference ? 'text-purple-500' : theme.textSecondary}`}>
                                   {poster.useAsReference ? '✨ Reference' : `Template ${index + 1}`}
                                 </span>
-                                <button 
-                                  onClick={() => removePoster(poster.id)}
-                                  className="p-1 rounded hover:bg-red-500/20 text-red-500"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setActivePlatformPickerId(activePlatformPickerId === poster.id ? null : poster.id)}
+                                    className={`px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1 transition-all ${
+                                      activePlatformPickerId === poster.id
+                                        ? 'bg-[#ffcc29] text-black shadow-sm'
+                                        : isDarkMode
+                                          ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                    title="Choose a platform template to auto-fill content"
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    Templates
+                                  </button>
+                                  <button 
+                                    onClick={() => removePoster(poster.id)}
+                                    className="p-1 rounded hover:bg-red-500/20 text-red-500"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
+
+                              {/* Platform Template Picker */}
+                              {activePlatformPickerId === poster.id && (
+                                <div className={`mb-2 p-2 rounded-lg border ${
+                                  isDarkMode ? 'border-slate-700 bg-[#161b22]' : 'border-slate-200 bg-slate-50'
+                                }`}>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className={`text-[10px] font-semibold uppercase tracking-wider ${theme.textMuted}`}>
+                                      {selectedPlatformForTemplates ? `${selectedPlatformForTemplates} Templates` : 'Choose a platform'}
+                                    </p>
+                                    {selectedPlatformForTemplates && (
+                                      <button 
+                                        onClick={() => setSelectedPlatformForTemplates(null)}
+                                        className="text-[10px] text-[#ffcc29] hover:underline"
+                                      >
+                                        Back
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {!selectedPlatformForTemplates ? (
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {Object.entries(PLATFORM_DISPLAY_DATA).map(([platform, data]) => (
+                                        <button
+                                          key={platform}
+                                          onClick={() => setSelectedPlatformForTemplates(platform)}
+                                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs font-medium transition-all hover:scale-[1.02] hover:shadow-sm ${
+                                            data.borderColor
+                                          } ${isDarkMode ? data.darkBgColor : data.bgColor}`}
+                                        >
+                                          <span className="text-sm">{data.icon}</span>
+                                          <span className={theme.text}>{platform.charAt(0).toUpperCase() + platform.slice(1)}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      {(PLATFORM_CONTENT_TEMPLATES[selectedPlatformForTemplates] || []).map(t => (
+                                        <button
+                                          key={t.id}
+                                          onClick={() => {
+                                            const content = applyTemplate(t.structure, '', '', '');
+                                            updatePosterContent(poster.id, content);
+                                            setPosters(prev => prev.map(p => p.id === poster.id ? { ...p, selectedPlatform: selectedPlatformForTemplates } : p));
+                                            setActivePlatformPickerId(null);
+                                            setSelectedPlatformForTemplates(null);
+                                          }}
+                                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[10px] font-medium transition-all hover:bg-[#ffcc29]/10 ${
+                                            PLATFORM_DISPLAY_DATA[selectedPlatformForTemplates].borderColor
+                                          } ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}
+                                        >
+                                          <span className={theme.text}>{t.label}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               <textarea
                                 value={poster.content}
                                 onChange={(e) => updatePosterContent(poster.id, e.target.value)}
                                 placeholder="Enter poster content here...&#10;&#10;Example:&#10;Program: Workshop on AI&#10;Date: 31.01.2026&#10;Time: 10:00 AM"
-                                rows={3}
-                                className={`${inputClasses} text-sm resize-none`}
+                                rows={poster.content.split('\n').length > 5 ? 6 : 3}
+                                className={`${inputClasses} text-sm resize-none ${
+                                  (() => {
+                                    const charInfo = getCharLimitForPoster(poster);
+                                    return charInfo && poster.content.length > charInfo.limit ? 'border-red-500 focus:ring-red-400' : '';
+                                  })()
+                                }`}
                               />
+                              {/* Live Character Counter */}
+                              {(() => {
+                                const charInfo = getCharLimitForPoster(poster);
+                                if (!charInfo) return null;
+                                const count = poster.content.length;
+                                const isOver = count > charInfo.limit;
+                                const isNear = count > charInfo.limit * 0.9;
+                                return (
+                                  <div className={`flex items-center justify-between mt-1.5 px-1`}>
+                                    <span className={`text-[10px] ${
+                                      isOver ? 'text-red-500 font-semibold' : isNear ? 'text-amber-500' : theme.textMuted
+                                    }`}>
+                                      {isOver
+                                        ? `⚠ ${count - charInfo.limit} characters over the ${charInfo.label} limit`
+                                        : charInfo.tip
+                                      }
+                                    </span>
+                                    <span className={`text-xs font-mono font-medium ${
+                                      isOver ? 'text-red-500' : isNear ? 'text-amber-500' : theme.textSecondary
+                                    }`}>
+                                      {count.toLocaleString()}/{charInfo.limit.toLocaleString()}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>

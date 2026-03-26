@@ -2557,6 +2557,13 @@ const CalendarWidget: React.FC<{ campaigns: Campaign[]; dashboardData?: Dashboar
       reminderOffset: 30,
       platform: 'instagram',
       hashtags: '',
+      budget: '',
+      targetAudience: '',
+      contentType: 'image',
+      callToAction: '',
+      objective: 'awareness',
+      priority: 'medium',
+      notes: ''
     });
     const [quickScheduleDate, setQuickScheduleDate] = useState('');
     const [quickScheduleTime, setQuickScheduleTime] = useState('');

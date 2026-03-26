@@ -202,6 +202,46 @@ router.get('/icp-strategy', protect, async (req, res) => {
 });
 
 /**
+ * POST /api/campaigns/smart-populate-template
+ * AI-assisted template filling to avoid placeholders like [Key Point 1]
+ */
+router.post('/smart-populate-template', protect, async (req, res) => {
+  try {
+    const { template, campaignName, campaignDescription, objective } = req.body;
+    
+    if (!template) {
+      return res.status(400).json({ success: false, message: 'Template is required' });
+    }
+
+    const prompt = `You are a professional social media content editor. 
+Your task is to fill in the bracketed placeholders in a post template with high-quality, meaningful content.
+
+CAMPAIGN DETAILS:
+- Name: ${campaignName || 'General'}
+- Description: ${campaignDescription || 'N/A'}
+- Objective: ${objective || 'awareness'}
+
+TEMPLATE TO FILL:
+${template}
+
+RULES:
+1. Replace every bracketed placeholder (e.g., [Key Point 1], [Tip 1], [Point], [Outcome], [Date/Time], [Location]) with REAL meaningful content based on the campaign details.
+2. If details like Date/Location are not provided, invent realistic ones (e.g., "This Friday at 10 AM", "Our Online Event Hub").
+3. DO NOT change the structure, symbols (like 🎯, •, 📸), or headings.
+4. Keep the output EXACTLY the same format as the input template, just with placeholders filled.
+5. ONLY leave "[Link]" or "[Your CTA Link]" as is.
+6. Return ONLY the filled content. No introduction or extra text.`;
+
+    const filledContent = await callGemini(prompt, { temperature: 0.7, maxTokens: 1000, skipCache: true });
+    
+    res.json({ success: true, filledContent: filledContent.trim() });
+  } catch (error) {
+    console.error('Smart populate error:', error);
+    res.status(500).json({ success: false, message: 'Failed to populate template' });
+  }
+});
+
+/**
  * PUT /api/campaigns/icp-strategy
  * Save user-edited ICP data to DB
  */
@@ -268,11 +308,13 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
     const preferredDays = Array.isArray(daysInput) ? daysInput : (daysInput ? daysInput.split(',') : ['monday', 'wednesday', 'friday']);
     const startDate = startDateParam || new Date().toISOString().split('T')[0];
     const weeks = duration === '2weeks' ? 2 : 1;
-    const totalPosts = Math.min(preferredDays.length * weeks, 14);
+    const numSlots = Math.min(preferredDays.length * weeks, 14);
+    // Support multi-platform: Generate posts for all platforms for every slot
+    const totalPosts = numSlots * platforms.length;
 
-    // Deduct credits: 1 text generation + 1 per image
-    const creditCost = totalPosts * 7; // 7 per post (5 image + 2 caption)
-    const creditResult = await deductCredits(userId, 'campaign_full', totalPosts, `AI campaign generation (${totalPosts} posts with images)`);
+    // Deduct credits: 7 per individual post generated
+    const creditCost = totalPosts * 7; 
+    const creditResult = await deductCredits(userId, 'campaign_full', totalPosts, `AI campaign generation (${totalPosts} posts across ${platforms.length} platforms)`);
     if (!creditResult.success) {
       sendEvent('error', { message: creditResult.error, creditsExhausted: true });
       return res.end();
@@ -280,30 +322,47 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
 
     sendEvent('status', { message: 'Generating campaign content...', totalPosts });
 
-    // Generate schedule dates
-    const scheduleDates = [];
+    // Generate unique slot dates
+    const slotDates = [];
     const start = new Date(startDate);
-    let postsCreated = 0;
-    let currentDay = 0;
-    while (postsCreated < totalPosts && currentDay < 100) {
+    let dayIdx = 0;
+    while (slotDates.length < numSlots && dayIdx < 100) {
       const checkDate = new Date(start);
-      checkDate.setDate(start.getDate() + currentDay);
+      checkDate.setDate(start.getDate() + dayIdx);
       const dayName = checkDate.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       if (preferredDays.includes(dayName)) {
-        scheduleDates.push({
+        slotDates.push({
           date: checkDate.toISOString().split('T')[0],
           time: '10:00',
-          week: postsCreated < preferredDays.length ? 1 : 2
+          week: slotDates.length < preferredDays.length ? 1 : 2
         });
-        postsCreated++;
       }
-      currentDay++;
+      dayIdx++;
+    }
+
+    // Expand unique slots into per-post schedule mappings
+    const scheduleDates = [];
+    for (const slot of slotDates) {
+      for (const platform of platforms) {
+        scheduleDates.push({
+          ...slot,
+          platform: platform.trim().toLowerCase()
+        });
+      }
     }
 
     // Step 1: Generate all captions via Gemini (ROCI format prompt)
     const captionPrompt = `ROLE: You are a senior social media strategist and copywriter at a leading digital marketing agency. You craft high-converting, scroll-stopping social media campaigns for premium brands.
 
-OBJECTIVE: Create exactly ${totalPosts} unique, varied social media posts for a marketing campaign. Each post must feel distinct — different angles, hooks, and content themes — while maintaining a cohesive brand voice across the series. Also provide a detailed image description for each post that will be used to generate AI ad creatives.
+OBJECTIVE: You are a strict content generator. Your job is to STRICTLY follow and fill the provided template structures.
+
+STRICTOR RULES:
+- Do NOT change the format, do NOT remove sections, and do NOT convert content into paragraphs.
+- Automatically fill ALL bullet points, numbered points, highlights, tips, outcomes, and sections with meaningful content based on the campaign details.
+- Do NOT leave any placeholders like [Key Point 1], [Tip 1], [Point], or [Outcome].
+- ONLY keep the CTA link field as "[Link]" or "[Your CTA Link]".
+- Do NOT add any introduction, conversational filler, or extra commentary.
+- Keep all headings, symbols, and markers (like colons :) exactly as they appear in the template.
 
 CONTEXT:
 - Brand: ${bp.companyName || bp.name || 'Brand'} (${bp.industry || 'General'} industry)
@@ -312,35 +371,121 @@ CONTEXT:
 - Target audience: ${targetAge || '18-35'} age, ${targetGender || 'all'} gender${targetLocation ? ', located in ' + targetLocation : ''}${targetInterests ? ', interested in ' + targetInterests : ''}
 - Platforms: ${platforms.join(', ')}
 - Tone: ${tone || 'professional'}
-${keyMessages ? `- Core message (use as UNDERLYING THEME, do NOT repeat verbatim in every post): ${keyMessages}` : ''}
+${keyMessages ? `- MANDATORY CONTENT STRUCTURES (STRICTLY FOLLOW THESE):\n${keyMessages}` : ''}
 
 INSTRUCTIONS:
-1. Create exactly ${totalPosts} posts. Each post MUST have a DIFFERENT content angle. Distribute across these themes: problem/solution (2-3 posts), social proof/testimonial (1-2 posts), educational/tips (2-3 posts), behind-the-scenes/story (1-2 posts), promotional/CTA (1-2 posts), engagement/question (1 post). Adjust distribution based on total count.
-2. Captions must be platform-native: ${platforms.includes('twitter') ? 'Twitter posts under 280 chars.' : ''} ${platforms.includes('instagram') ? 'Instagram captions with hook in first line.' : ''} ${platforms.includes('linkedin') ? 'LinkedIn posts that open with a bold statement or question.' : ''} Use natural language, not corporate jargon.
-3. Each caption should open with a strong hook (question, bold claim, statistic, or story opener) — the first line must make someone stop scrolling.
-4. Include exactly 4 relevant hashtags per post. Mix broad and niche hashtags. Never use generic tags like #marketing or #business alone.
-5. Include appropriate emojis but don't overdo it (2-4 per post max).
-6. The imageDescription for each post should describe a PROFESSIONAL AD CREATIVE — describe the visual style (photography, illustration, graphic design), subjects, colors, mood, lighting, and composition. Do NOT mention aspect ratios, post numbers, "Brand" labels, or any metadata. Do NOT use placeholder text like [Date] or [Name]. Describe it as if briefing a professional designer.
-7. The key message should influence the overall campaign narrative but each post should express it differently — through stories, statistics, questions, tips, or social proof. NEVER copy-paste the same message across posts.
+1. Create exactly ${totalPosts} campaign posts.
+2. For EACH of the ${slotDates.length} scheduled slots, you MUST generate exactly one post for EVERY selected platform: ${platforms.join(', ')}.
+3. This means if there are 2 platforms selected, you will generate 2 posts for every scheduled date.
+4. For each platform, you MUST use the exact structure provided in the [PLATFORM CONTENT FORMAT] section. 
+5. Captions must be platform-native: ${platforms.includes('twitter') ? 'Twitter posts under 280 chars.' : ''} ${platforms.includes('instagram') ? 'Instagram captions with hook in first line.' : ''} ${platforms.includes('linkedin') ? 'LinkedIn posts that open with a bold statement or question.' : ''}
+6. Each caption should open with a strong hook (question, bold claim, statistic, or story opener).
+7. Include 3-5 relevant hashtags per post. Mix broad and niche hashtags. Never use generic tags like #marketing or #business alone.
+8. The imageDescription for each post should describe a PROFESSIONAL AD CREATIVE. Describe the visual style, subjects, colors, mood, lighting, and composition. Do NOT mention metadata.
+9. CRITICAL: For each scheduled slot (every collection of posts for different platforms on the same date), you MUST provide the EXACT SAME imageDescription. This ensures the same visual is used across all platforms for that slot.
 
 Return ONLY valid JSON (no markdown, no backticks):
 {
   "posts": [
     {
-      "platform": "${platforms[0] || 'instagram'}",
+      "platform": "instagram|linkedin|twitter|facebook",
       "caption": "The full caption text with emojis and line breaks",
       "hashtags": ["#tag1", "#tag2", "#tag3"],
       "contentTheme": "educational|promotional|engagement|storytelling|social_proof|problem_solution",
-      "imageDescription": "Detailed visual description for AI image generation — describe the creative direction, visual style, subjects, colors, mood, composition. No metadata or placeholder text."
+      "imageDescription": "Detailed visual description for AI image generation"
     }
   ]
 }`;
 
-    const textResponse = await callGemini(captionPrompt, { maxTokens: 8000, temperature: 0.85, skipCache: true });
-    const parsed = parseGeminiJSON(textResponse);
+    // Helper to validate captains against template structure markers
+    const validateCaptionsSchema = (posts, keyMessages) => {
+      if (!keyMessages) return { isValid: true };
+      
+      const pTemplates = {};
+      const blocks = keyMessages.split(/\n\n---\n\n/);
+      blocks.forEach(block => {
+        const match = block.match(/\[([A-Z]+) CONTENT FORMAT\]\n([\s\S]*)/);
+        if (match) {
+          const platform = match[1].toLowerCase();
+          const lines = match[2].split('\n').filter(l => l.trim().length > 0);
+          const mkrs = lines.map(l => {
+            const cIdx = l.indexOf(':');
+            return cIdx !== -1 ? l.substring(0, cIdx + 1).trim() : l.trim();
+          }).filter(m => m.length > 2);
+          pTemplates[platform] = mkrs;
+        }
+      });
+
+      const errs = [];
+      posts.forEach((post, i) => {
+        const platform = post.platform?.toLowerCase();
+        const mkrs = pTemplates[platform];
+        
+        if (mkrs) {
+          const miss = mkrs.filter(m => !post.caption.includes(m));
+          if (miss.length > 0) {
+            errs.push(`Post ${i + 1} (${post.platform}) is missing markers: ${miss.join(', ')}`);
+          }
+        }
+
+        // CRITICAL CHECK: Detect if any placeholders from the template were left unfilled
+        const placeholderRegex = /\[[^\]]*[A-Z0-9][^\]]*\]/g;
+        const foundPlaceholders = post.caption.match(placeholderRegex);
+        
+        if (foundPlaceholders && foundPlaceholders.length > 0) {
+          // Filter out valid [Link] or [Your CTA Link] placeholders
+          const realPlaceholders = foundPlaceholders.filter(p => 
+            !p.toLowerCase().includes('link') && 
+            !p.toLowerCase().includes('cta')
+          );
+          
+          if (realPlaceholders.length > 0) {
+            errs.push(`Post ${i + 1} (${post.platform}) still contains unfilled placeholders: ${realPlaceholders.join(', ')}`);
+          }
+        }
+      });
+
+      return { isValid: errs.length === 0, errorDetails: errs.join('; ') };
+    };
+
+    let attempts = 0;
+    let maxAttempts = 3;
+    let parsed = null;
+    let currentPrompt = captionPrompt;
+
+    while (attempts < maxAttempts) {
+      if (aborted) return res.end();
+      attempts++;
+      
+      if (attempts > 1) {
+        sendEvent('status', { message: `Regenerating to fix formatting (Attempt ${attempts})...` });
+      }
+
+      const textRes = await callGemini(currentPrompt, { maxTokens: 8000, temperature: 0.85, skipCache: true });
+      parsed = parseGeminiJSON(textRes);
+
+      if (parsed?.posts?.length) {
+        const validation = validateCaptionsSchema(parsed.posts, keyMessages);
+        if (validation.isValid) {
+          console.log(`✅ Content generation passed validation on attempt ${attempts}`);
+          break;
+        } else {
+          console.log(`⚠️ Attempt ${attempts} failed validation: ${validation.errorDetails}`);
+          // Update prompt with feedback for next attempt
+          currentPrompt = `${captionPrompt}\n\nCRITICAL FIX REQUIRED: Your previous response failed validation with the following errors: ${validation.errorDetails}. 
+- You MUST replace every single bracketed placeholder (e.g. [Key Point], [Tip], [Outcome]) with actual meaningful content. 
+- Do NOT leave any square brackets except for [Link] or [Your CTA Link].
+- Follow the structure STRICTLY while filling in the details. 
+- DO NOT USE PARAGRAPHS.`;
+        }
+      } else if (attempts === maxAttempts) {
+        sendEvent('error', { message: 'Failed to generate campaign content after multiple attempts' });
+        return res.end();
+      }
+    }
 
     if (!parsed?.posts?.length) {
-      sendEvent('error', { message: 'Failed to generate campaign content' });
+      sendEvent('error', { message: 'Failed to generate valid campaign content' });
       return res.end();
     }
 
@@ -350,33 +495,44 @@ Return ONLY valid JSON (no markdown, no backticks):
 
     // Step 2: Generate images one by one and stream each
     const postsToProcess = parsed.posts.slice(0, totalPosts);
+    const slotImageCache = new Map();
 
     for (let i = 0; i < postsToProcess.length; i++) {
       if (aborted) break;
 
       const post = postsToProcess[i];
-      const schedule = scheduleDates[i] || { date: startDate, time: '10:00', week: 1 };
+      const schedule = scheduleDates[i] || { date: startDate, time: '10:00', week: 1, platform: platforms[i % platforms.length] };
+      
+      // Calculate which slot this belongs to (grouped by platforms per date)
+      const slotIndex = Math.floor(i / platforms.length);
 
-      sendEvent('generating', { index: i, total: postsToProcess.length, message: `Generating image ${i + 1} of ${postsToProcess.length}...` });
-
-      // Generate image with Nano Banana 2
-      const imageResult = await generateCampaignImageNanoBanana(post.imageDescription, {
-        aspectRatio: aspectRatio || '1:1',
-        brandName: bp.companyName || bp.name || '',
-        brandLogo: productLogo || null,
-        industry: bp.industry || '',
-        tone: tone || 'professional',
-        postIndex: i,
-        totalPosts: postsToProcess.length,
-        campaignTheme: campaignName,
-        keyMessages: keyMessages || ''
-      });
+      // Only generate a new image if we haven't created one for this slot yet
+      let imageResult;
+      if (slotImageCache.has(slotIndex)) {
+        imageResult = slotImageCache.get(slotIndex);
+      } else {
+        sendEvent('generating', { index: i, total: postsToProcess.length, message: `Generating image for slot ${slotIndex + 1}...` });
+        
+        imageResult = await generateCampaignImageNanoBanana(post.imageDescription, {
+          aspectRatio: aspectRatio || '1:1',
+          brandName: bp.companyName || bp.name || '',
+          brandLogo: productLogo || null,
+          industry: bp.industry || '',
+          tone: tone || 'professional',
+          postIndex: slotIndex, // Use slot index for image context
+          totalPosts: numSlots,
+          campaignTheme: campaignName,
+          keyMessages: keyMessages || ''
+        });
+        
+        slotImageCache.set(slotIndex, imageResult);
+      }
 
       const postData = {
         id: `post-${i + 1}`,
         index: i,
         week: schedule.week,
-        platform: post.platform?.toLowerCase() || platforms[i % platforms.length],
+        platform: post.platform?.toLowerCase() || schedule.platform,
         caption: post.caption,
         hashtags: Array.isArray(post.hashtags)
           ? post.hashtags.map(h => h.startsWith('#') ? h : `#${h}`)
@@ -1398,6 +1554,86 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
       let finalImageBase64 = result.imageBase64;
       let hostedUrl = null;
       let logoReplaced = false;
+
+      // If an aspect ratio is requested, adjust the image BEFORE any logo processing
+      if (aspectRatio && aspectRatio !== 'original' && finalImageBase64) {
+        try {
+          console.log('📐 Applying aspect ratio during template poster generation:', aspectRatio);
+
+          // Reuse the same logic as /process-aspect-ratio but inline here
+          const ratioMap = {
+            '1:1': 1,
+            '4:5': 4/5,
+            '16:9': 16/9,
+            '9:16': 9/16,
+            '3:4': 3/4,
+            '4:3': 4/3
+          };
+
+          const targetRatio = ratioMap[aspectRatio];
+
+          if (targetRatio) {
+            let imageData = finalImageBase64;
+            let mimeType = 'image/png';
+            if (imageData.startsWith('data:')) {
+              const matches = imageData.match(/^data:([^;]+);base64,(.+)$/);
+              if (matches) {
+                mimeType = matches[1];
+                imageData = matches[2];
+              }
+            }
+
+            const sharp = require('sharp');
+            const buffer = Buffer.from(imageData, 'base64');
+            const metadata = await sharp(buffer).metadata();
+            const originalWidth = metadata.width;
+            const originalHeight = metadata.height;
+
+            if (originalWidth && originalHeight) {
+              const originalRatio = originalWidth / originalHeight;
+              let newWidth, newHeight;
+
+              if (originalRatio > targetRatio) {
+                newWidth = originalWidth;
+                newHeight = Math.round(originalWidth / targetRatio);
+              } else {
+                newHeight = originalHeight;
+                newWidth = Math.round(originalHeight * targetRatio);
+              }
+
+              const edgePixels = await sharp(buffer)
+                .resize(1, 1)
+                .raw()
+                .toBuffer();
+
+              const bgColor = {
+                r: edgePixels[0] || 0,
+                g: edgePixels[1] || 0,
+                b: edgePixels[2] || 0
+              };
+
+              const processedBuffer = await sharp({
+                create: {
+                  width: newWidth,
+                  height: newHeight,
+                  channels: 3,
+                  background: bgColor
+                }
+              })
+              .composite([{
+                input: buffer,
+                gravity: 'center'
+              }])
+              .toFormat(mimeType.includes('jpeg') ? 'jpeg' : 'png')
+              .toBuffer();
+
+              finalImageBase64 = `data:${mimeType.includes('jpeg') ? 'image/jpeg' : 'image/png'};base64,${processedBuffer.toString('base64')}`;
+            }
+          }
+        } catch (ratioError) {
+          console.warn('⚠️ Aspect ratio adjustment during template poster generation failed, using original image:', ratioError.message);
+        }
+      }
       
       // Auto-detect and replace logo if user has a logo and enabled the feature
       if (logoOverlay?.enabled && logoOverlay?.logoUrl) {
