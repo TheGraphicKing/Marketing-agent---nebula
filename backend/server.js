@@ -238,25 +238,21 @@ const FEATURE_ROUTE_MAP = [
 ];
 
 app.use((req, res, next) => {
-  const originalJson = res.json.bind(res);
-  res.json = function(data) {
+  res.on('finish', () => {
     try {
       if (res.statusCode >= 200 && res.statusCode < 300 && req.user?._id) {
         const match = FEATURE_ROUTE_MAP.find(
           m => m.method === req.method && m.pattern.test(req.path)
         );
         if (match) {
-          const credits = data?.creditsDeducted || data?.creditCost || 0;
           trackEvent(req.user._id, match.feature, {
             feature_module: match.module,
-            credits_consumed: credits,
             status: 'success',
           });
         }
       }
     } catch (_) {}
-    return originalJson(data);
-  };
+  });
   next();
 });
 
