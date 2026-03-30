@@ -3623,6 +3623,40 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [productLogo, setProductLogo] = useState<string | null>(null);
     const [productLogoName, setProductLogoName] = useState<string>('');
     const [showBrandLogoSelector, setShowBrandLogoSelector] = useState(false);
+    const [isPopulating, setIsPopulating] = useState<Record<string, boolean>>({});
+    const manuallyEditedTemplates = useRef<Set<string>>(new Set());
+
+    const smartPopulateTemplate = async (platform: string, templateText: string) => {
+      const apiBaseUrl = window.location.hostname !== 'localhost' ? '' : 'http://localhost:5000';
+      const token = localStorage.getItem('authToken');
+      
+      setIsPopulating(curr => ({ ...curr, [platform]: true }));
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/campaigns/smart-populate-template`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            template: templateText,
+            campaignName,
+            campaignDescription,
+            objective
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          setPlatformContents(curr => ({ ...curr, [platform]: data.filledContent }));
+          return data.filledContent;
+        }
+      } catch (err) {
+        console.error('Smart populate failed:', err);
+      } finally {
+        setIsPopulating(curr => ({ ...curr, [platform]: false }));
+      }
+      return null;
+    };
     
     // Inventory/Product state
     const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
