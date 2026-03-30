@@ -33,8 +33,8 @@ router.post('/create-order', protect, async (req, res) => {
   try {
     const { amount } = req.body;
     const numAmount = Number(amount);
-    if (!numAmount || numAmount < MIN_AMOUNT || numAmount > MAX_AMOUNT || numAmount % 1000 !== 0) {
-      return res.status(400).json({ success: false, message: `Choose an amount between ₹${MIN_AMOUNT.toLocaleString()} and ₹${MAX_AMOUNT.toLocaleString()} (in multiples of ₹1,000).` });
+    if (!numAmount || numAmount < MIN_AMOUNT || numAmount > MAX_AMOUNT) {
+      return res.status(400).json({ success: false, message: `Choose an amount between ₹${MIN_AMOUNT.toLocaleString()} and ₹${MAX_AMOUNT.toLocaleString()}.` });
     }
     const credits = 1000; // Fixed 1000 credits for ₹7,500 starter pack
 
