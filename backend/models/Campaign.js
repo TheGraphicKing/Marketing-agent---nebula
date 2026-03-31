@@ -43,6 +43,12 @@ const campaignSchema = new mongoose.Schema({
     textContent: String,
     imageUrls: [String],
     videoUrl: String,
+    // Platform-specific enhancements (do not affect other platforms)
+    instagramAudio: {
+      url: { type: String, default: null },
+      publicId: { type: String, default: null },
+      originalName: { type: String, default: null }
+    },
     captions: String,
     hashtags: [String],
     callToAction: {
@@ -111,6 +117,11 @@ const campaignSchema = new mongoose.Schema({
   // Ayrshare integration fields
   socialPostId: {
     type: String,
+    default: null
+  },
+  // Optional per-platform Ayrshare post IDs (when we post platforms separately)
+  socialPostIds: {
+    type: mongoose.Schema.Types.Mixed,
     default: null
   },
   scheduledFor: {

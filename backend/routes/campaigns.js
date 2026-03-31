@@ -14,7 +14,10 @@ const { callGemini, parseGeminiJSON, generateICPAndStrategy, generateCampaignIma
 const { postToSocialMedia, getPostStatus, deletePost: deleteAyrsharePost } = require('../services/socialMediaAPI');
 
 // Import image uploader for converting base64 to hosted URLs
-const { ensurePublicUrl, isBase64DataUrl } = require('../services/imageUploader');
+const { ensurePublicUrl, ensurePublicAudioUrl, uploadBase64Audio, isBase64DataUrl } = require('../services/imageUploader');
+
+// Media composer (image -> video + audio) for Instagram audio posts
+const { composeImageToVideoWithAudio } = require('../services/mediaComposer');
 
 // Import logo overlay service for compositing logos onto posters
 const { overlayLogoAndUpload, replaceLogoAtBboxAndUpload } = require('../services/logoOverlay');
@@ -589,6 +592,38 @@ router.get('/:id', protect, async (req, res) => {
 });
 
 /**
+ * POST /api/campaigns/upload-audio
+ * Upload an audio file (base64 data URL) to Cloudinary for Instagram audio posts
+ */
+router.post('/upload-audio', protect, async (req, res) => {
+  try {
+    const { audioData, originalName } = req.body || {};
+
+    if (!audioData || typeof audioData !== 'string') {
+      return res.status(400).json({ success: false, message: 'audioData is required' });
+    }
+
+    const uploadResult = await uploadBase64Audio(audioData, 'nebula-instagram-audio');
+    if (!uploadResult.success || !uploadResult.url) {
+      return res.status(500).json({ success: false, message: 'Failed to upload audio', error: uploadResult.error });
+    }
+
+    res.json({
+      success: true,
+      url: uploadResult.url,
+      publicId: uploadResult.publicId || null,
+      originalName: originalName || null,
+      bytes: uploadResult.bytes || null,
+      format: uploadResult.format || null,
+      duration: uploadResult.duration || null
+    });
+  } catch (error) {
+    console.error('Upload audio error:', error);
+    res.status(500).json({ success: false, message: 'Failed to upload audio', error: error.message });
+  }
+});
+
+/**
  * POST /api/campaigns
  * Create a new campaign
  */
@@ -660,22 +695,29 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Campaign not found' });
     }
 
-    let ayrshareDeleted = false;
-
     // If this campaign was posted/scheduled on Ayrshare, delete it there first
-    if (campaign.socialPostId) {
+    const socialPostIdsFromMap = (campaign.socialPostIds && typeof campaign.socialPostIds === 'object')
+      ? Object.values(campaign.socialPostIds)
+      : [];
+    const attemptedPostIds = Array.from(new Set([...(socialPostIdsFromMap || []), campaign.socialPostId].filter(Boolean)));
+
+    const deletedPostIds = [];
+
+    if (attemptedPostIds.length > 0) {
       const user = await User.findById(userId);
       const profileKey = user?.ayrshare?.profileKey;
 
-      console.log(`🗑️ Deleting post ${campaign.socialPostId} from Ayrshare (campaign: ${campaign.name})`);
-      const deleteResult = await deleteAyrsharePost(campaign.socialPostId, { profileKey });
+      for (const postId of attemptedPostIds) {
+        console.log(`🗑️ Deleting post ${postId} from Ayrshare (campaign: ${campaign.name})`);
+        const deleteResult = await deleteAyrsharePost(postId, { profileKey });
 
-      if (deleteResult.success) {
-        console.log(`✅ Ayrshare post ${campaign.socialPostId} deleted successfully`);
-        ayrshareDeleted = true;
-      } else {
-        // Log but don't block — still delete from our DB
-        console.warn(`⚠️ Ayrshare delete failed for ${campaign.socialPostId}:`, deleteResult.error);
+        if (deleteResult.success) {
+          console.log(`✅ Ayrshare post ${postId} deleted successfully`);
+          deletedPostIds.push(postId);
+        } else {
+          // Log but don't block — still delete from our DB
+          console.warn(`⚠️ Ayrshare delete failed for ${postId}:`, deleteResult.error);
+        }
       }
     }
 
@@ -684,8 +726,10 @@ router.delete('/:id', protect, async (req, res) => {
     res.json({
       success: true,
       message: 'Campaign deleted',
-      ayrshareDeleted,
-      socialPostId: campaign.socialPostId || null
+      ayrshareDeleted: attemptedPostIds.length > 0 && deletedPostIds.length === attemptedPostIds.length,
+      deletedPostIds,
+      socialPostId: campaign.socialPostId || null,
+      socialPostIds: campaign.socialPostIds || null
     });
   } catch (error) {
     console.error('Delete campaign error:', error);
@@ -744,6 +788,33 @@ router.post('/:id/publish', protect, async (req, res) => {
         message: 'No social accounts connected. Please go to Connect Socials and link your Instagram/Facebook account first.'
       });
     }
+
+    // If this campaign already has a scheduled Ayrshare post, delete it before rescheduling/reposting
+    // to avoid creating duplicate scheduled posts.
+    if (campaign.status === 'scheduled') {
+      const socialPostIdsFromMap = (campaign.socialPostIds && typeof campaign.socialPostIds === 'object')
+        ? Object.values(campaign.socialPostIds)
+        : [];
+      const existingPostIds = Array.from(
+        new Set([...(socialPostIdsFromMap || []), campaign.socialPostId].filter((v) => typeof v === 'string' && v))
+      );
+
+      if (existingPostIds.length > 0) {
+        console.log(`ðŸ”„ Rescheduling campaign ${campaign._id} â€” deleting ${existingPostIds.length} existing Ayrshare post(s) first...`);
+        for (const postId of existingPostIds) {
+          try {
+            const deleteResult = await deleteAyrsharePost(postId, { profileKey });
+            if (deleteResult.success) {
+              console.log(`âœ… Deleted previous Ayrshare post ${postId}`);
+            } else {
+              console.warn(`âš ï¸ Failed to delete previous Ayrshare post ${postId}:`, deleteResult.error);
+            }
+          } catch (e) {
+            console.warn(`âš ï¸ Error deleting previous Ayrshare post ${postId}:`, e.message || e);
+          }
+        }
+      }
+    }
     
     // Build the post content
     let postContent = campaign.creative?.textContent || campaign.creative?.caption || campaign.content || campaign.name;
@@ -799,67 +870,185 @@ router.post('/:id/publish', protect, async (req, res) => {
       }
     }
     
-    // Post to social media via Ayrshare with user's profile key
-    const result = await postToSocialMedia(
-      platforms,
-      fullPost,
-      {
-        mediaUrls: mediaUrl ? [mediaUrl] : undefined,
-        shortenLinks: true,
-        profileKey: profileKey,  // Include user's Ayrshare profile key
-        scheduleDate: scheduledFor  // Schedule for later if provided
+    const instagramAudioUrl = campaign.creative?.instagramAudio?.url || null;
+    const shouldAttachInstagramAudio = platforms.includes('instagram') && !!instagramAudioUrl;
+
+    // If Instagram audio is selected, compose a video for Instagram only (do not affect other platforms).
+    let instagramComposedVideoUrl = null;
+    if (shouldAttachInstagramAudio) {
+      if (!mediaUrl) {
+        return res.status(400).json({
+          success: false,
+          message: 'Instagram audio requires an image/video to attach to.'
+        });
       }
-    );
-    
-    console.log('Ayrshare publish result:', result);
-    console.log('Ayrshare result.data:', JSON.stringify(result.data, null, 2));
-    
-    // Check for Ayrshare errors more carefully
-    // Success: result.data has `id`, `status: "success"`, or posts with `id` 
-    // Error: result.data has `status: "error"` or posts with numeric `code` (error code)
-    let hasAyrshareError = false;
-    let errorMessage = '';
-    
-    // Check if top-level status is error
-    if (result.data?.status === 'error') {
-      hasAyrshareError = true;
-      errorMessage = result.data?.message || 'Post failed';
+
+      console.log('🎵 Instagram audio selected — preparing audio for publishing...');
+      const audioPublicUrl = await ensurePublicAudioUrl(instagramAudioUrl);
+      if (!audioPublicUrl) {
+        return res.status(400).json({
+          success: false,
+          message: 'Failed to prepare the selected Instagram audio. Please try uploading a different audio file.'
+        });
+      }
+
+      console.log('🎞️ Composing Instagram video (image + audio)...');
+      const composed = await composeImageToVideoWithAudio({ imageUrl: mediaUrl, audioUrl: audioPublicUrl });
+      if (!composed.success || !composed.videoUrl) {
+        return res.status(500).json({
+          success: false,
+          message: composed.error || 'Failed to compose Instagram video with audio'
+        });
+      }
+
+      instagramComposedVideoUrl = composed.videoUrl;
+      console.log('✅ Instagram composed video URL:', instagramComposedVideoUrl);
     }
-    
-    // Check individual platform posts for errors (error posts have numeric `code`)
-    if (result.data?.posts && Array.isArray(result.data.posts)) {
-      for (const post of result.data.posts) {
-        // Error posts have a numeric `code` field (like 151, 400, etc.) or errors array
-        if (typeof post.code === 'number' || post.status === 'error' || post.errors?.length > 0) {
-          hasAyrshareError = true;
-          
-          // Extract error message from various places
-          let postErrorMessage = post.message;
-          if (!postErrorMessage && post.errors?.length > 0) {
-            // Error is nested in errors array
-            const firstError = post.errors[0];
-            postErrorMessage = firstError.message || `Error code ${firstError.code}`;
+
+    const analyzeAyrshareResult = (r, calledPlatforms = []) => {
+      let hasAyrshareError = false;
+      let errorMessage = '';
+      const platformPostIds = {};
+
+      if (!r) {
+        return {
+          success: false,
+          errorMessage: 'No response from Ayrshare',
+          extractedPostId: null,
+          platformPostIds
+        };
+      }
+
+      // Check if top-level status is error
+      if (r.data?.status === 'error') {
+        hasAyrshareError = true;
+        errorMessage = r.data?.message || 'Post failed';
+      }
+
+      // Check individual platform posts for errors and capture IDs
+      if (r.data?.posts && Array.isArray(r.data.posts)) {
+        for (const post of r.data.posts) {
+          const pid = post.id || post.postId;
+          const plat = post.platform ? String(post.platform).toLowerCase() : null;
+          if (pid && plat) platformPostIds[plat] = pid;
+
+          if (typeof post.code === 'number' || post.status === 'error' || post.errors?.length > 0) {
+            hasAyrshareError = true;
+
+            // Extract error message from various places
+            let postErrorMessage = post.message;
+            if (!postErrorMessage && post.errors?.length > 0) {
+              const firstError = post.errors[0];
+              postErrorMessage = firstError.message || `Error code ${firstError.code}`;
+            }
+
+            console.log('❌ Platform post error:', post.platform, post.code || post.errors?.[0]?.code, postErrorMessage);
+            errorMessage = postErrorMessage || `${post.platform || 'Unknown'}: Error ${post.code || 'unknown'}`;
+          } else if (pid) {
+            console.log('✅ Platform post success:', post.platform, pid);
           }
-          
-          console.log('❌ Platform post error:', post.platform, post.code || post.errors?.[0]?.code, postErrorMessage);
-          errorMessage = postErrorMessage || `${post.platform || 'Unknown'}: Error ${post.code || 'unknown'}`;
-        } else if (post.id || post.postId) {
-          // Successful post has id
-          console.log('✅ Platform post success:', post.platform, post.id || post.postId);
         }
       }
+
+      const extractedPostId = r.data?.posts?.[0]?.id || r.data?.id || r.id || r.data?.postIds?.[0] || null;
+      const hasSuccessId = !!extractedPostId;
+
+      // If Ayrshare didn't return per-platform IDs but only one platform was requested, map it for convenience.
+      if (Object.keys(platformPostIds).length === 0 && extractedPostId && Array.isArray(calledPlatforms) && calledPlatforms.length === 1) {
+        platformPostIds[String(calledPlatforms[0]).toLowerCase()] = extractedPostId;
+      }
+
+      const success = (r.success || hasSuccessId) && !hasAyrshareError;
+      return {
+        success,
+        errorMessage: success ? '' : (errorMessage || r.error || r.message || r.data?.message || 'Failed to publish to social media'),
+        extractedPostId,
+        platformPostIds
+      };
+    };
+
+    let allResults = null;
+    let otherPlatforms = [];
+    let instagramResult = null;
+    let otherPlatformsResult = null;
+
+    if (shouldAttachInstagramAudio) {
+      otherPlatforms = platforms.filter(p => p !== 'instagram');
+
+      // Post to Instagram with composed video + audio
+      instagramResult = await postToSocialMedia(
+        ['instagram'],
+        fullPost,
+        {
+          mediaUrls: instagramComposedVideoUrl ? [instagramComposedVideoUrl] : undefined,
+          shortenLinks: true,
+          profileKey: profileKey,
+          scheduleDate: scheduledFor
+        }
+      );
+
+      // Post to all non-Instagram platforms with the original media (no audio)
+      if (otherPlatforms.length > 0) {
+        otherPlatformsResult = await postToSocialMedia(
+          otherPlatforms,
+          fullPost,
+          {
+            mediaUrls: mediaUrl ? [mediaUrl] : undefined,
+            shortenLinks: true,
+            profileKey: profileKey,
+            scheduleDate: scheduledFor
+          }
+        );
+      }
+
+      allResults = { instagram: instagramResult, other: otherPlatformsResult };
+    } else {
+      // Default behavior: a single Ayrshare call for all selected platforms
+      allResults = await postToSocialMedia(
+        platforms,
+        fullPost,
+        {
+          mediaUrls: mediaUrl ? [mediaUrl] : undefined,
+          shortenLinks: true,
+          profileKey: profileKey,  // Include user's Ayrshare profile key
+          scheduleDate: scheduledFor  // Schedule for later if provided
+        }
+      );
     }
-    
-    // If we have an ID at the top level, it's likely successful
-    const extractedPostId = result.data?.posts?.[0]?.id || result.data?.id || result.id || result.data?.postIds?.[0];
-    const hasSuccessId = !!extractedPostId;
-    
-    if ((result.success || hasSuccessId) && !hasAyrshareError) {
+
+    console.log('Ayrshare publish result:', allResults);
+    if (!shouldAttachInstagramAudio) {
+      console.log('Ayrshare result.data:', JSON.stringify(allResults.data, null, 2));
+    }
+
+    const analyzed = [];
+    if (shouldAttachInstagramAudio) {
+      analyzed.push({ key: 'instagram', platforms: ['instagram'], ...analyzeAyrshareResult(instagramResult, ['instagram']) });
+      if (otherPlatforms.length > 0) {
+        analyzed.push({ key: 'other', platforms: otherPlatforms, ...analyzeAyrshareResult(otherPlatformsResult, otherPlatforms) });
+      }
+    } else {
+      analyzed.push({ key: 'all', platforms: platforms, ...analyzeAyrshareResult(allResults, platforms) });
+    }
+
+    const failures = analyzed.filter(a => !a.success);
+
+    if (failures.length === 0) {
+      // Combine per-platform IDs across the (possibly split) publishes
+      const socialPostIds = {};
+      for (const a of analyzed) {
+        Object.assign(socialPostIds, a.platformPostIds || {});
+      }
+
+      // Prefer Instagram ID when present, otherwise fall back to the top-level ID.
+      const extractedPostId = socialPostIds.instagram || analyzed[0]?.extractedPostId || null;
+
       // Update campaign with post result
       const updateData = {
         status: isScheduled ? 'scheduled' : 'posted',
         'socialPostId': extractedPostId,
-        'publishResult': result,
+        'socialPostIds': Object.keys(socialPostIds).length > 0 ? socialPostIds : null,
+        'publishResult': allResults,
         'platforms': platforms  // Update platforms to match what user actually selected
       };
       
@@ -880,19 +1069,20 @@ router.post('/:id/publish', protect, async (req, res) => {
         platforms,
         scheduled: isScheduled,
         scheduledFor: scheduledFor,
-        result
+        result: allResults
       });
     } else {
-      // Use the error message collected during post checking
-      const finalErrorMessage = errorMessage || 'Failed to publish to social media';
+      const finalErrorMessage = failures[0]?.errorMessage || 'Failed to publish to social media';
       
       console.log('❌ Publish failed:', finalErrorMessage);
       
       res.status(400).json({
         success: false,
         message: finalErrorMessage,
-        error: result.error || result.message || result.data?.message,
-        details: result.data?.posts
+        error: finalErrorMessage,
+        details: shouldAttachInstagramAudio
+          ? analyzed.map(a => ({ key: a.key, platforms: a.platforms, errorMessage: a.errorMessage || null }))
+          : allResults?.data?.posts
       });
     }
   } catch (error) {

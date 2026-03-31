@@ -83,6 +83,108 @@ function isBase64DataUrl(url) {
 }
 
 /**
+ * Check if a URL is a base64 audio data URL
+ * @param {string} url - The URL to check
+ * @returns {boolean}
+ */
+function isBase64AudioDataUrl(url) {
+  return url && url.startsWith('data:audio');
+}
+
+/**
+ * Upload a base64 audio file to Cloudinary (stored as resource_type: video)
+ * @param {string} base64Data - Base64 encoded audio (with or without data URL prefix)
+ * @param {string} folder - Optional folder name in Cloudinary
+ * @returns {Promise<{success: boolean, url?: string, publicId?: string, bytes?: number, format?: string, error?: string}>}
+ */
+async function uploadBase64Audio(base64Data, folder = 'nebula-audio') {
+  try {
+    let uploadData = base64Data;
+    if (!base64Data.startsWith('data:')) {
+      // Assume mp3 if no prefix
+      uploadData = `data:audio/mpeg;base64,${base64Data}`;
+    }
+
+    const result = await cloudinary.uploader.upload(uploadData, {
+      folder: folder,
+      resource_type: 'video'
+    });
+
+    console.log('✅ Audio uploaded to Cloudinary:', result.secure_url);
+
+    return {
+      success: true,
+      url: result.secure_url,
+      publicId: result.public_id,
+      bytes: result.bytes,
+      format: result.format,
+      duration: result.duration
+    };
+  } catch (error) {
+    console.error('❌ Cloudinary audio upload error:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Ensure an audio reference is publicly accessible.
+ * If it's already a hosted URL, return as-is.
+ * If it's a base64 audio data URL, upload to Cloudinary first.
+ * @param {string} audioUrl - Audio URL or base64 data URL
+ * @returns {Promise<string|null>} - Publicly accessible URL
+ */
+async function ensurePublicAudioUrl(audioUrl) {
+  if (!audioUrl) return null;
+
+  if (audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
+    return audioUrl;
+  }
+
+  if (isBase64AudioDataUrl(audioUrl)) {
+    const result = await uploadBase64Audio(audioUrl);
+    return result.success ? result.url : null;
+  }
+
+  console.warn('Unknown audio format:', audioUrl.substring(0, 50));
+  return null;
+}
+
+/**
+ * Upload a local video file (mp4) to Cloudinary for public hosting
+ * @param {string} filePath - Path to the file on disk
+ * @param {string} folder - Optional folder name in Cloudinary
+ * @returns {Promise<{success: boolean, url?: string, publicId?: string, bytes?: number, format?: string, error?: string}>}
+ */
+async function uploadVideoFile(filePath, folder = 'nebula-videos') {
+  try {
+    const result = await cloudinary.uploader.upload(filePath, {
+      folder: folder,
+      resource_type: 'video'
+    });
+
+    console.log('✅ Video uploaded to Cloudinary:', result.secure_url);
+
+    return {
+      success: true,
+      url: result.secure_url,
+      publicId: result.public_id,
+      bytes: result.bytes,
+      format: result.format,
+      duration: result.duration
+    };
+  } catch (error) {
+    console.error('❌ Cloudinary video upload error:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Convert image URL to Cloudinary URL if needed
  * If it's already a hosted URL, return as-is
  * If it's a base64 data URL, upload to Cloudinary first
@@ -244,7 +346,11 @@ module.exports = {
   uploadBase64Image,
   uploadMultipleImages,
   isBase64DataUrl,
+  isBase64AudioDataUrl,
   ensurePublicUrl,
+  ensurePublicAudioUrl,
+  uploadBase64Audio,
+  uploadVideoFile,
   uploadLogo,
   uploadImageWithLogoOverlay,
   deleteImage

@@ -1033,6 +1033,26 @@ export const apiService = {
     return { campaign: response.campaign };
   },
 
+  // Upload audio for Instagram campaign posts (stored on Cloudinary)
+  uploadCampaignAudio: async (audioData: string, originalName?: string): Promise<{
+    success: boolean;
+    url?: string;
+    publicId?: string | null;
+    originalName?: string | null;
+    bytes?: number | null;
+    format?: string | null;
+    duration?: number | null;
+    message?: string;
+    error?: string;
+  }> => {
+    const response = await apiCall<any>(
+      '/campaigns/upload-audio',
+      { method: 'POST', body: JSON.stringify({ audioData, originalName }) },
+      true
+    );
+    return response;
+  },
+
   deleteCampaign: async (id: string): Promise<{ success: boolean }> => {
     const response = await apiCall<{ success: boolean }>(
       `/campaigns/${id}`,

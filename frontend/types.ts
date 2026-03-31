@@ -94,6 +94,11 @@ export interface Campaign {
     textContent: string;
     imageUrls: string[];
     captions?: string;
+    instagramAudio?: {
+      url: string;
+      publicId?: string | null;
+      originalName?: string | null;
+    } | null;
     hashtags?: string[];
     callToAction?: string;
     aiGenerated?: boolean;
@@ -126,6 +131,7 @@ export interface Campaign {
   publishedAt?: string;
   scheduledFor?: string;
   socialPostId?: string;
+  socialPostIds?: Record<string, string> | null;
   ayrshareStatus?: string;
   createdAt: string;
 }
