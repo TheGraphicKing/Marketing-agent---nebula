@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, UserCheck, UserX, TrendingUp, Search, X, LogOut,
   RefreshCw, Clock, Zap, BarChart2, Send, ChevronRight,
-  AlertTriangle, Activity, Calendar, Shield
+  AlertTriangle, Activity, Calendar, Shield, Tag, Plus, Trash2, ToggleLeft
 } from 'lucide-react';
 
 const BASE_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : '/api';
@@ -103,22 +103,57 @@ const AdminDashboard: React.FC = () => {
   const [selected, setSelected] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'funnel' | 'content'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'funnel' | 'content' | 'coupons'>('users');
   const [trialFunnel, setTrialFunnel] = useState<{ active: UserRow[]; expiringSoon: UserRow[]; expired: UserRow[]; migrated: UserRow[] } | null>(null);
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [couponForm, setCouponForm] = useState({ code: '', discountedAmount: '5000', maxUses: '1', note: '' });
+  const [couponCreating, setCouponCreating] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [ovRes, usersRes, contentRes, funnelRes] = await Promise.all([
-        adminFetch('/overview'), adminFetch('/users'), adminFetch('/content-stats'), adminFetch('/trial-funnel'),
+      const [ovRes, usersRes, contentRes, funnelRes, couponsRes] = await Promise.all([
+        adminFetch('/overview'), adminFetch('/users'), adminFetch('/content-stats'), adminFetch('/trial-funnel'), adminFetch('/coupons'),
       ]);
       if (ovRes.success) setOverview(ovRes.data);
       if (usersRes.success) setUsers(usersRes.data);
       if (contentRes.success) setContentStats(contentRes.data);
       if (funnelRes.success) setTrialFunnel(funnelRes.data);
+      if (couponsRes.success) setCoupons(couponsRes.data);
     } catch {}
     setLoading(false);
   }, []);
+
+  const createCoupon = async () => {
+    if (!couponForm.code.trim()) return;
+    setCouponCreating(true);
+    try {
+      const res = await adminFetch('/coupons', {
+        method: 'POST',
+        body: JSON.stringify({ code: couponForm.code, discountedAmount: Number(couponForm.discountedAmount), maxUses: Number(couponForm.maxUses), note: couponForm.note })
+      });
+      if (res.success) {
+        setCoupons(prev => [res.data, ...prev]);
+        setCouponForm({ code: '', discountedAmount: '5000', maxUses: '1', note: '' });
+      }
+    } catch {}
+    setCouponCreating(false);
+  };
+
+  const deactivateCoupon = async (code: string) => {
+    try {
+      const res = await adminFetch(`/coupons/${code}/deactivate`, { method: 'PATCH' });
+      if (res.success) setCoupons(prev => prev.map(c => c.code === code ? { ...c, isActive: false } : c));
+    } catch {}
+  };
+
+  const deleteCoupon = async (code: string) => {
+    if (!confirm(`Delete coupon ${code}?`)) return;
+    try {
+      await adminFetch(`/coupons/${code}`, { method: 'DELETE' });
+      setCoupons(prev => prev.filter(c => c.code !== code));
+    } catch {}
+  };
 
   useEffect(() => {
     if (!localStorage.getItem('adminToken')) { navigate('/admin/login'); return; }
@@ -284,14 +319,14 @@ const AdminDashboard: React.FC = () => {
 
             {/* Tabs */}
             <div className="flex gap-1 mb-5 w-fit">
-              {(['users', 'funnel', 'content'] as const).map(tab => (
+              {(['users', 'funnel', 'content', 'coupons'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className={`px-5 py-2 rounded-xl text-sm font-medium transition-all ${
                     activeTab === tab
                       ? 'bg-[#ffcc29] text-black shadow-lg shadow-[#ffcc29]/20'
                       : 'text-white/40 hover:text-white hover:bg-white/5'
                   }`}>
-                  {tab === 'funnel' ? 'Trial Funnel' : tab === 'content' ? 'Content Stats' : 'Users'}
+                  {tab === 'funnel' ? 'Trial Funnel' : tab === 'content' ? 'Content Stats' : tab === 'coupons' ? 'Coupons' : 'Users'}
                 </button>
               ))}
             </div>
@@ -577,6 +612,89 @@ const AdminDashboard: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* COUPONS TAB */}
+            {activeTab === 'coupons' && (
+              <div className="max-w-2xl space-y-5">
+                {/* Create form */}
+                <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-5">
+                  <p className="text-white/50 text-xs uppercase tracking-wider mb-4 flex items-center gap-2"><Tag className="w-3.5 h-3.5" /> Create Coupon</p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-white/30 text-xs mb-1 block">Code</label>
+                      <input type="text" placeholder="e.g. BOBBY50" value={couponForm.code}
+                        onChange={e => setCouponForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                        className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-[#ffcc29]/40 transition-colors font-mono" />
+                    </div>
+                    <div>
+                      <label className="text-white/30 text-xs mb-1 block">Discounted Price (₹)</label>
+                      <input type="number" value={couponForm.discountedAmount}
+                        onChange={e => setCouponForm(p => ({ ...p, discountedAmount: e.target.value }))}
+                        className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[#ffcc29]/40 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="text-white/30 text-xs mb-1 block">Max Uses</label>
+                      <input type="number" value={couponForm.maxUses}
+                        onChange={e => setCouponForm(p => ({ ...p, maxUses: e.target.value }))}
+                        className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[#ffcc29]/40 transition-colors" />
+                    </div>
+                    <div>
+                      <label className="text-white/30 text-xs mb-1 block">Note (optional)</label>
+                      <input type="text" placeholder="e.g. For Bobby" value={couponForm.note}
+                        onChange={e => setCouponForm(p => ({ ...p, note: e.target.value }))}
+                        className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-[#ffcc29]/40 transition-colors" />
+                    </div>
+                  </div>
+                  <button onClick={createCoupon} disabled={couponCreating || !couponForm.code.trim()}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#ffcc29] hover:bg-[#e6b825] text-black text-sm font-semibold rounded-xl disabled:opacity-40 transition-all">
+                    <Plus className="w-4 h-4" /> {couponCreating ? 'Creating...' : 'Create Coupon'}
+                  </button>
+                </div>
+
+                {/* Coupons list */}
+                <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-white/[0.06]">
+                    <p className="text-white/50 text-xs uppercase tracking-wider">All Coupons ({coupons.length})</p>
+                  </div>
+                  {coupons.length === 0 ? (
+                    <p className="text-white/20 text-sm text-center py-10">No coupons yet</p>
+                  ) : (
+                    <div className="divide-y divide-white/[0.04]">
+                      {coupons.map(c => (
+                        <div key={c.code} className="px-5 py-3.5 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <span className={`font-mono font-bold text-sm px-2.5 py-1 rounded-lg ${c.isActive ? 'text-[#ffcc29] bg-[#ffcc29]/10' : 'text-white/20 bg-white/5 line-through'}`}>{c.code}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-white text-sm font-semibold">₹{c.discountedAmount.toLocaleString('en-IN')}</span>
+                                <span className="text-white/30 text-xs line-through">₹{c.originalAmount.toLocaleString('en-IN')}</span>
+                                <span className="text-emerald-400 text-xs">-₹{(c.originalAmount - c.discountedAmount).toLocaleString('en-IN')}</span>
+                              </div>
+                              <div className="flex items-center gap-3 mt-0.5">
+                                <span className="text-white/30 text-xs">{c.usedCount}/{c.maxUses} uses</span>
+                                {c.note && <span className="text-white/25 text-xs italic">{c.note}</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {c.isActive && (
+                              <button onClick={() => deactivateCoupon(c.code)} title="Deactivate"
+                                className="p-1.5 rounded-lg text-white/30 hover:text-orange-400 hover:bg-orange-400/10 transition-all">
+                                <ToggleLeft className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button onClick={() => deleteCoupon(c.code)} title="Delete"
+                              className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-all">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const FeatureEvent = require('../models/FeatureEvent');
+const Coupon = require('../models/Coupon');
 const adminAuth = require('../middleware/adminAuth');
 
 const FEATURE_LABELS = {
@@ -276,6 +277,62 @@ router.put('/users/:id/toggle', adminAuth, async (req, res) => {
     res.json({ success: true, data: { isActive: user.isActive, email: user.email } });
   } catch (err) {
     res.status(500).json({ error: 'Failed to toggle user' });
+  }
+});
+
+// ─── Coupon Management ───────────────────────────────────────────────────────
+
+// GET /api/admin/coupons
+router.get('/coupons', adminAuth, async (req, res) => {
+  try {
+    const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
+    res.json({ success: true, data: coupons });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch coupons' });
+  }
+});
+
+// POST /api/admin/coupons
+router.post('/coupons', adminAuth, async (req, res) => {
+  try {
+    const { code, discountedAmount, maxUses, note } = req.body;
+    if (!code) return res.status(400).json({ error: 'Coupon code is required' });
+
+    const coupon = await Coupon.create({
+      code: code.toUpperCase().trim(),
+      discountedAmount: discountedAmount || 5000,
+      maxUses: maxUses || 1,
+      note: note || ''
+    });
+    res.json({ success: true, data: coupon });
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ error: 'Coupon code already exists' });
+    res.status(500).json({ error: 'Failed to create coupon' });
+  }
+});
+
+// PATCH /api/admin/coupons/:code/deactivate
+router.patch('/coupons/:code/deactivate', adminAuth, async (req, res) => {
+  try {
+    const coupon = await Coupon.findOneAndUpdate(
+      { code: req.params.code.toUpperCase() },
+      { isActive: false },
+      { new: true }
+    );
+    if (!coupon) return res.status(404).json({ error: 'Coupon not found' });
+    res.json({ success: true, data: coupon });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to deactivate coupon' });
+  }
+});
+
+// DELETE /api/admin/coupons/:code
+router.delete('/coupons/:code', adminAuth, async (req, res) => {
+  try {
+    await Coupon.findOneAndDelete({ code: req.params.code.toUpperCase() });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete coupon' });
   }
 });
 

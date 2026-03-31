@@ -128,16 +128,39 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
   const [migrating, setMigrating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [couponApplied, setCouponApplied] = useState<{ discountedAmount: number; savings: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
 
-  const price = 7500;
+  const originalPrice = 7500;
+  const price = couponApplied ? couponApplied.discountedAmount : originalPrice;
   const credits = 1000;
+
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setCouponLoading(true);
+    setCouponError('');
+    setCouponApplied(null);
+    try {
+      const res = await apiService.validateCoupon(couponInput.trim());
+      if (res.success) {
+        setCouponApplied({ discountedAmount: res.discountedAmount, savings: res.savings });
+      } else {
+        setCouponError(res.message || 'Invalid coupon');
+      }
+    } catch {
+      setCouponError('Invalid coupon code');
+    }
+    setCouponLoading(false);
+  };
 
   const handleSubscribe = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const subData = await apiService.createSubscription();
+      const subData = await apiService.createSubscription(couponApplied ? couponInput.trim() : undefined);
       if (!subData.success) throw new Error(subData.message || 'Failed to create subscription');
 
       const options = {
@@ -397,6 +420,47 @@ const TrialExpired: React.FC<TrialExpiredProps> = ({ reason, daysUsed = 7, onLog
                   {features.map((f, i) => <FeatureRow key={i} {...f} />)}
                 </div>
               </div>
+
+              {/* Coupon Input */}
+              <div className="mb-5">
+                {couponApplied ? (
+                  <div className="flex items-center justify-between px-4 py-3 rounded-2xl"
+                    style={{ background: 'linear-gradient(145deg, #0d1a0f 0%, #0a1410 100%)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(52,211,153,0.2)' }}>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-400 text-sm font-semibold">{couponInput.toUpperCase()} applied</span>
+                      <span className="text-emerald-400/60 text-xs">— saving ₹{couponApplied.savings.toLocaleString('en-IN')}</span>
+                    </div>
+                    <button onClick={() => { setCouponApplied(null); setCouponInput(''); setCouponError(''); }}
+                      className="text-white/30 hover:text-white/60 text-xs transition-colors">remove</button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Have a coupon code?"
+                      value={couponInput}
+                      onChange={e => { setCouponInput(e.target.value); setCouponError(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleApplyCoupon()}
+                      className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-[#ffcc29]/30 transition-colors"
+                      style={{ boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)' }}
+                    />
+                    <button onClick={handleApplyCoupon} disabled={couponLoading || !couponInput.trim()}
+                      className="px-4 py-2.5 rounded-xl text-sm font-semibold text-[#070A12] bg-[#ffcc29]/80 hover:bg-[#ffcc29] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                      {couponLoading ? '...' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+                {couponError && <p className="text-red-400 text-xs mt-2 px-1">{couponError}</p>}
+              </div>
+
+              {/* Price display with discount */}
+              {couponApplied && (
+                <div className="text-center mb-4">
+                  <span className="text-white/30 text-sm line-through mr-2">₹{originalPrice.toLocaleString('en-IN')}/mo</span>
+                  <span className="text-emerald-400 font-bold text-lg">₹{price.toLocaleString('en-IN')}/mo</span>
+                </div>
+              )}
 
               {/* CTA Button — raised, tactile */}
               <button

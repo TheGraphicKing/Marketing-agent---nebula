@@ -285,8 +285,12 @@ export const apiService = {
     return apiCall('/payment/verify', { method: 'POST', body: JSON.stringify(data) }, true);
   },
 
-  createSubscription: async (): Promise<any> => {
-    return apiCall('/payment/create-subscription', { method: 'POST', body: JSON.stringify({}) }, true);
+  createSubscription: async (couponCode?: string): Promise<any> => {
+    return apiCall('/payment/create-subscription', { method: 'POST', body: JSON.stringify({ couponCode: couponCode || '' }) }, true);
+  },
+
+  validateCoupon: async (code: string): Promise<any> => {
+    return apiCall('/payment/validate-coupon', { method: 'POST', body: JSON.stringify({ code }) }, true);
   },
 
   verifySubscription: async (data: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }): Promise<any> => {

@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const Razorpay = require('razorpay');
 const { protect } = require('../middleware/auth');
 const User = require('../models/User');
+const Coupon = require('../models/Coupon');
 const { migrateUserData } = require('../services/migrationService');
 const { createInvoice } = require('../services/zohoBooks');
 
@@ -27,26 +28,69 @@ const MAX_AMOUNT = 20000;
 const MONTHLY_AMOUNT = 7500;   // ₹7,500/month
 const MONTHLY_CREDITS = 1000;  // credits per billing cycle
 
-// Cache plan ID so we don't create duplicates
+// Cache plan IDs so we don't create duplicates
 let cachedPlanId = process.env.RAZORPAY_PLAN_ID || null;
+let cachedDiscountedPlanId = process.env.RAZORPAY_DISCOUNTED_PLAN_ID || null;
 
-async function getOrCreatePlan() {
-  if (cachedPlanId) return cachedPlanId;
+async function getOrCreatePlan(amount = MONTHLY_AMOUNT) {
+  if (amount === MONTHLY_AMOUNT && cachedPlanId) return cachedPlanId;
+  if (amount !== MONTHLY_AMOUNT && cachedDiscountedPlanId) return cachedDiscountedPlanId;
+
   const plan = await razorpay.plans.create({
     period: 'monthly',
     interval: 1,
     item: {
-      name: 'Nebulaa Gravity — Starter Pack',
-      amount: MONTHLY_AMOUNT * 100,
+      name: amount === MONTHLY_AMOUNT ? 'Nebulaa Gravity — Starter Pack' : 'Nebulaa Gravity — Discounted Pack',
+      amount: amount * 100,
       currency: PLAN_CURRENCY,
       description: '1,000 credits per month'
     },
     notes: { product: 'nebulaa_gravity' }
   });
-  cachedPlanId = plan.id;
-  console.log(`✅ Razorpay Plan created/cached: ${plan.id}`);
+
+  if (amount === MONTHLY_AMOUNT) cachedPlanId = plan.id;
+  else cachedDiscountedPlanId = plan.id;
+
+  console.log(`✅ Razorpay Plan created/cached (₹${amount}): ${plan.id}`);
   return plan.id;
 }
+
+/**
+ * POST /api/payment/validate-coupon
+ * Validate a coupon code without redeeming it
+ */
+router.post('/validate-coupon', protect, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ success: false, message: 'Coupon code required' });
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase().trim() });
+
+    if (!coupon || !coupon.isActive) {
+      return res.status(404).json({ success: false, message: 'Invalid or expired coupon code' });
+    }
+    if (coupon.usedCount >= coupon.maxUses) {
+      return res.status(400).json({ success: false, message: 'This coupon has already been used' });
+    }
+
+    // Check if this user already used it
+    const userId = req.user?.userId || req.user?.id || req.user?._id;
+    const alreadyUsed = coupon.usedBy.some(u => u.userId?.toString() === userId?.toString());
+    if (alreadyUsed) {
+      return res.status(400).json({ success: false, message: 'You have already used this coupon' });
+    }
+
+    res.json({
+      success: true,
+      discountedAmount: coupon.discountedAmount,
+      originalAmount: coupon.originalAmount,
+      savings: coupon.originalAmount - coupon.discountedAmount
+    });
+  } catch (error) {
+    console.error('Validate coupon error:', error);
+    res.status(500).json({ success: false, message: 'Failed to validate coupon' });
+  }
+});
 
 /**
  * POST /api/payment/create-subscription
@@ -62,7 +106,25 @@ router.post('/create-subscription', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'You already have an active subscription' });
     }
 
-    const planId = await getOrCreatePlan();
+    // Validate coupon if provided
+    let finalAmount = MONTHLY_AMOUNT;
+    let appliedCoupon = null;
+    const { couponCode } = req.body;
+
+    if (couponCode) {
+      const coupon = await Coupon.findOne({ code: couponCode.toUpperCase().trim() });
+      if (!coupon || !coupon.isActive || coupon.usedCount >= coupon.maxUses) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired coupon code' });
+      }
+      const alreadyUsed = coupon.usedBy.some(u => u.userId?.toString() === userId?.toString());
+      if (alreadyUsed) {
+        return res.status(400).json({ success: false, message: 'You have already used this coupon' });
+      }
+      finalAmount = coupon.discountedAmount;
+      appliedCoupon = coupon;
+    }
+
+    const planId = await getOrCreatePlan(finalAmount);
 
     const subscription = await razorpay.subscriptions.create({
       plan_id: planId,
@@ -70,7 +132,8 @@ router.post('/create-subscription', protect, async (req, res) => {
       total_count: 120,
       notes: {
         userId: userId.toString(),
-        email: user.email
+        email: user.email,
+        couponCode: appliedCoupon?.code || ''
       }
     });
 
@@ -78,6 +141,7 @@ router.post('/create-subscription', protect, async (req, res) => {
       success: true,
       subscription_id: subscription.id,
       key: process.env.RAZORPAY_KEY_ID,
+      amount: finalAmount,
       prefill: {
         name: `${user.firstName} ${user.lastName || ''}`.trim(),
         email: user.email,
@@ -120,6 +184,15 @@ router.post('/verify-subscription', protect, async (req, res) => {
 
     // Fetch subscription details from Razorpay
     const rzpSub = await razorpay.subscriptions.fetch(razorpay_subscription_id);
+
+    // Mark coupon as used if one was applied
+    const couponCode = rzpSub.notes?.couponCode;
+    if (couponCode) {
+      await Coupon.findOneAndUpdate(
+        { code: couponCode },
+        { $inc: { usedCount: 1 }, $push: { usedBy: { userId, email: user.email, usedAt: new Date() } } }
+      );
+    }
 
     // Update subscription on user
     user.subscription = {
