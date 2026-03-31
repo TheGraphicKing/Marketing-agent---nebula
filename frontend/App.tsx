@@ -37,8 +37,8 @@ const App: React.FC = () => {
           const res = await apiService.getCurrentUser();
           setUser(res.user || null);
           
-          // Check trial status
-          if (res.user) {
+          // Check trial status — skip if user has active subscription (prod users)
+          if (res.user && res.user.subscription?.status !== 'active') {
             if (res.user.trial?.migratedToProd) {
               setTrialExpired({ expired: true, reason: 'migrated' as any });
             } else {
@@ -73,7 +73,11 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = (userData: User) => {
     setUser(userData);
-    // Check trial on login
+    // Skip trial check if user has active subscription (prod users)
+    if (userData.subscription?.status === 'active') {
+      setTrialExpired({ expired: false, reason: 'time' });
+      return;
+    }
     if (userData.trial?.migratedToProd) {
       setTrialExpired({ expired: true, reason: 'migrated' as any });
     } else {
