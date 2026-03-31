@@ -297,11 +297,11 @@ router.post('/webhook', async (req, res) => {
 
     const subscription = payload?.subscription?.entity;
     const payment = payload?.payment?.entity;
-    const userId = subscription?.notes?.userId;
 
-    if (!userId) return res.json({ success: true });
+    if (!subscription?.id) return res.json({ success: true });
 
-    const user = await User.findById(userId);
+    // Look up by subscription ID — works after migration when userId in notes is stale
+    const user = await User.findOne({ 'subscription.razorpaySubscriptionId': subscription.id });
     if (!user) return res.json({ success: true });
 
     if (eventName === 'subscription.charged') {
@@ -329,13 +329,19 @@ router.post('/webhook', async (req, res) => {
     }
 
     if (eventName === 'subscription.halted') {
-      await User.findByIdAndUpdate(userId, { 'subscription.status': 'halted' });
-      console.log(`⚠️ Subscription halted for user: ${userId}`);
+      await User.findOneAndUpdate(
+        { 'subscription.razorpaySubscriptionId': subscription.id },
+        { 'subscription.status': 'halted' }
+      );
+      console.log(`⚠️ Subscription halted: ${subscription.id}`);
     }
 
     if (eventName === 'subscription.cancelled') {
-      await User.findByIdAndUpdate(userId, { 'subscription.status': 'cancelled' });
-      console.log(`❌ Subscription cancelled for user: ${userId}`);
+      await User.findOneAndUpdate(
+        { 'subscription.razorpaySubscriptionId': subscription.id },
+        { 'subscription.status': 'cancelled' }
+      );
+      console.log(`❌ Subscription cancelled: ${subscription.id}`);
     }
 
     res.json({ success: true });
