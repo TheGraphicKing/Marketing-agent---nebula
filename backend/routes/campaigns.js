@@ -1466,20 +1466,25 @@ router.post('/:id/publish', protect, async (req, res) => {
       } catch (_) {}
     }
     
+    const { resolveToneAudioUrl, getPublicBaseUrl } = require('../utils/toneAudio');
+    const selectedTone = campaign?.tone || campaign?.creative?.tone || null;
     const instagramAudioUrl = campaign.creative?.instagramAudio?.url || null;
+    const autoToneAudioUrl = resolveToneAudioUrl(selectedTone, { baseUrl: getPublicBaseUrl({ req }) });
+    const effectiveInstagramAudioUrl = instagramAudioUrl || autoToneAudioUrl;
     
     // ============================================
     // INSTAGRAM AUDIO → VIDEO CONVERSION LOGIC
     // ============================================
     // STRICT validation: Only when platform is EXPLICITLY 'instagram' AND audio exists
     const hasInstagramInPlatforms = platforms.some(p => String(p).toLowerCase() === 'instagram');
-    const hasValidInstagramAudio = !!instagramAudioUrl && typeof instagramAudioUrl === 'string' && instagramAudioUrl.trim().length > 0;
+    const hasValidInstagramAudio = !!effectiveInstagramAudioUrl && typeof effectiveInstagramAudioUrl === 'string' && effectiveInstagramAudioUrl.trim().length > 0;
     
     console.log('🔍 Instagram audio check:');
     console.log('   - Platform list:', platforms);
     console.log('   - Has Instagram platform:', hasInstagramInPlatforms);
-    console.log('   - Audio URL exists:', !!instagramAudioUrl);
-    console.log('   - Audio URL value:', instagramAudioUrl ? `${instagramAudioUrl.substring(0, 80)}...` : 'null');
+    console.log('   - Tone:', selectedTone);
+    console.log('   - Audio URL exists:', !!effectiveInstagramAudioUrl);
+    console.log('   - Audio URL value:', effectiveInstagramAudioUrl ? `${effectiveInstagramAudioUrl.substring(0, 80)}...` : 'null');
     console.log('   - Will convert to video:', hasInstagramInPlatforms && hasValidInstagramAudio);
     
     const shouldAttachInstagramAudio = hasInstagramInPlatforms && hasValidInstagramAudio;
@@ -1507,13 +1512,13 @@ router.post('/:id/publish', protect, async (req, res) => {
       }
 
       console.log('🎵 [AUDIO FLOW] Instagram audio detected — FORCING video composition...');
-      console.log(`   - Audio URL: ${instagramAudioUrl.substring(0, 80)}...`);
+      console.log(`   - Audio URL: ${effectiveInstagramAudioUrl.substring(0, 80)}...`);
       console.log(`   - Base image URL: ${mediaUrl.substring(0, 80)}...`);
       
-      const audioPublicUrl = await ensurePublicAudioUrl(instagramAudioUrl);
+      const audioPublicUrl = await ensurePublicAudioUrl(effectiveInstagramAudioUrl);
       if (!audioPublicUrl) {
         const msg = '🚫 CRITICAL: Failed to prepare Instagram audio file. Please re-upload the audio and try again.';
-        console.error(msg, { originalUrl: instagramAudioUrl });
+        console.error(msg, { originalUrl: effectiveInstagramAudioUrl });
         await persistPublishFailure(msg);
         return res.status(400).json({ success: false, message: msg });
       }

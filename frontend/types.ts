@@ -81,6 +81,7 @@ export interface Campaign {
   name: string;
   objective: 'awareness' | 'traffic' | 'sales' | 'engagement' | 'conversion' | 'conversions' | 'leads';
   platforms: string[];
+  tone?: string | null;
   status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'archived' | 'posted';
   priority?: 'low' | 'medium' | 'high';
   notes?: string;

@@ -34,6 +34,11 @@ const campaignSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Tone used to pick predefined Instagram audio automatically (optional)
+  tone: {
+    type: String,
+    default: null
+  },
   creative: {
     type: {
       type: String,

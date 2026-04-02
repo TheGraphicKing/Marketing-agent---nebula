@@ -297,6 +297,10 @@ app.get('/api/demo/dashboard', (req, res) => {
 // Serve static files from React frontend build
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve predefined audio files for Instagram Reel composition
+// Files live at backend/public/audio/*.mp3 and are accessible via /audio/<file>.mp3
+app.use('/audio', express.static(path.join(__dirname, 'public', 'audio')));
+
 // Catch-all handler for React Router - serve index.html for any non-API routes
 app.get('*', (req, res, next) => {
   // If it's an API route, pass to 404 handler

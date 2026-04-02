@@ -4100,9 +4100,9 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [callToAction, setCallToAction] = useState('');
     const [productLogo, setProductLogo] = useState<string | null>(null);
     const [productLogoName, setProductLogoName] = useState<string>('');
-    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null; durationSeconds?: number | null } | null>(null);
-    const [instagramAudioUrlInput, setInstagramAudioUrlInput] = useState<string>('');
-    const [isUploadingInstagramAudio, setIsUploadingInstagramAudio] = useState(false);
+    // Tone-based Instagram Reel audio (predefined backend /audio/*.mp3)
+    // If selected + Instagram included, backend composes Reel; otherwise image posts only.
+    const [reelTone, setReelTone] = useState<string>('');
     const [showBrandLogoSelector, setShowBrandLogoSelector] = useState(false);
     const [isPopulating, setIsPopulating] = useState<Record<string, boolean>>({});
     const manuallyEditedTemplates = useRef<Set<string>>(new Set());
@@ -4272,102 +4272,6 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
 
     const togglePlatform = (platform: string) => {
       setPlatforms(prev => prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]);
-    };
-
-    const CREATE_CAMPAIGN_MAX_AUDIO_SIZE = 7 * 1024 * 1024; // 7MB (keeps base64 JSON payload under backend 10MB limit)
-
-    const readFileAsDataUrl = (file: File) => {
-      return new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-    };
-
-    const clearInstagramAudio = () => {
-      setInstagramAudio(null);
-      setInstagramAudioUrlInput('');
-    };
-
-    const applyInstagramAudioUrl = () => {
-      const trimmed = instagramAudioUrlInput.trim();
-      if (!trimmed) {
-        clearInstagramAudio();
-        return;
-      }
-      if (!/^https?:\/\//i.test(trimmed)) {
-        alert('Please enter a valid audio URL (must start with http:// or https://).');
-        return;
-      }
-      setInstagramAudio({ url: trimmed });
-    };
-
-    const handleInstagramAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      e.target.value = '';
-
-      if (!file.type.startsWith('audio/')) {
-        alert('Only audio files are supported.');
-        return;
-      }
-      if (file.size > CREATE_CAMPAIGN_MAX_AUDIO_SIZE) {
-        alert(`Audio must be ${Math.floor(CREATE_CAMPAIGN_MAX_AUDIO_SIZE / 1024 / 1024)}MB or smaller.`);
-        return;
-      }
-
-      setIsUploadingInstagramAudio(true);
-      try {
-        const localDurationSeconds: number | null = await new Promise((resolve) => {
-          try {
-            const objectUrl = URL.createObjectURL(file);
-            const audio = new Audio();
-            audio.preload = 'metadata';
-            audio.src = objectUrl;
-
-            const cleanup = () => {
-              try { URL.revokeObjectURL(objectUrl); } catch (_) {}
-              audio.onloadedmetadata = null;
-              audio.onerror = null;
-            };
-
-            audio.onloadedmetadata = () => {
-              const d = audio.duration;
-              cleanup();
-              resolve(Number.isFinite(d) && d > 0 ? d : null);
-            };
-
-            audio.onerror = () => {
-              cleanup();
-              resolve(null);
-            };
-          } catch (_) {
-            resolve(null);
-          }
-        });
-
-        const audioDataUrl = await readFileAsDataUrl(file);
-        const res = await apiService.uploadCampaignAudio(audioDataUrl, file.name);
-        if (res.success && res.url) {
-          const durationSeconds =
-            localDurationSeconds ?? (res.duration ? Number(res.duration) : null);
-          const next = {
-            url: res.url,
-            publicId: res.publicId || null,
-            originalName: file.name,
-            durationSeconds
-          };
-          setInstagramAudio(next);
-          setInstagramAudioUrlInput(res.url);
-        } else {
-          alert(res.message || res.error || 'Failed to upload audio');
-        }
-      } catch (error: any) {
-        alert(error.message || 'Failed to upload audio');
-      } finally {
-        setIsUploadingInstagramAudio(false);
-      }
     };
 
     const toggleDay = (day: string) => {
@@ -4606,13 +4510,15 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
               objective: objective as any,
               // IMPORTANT: each generated template is platform-specific; do NOT post it to all platforms
               platforms: [platformForPost],
+              // Tone controls backend's Instagram Reel audio selection.
+              // If empty/null -> no audio -> image post.
+              tone: reelTone || null,
               status: 'draft',  // Start as draft, update after successful publish
               creative: {
                 type: contentType,
                 textContent: post.caption,
                 imageUrls: [post.imageUrl],
-                captions: post.hashtags.join(' '),
-                ...(platformForPost === 'instagram' && instagramAudio?.url ? { instagramAudio } : {})
+                captions: post.hashtags.join(' ')
               },
               scheduling: {
                 startDate: post.suggestedDate,
@@ -4625,7 +4531,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                 locations: targetLocation ? [targetLocation] : [],
                 interests: targetInterests.split(',').map(i => i.trim())
               }
-            });
+            } as any);
             
             const campaign = createResult.campaign;
             if (!campaign || !campaign._id) {
@@ -5102,78 +5008,37 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                   </div>
                                 </div>
 
-                                {/* Instagram Audio (Optional) */}
+                                {/* Instagram Reel Tone (Optional) */}
                                 {platforms.includes('instagram') && (
                                   <div>
-                                    <label className={labelClasses}>Instagram Audio (Optional)</label>
+                                    <label className={labelClasses}>Instagram Reel Tone (Optional)</label>
                                     <p className={`text-xs mb-2 ${theme.textSecondary}`}>
-                                      Attach audio to Instagram posts only. Other platforms publish without audio.
+                                      Select a tone to auto-attach predefined audio for Instagram Reels. If no tone is selected, Instagram will publish as an image (no Reel).
                                     </p>
                                     <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#161b22] border-slate-700/50' : 'bg-slate-50 border-slate-200'}`}>
-                                      <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                          <Music className={`w-4 h-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`} />
-                                          <span className={`text-sm font-semibold ${theme.text}`}>Audio</span>
-                                        </div>
-                                        {instagramAudio?.url && (
-                                          <button
-                                            type="button"
-                                            onClick={clearInstagramAudio}
-                                            disabled={isUploadingInstagramAudio}
-                                            className={`text-xs font-medium ${theme.textMuted} hover:text-red-500 transition-colors disabled:opacity-50`}
-                                          >
-                                            Remove
-                                          </button>
-                                        )}
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <Music className={`w-4 h-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`} />
+                                        <span className={`text-sm font-semibold ${theme.text}`}>Tone</span>
                                       </div>
 
-                                      <div className="space-y-2">
-                                        <div className="flex gap-2">
-                                          <input
-                                            type="file"
-                                            accept="audio/*"
-                                            onChange={handleInstagramAudioUpload}
-                                            className="hidden"
-                                            id="create-campaign-instagram-audio"
-                                          />
-                                          <label
-                                            htmlFor="create-campaign-instagram-audio"
-                                            className={`flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-                                              isDarkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                                            } ${isUploadingInstagramAudio ? 'opacity-50 pointer-events-none' : ''}`}
-                                          >
-                                            {isUploadingInstagramAudio ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Music className="w-3.5 h-3.5" />}
-                                            {isUploadingInstagramAudio ? 'Uploading...' : 'Upload Audio'}
-                                          </label>
-                                        </div>
+                                      <select
+                                        value={reelTone}
+                                        onChange={(e) => setReelTone(e.target.value)}
+                                        className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                                          isDarkMode ? 'bg-[#0d1117] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                        }`}
+                                      >
+                                        <option value="">Select Tone (no audio)</option>
+                                        <option value="fun">Fun</option>
+                                        <option value="professional">Professional</option>
+                                        <option value="luxury">Luxury</option>
+                                        <option value="normal">Normal</option>
+                                        <option value="simple">Simple</option>
+                                      </select>
 
-                                        <div className="flex gap-2">
-                                          <input
-                                            value={instagramAudioUrlInput}
-                                            onChange={(e) => setInstagramAudioUrlInput(e.target.value)}
-                                            placeholder="Or paste a public audio URL..."
-                                            className={`flex-1 px-3 py-2 rounded-lg border text-sm ${
-                                              isDarkMode ? 'bg-[#0d1117] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-                                            }`}
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={applyInstagramAudioUrl}
-                                            disabled={isUploadingInstagramAudio || !instagramAudioUrlInput.trim()}
-                                            className="px-3 py-2 rounded-lg text-xs font-semibold bg-[#ffcc29] text-black hover:bg-[#ffcc29]/80 disabled:opacity-50"
-                                          >
-                                            Use URL
-                                          </button>
-                                        </div>
-
-                                        {instagramAudio?.url && (
-                                          <audio controls src={instagramAudio.url} className="w-full h-10" />
-                                        )}
-
-                                        <p className={`text-xs ${theme.textMuted}`}>
-                                          Applied only to Instagram. We publish Instagram as a video with your audio embedded (this plays as normal video sound, not as Instagram Music). Instagram web doesn’t support adding music to image posts. Other platforms publish without audio.
-                                        </p>
-                                      </div>
+                                      <p className={`text-xs mt-2 ${theme.textMuted}`}>
+                                        Debug: tone → backend maps to `/audio/&lt;tone&gt;.mp3`. Instagram + tone becomes a Reel; other platforms remain image.
+                                      </p>
                                     </div>
                                   </div>
                                 )}

@@ -1,5 +1,7 @@
 import { AuthResponse, BusinessProfile, Campaign, DashboardData, SocialConnection, User } from '../types';
 
+type CampaignInput = Partial<Campaign> & { tone?: string | null };
+
 // Use relative URL in production (when served from same origin), localhost in development
 declare const __PROD__: boolean;
 const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
@@ -1116,7 +1118,7 @@ export const apiService = {
     return { campaign: response.campaign };
   },
 
-  createCampaign: async (data: Partial<Campaign>): Promise<{ campaign: Campaign }> => {
+  createCampaign: async (data: CampaignInput): Promise<{ campaign: Campaign }> => {
     const response = await apiCall<{ success: boolean; campaign: Campaign }>(
       '/campaigns',
       { method: 'POST', body: JSON.stringify(data) },
@@ -1125,7 +1127,7 @@ export const apiService = {
     return { campaign: response.campaign };
   },
 
-  updateCampaign: async (id: string, data: Partial<Campaign>): Promise<{ campaign: Campaign }> => {
+  updateCampaign: async (id: string, data: CampaignInput): Promise<{ campaign: Campaign }> => {
     const response = await apiCall<{ success: boolean; campaign: Campaign }>(
       `/campaigns/${id}`,
       { method: 'PUT', body: JSON.stringify(data) },

@@ -2,6 +2,7 @@ const User = require('../models/User');
 const { publishSocialPostWithSafetyWrapper } = require('./instagram-fix');
 const { composeImageToVideoWithAudio } = require('./mediaComposer');
 const { ensurePublicAudioUrl } = require('./imageUploader');
+const { resolveToneAudioUrl, getPublicBaseUrl } = require('../utils/toneAudio');
 
 const INSTAGRAM_UPLOAD_SETTLE_DELAY_MS = (() => {
   const raw = Number.parseInt(String(process.env.INSTAGRAM_POST_UPLOAD_SETTLE_DELAY_MS || '7000'), 10);
@@ -82,9 +83,14 @@ function hasInstagramAudioAttachment(campaign, platforms = []) {
     ? platforms.map((platform) => String(platform || '').trim().toLowerCase()).filter(Boolean)
     : [];
 
-  return normalizedPlatforms.includes('instagram') &&
-    typeof campaign?.creative?.instagramAudio?.url === 'string' &&
-    campaign.creative.instagramAudio.url.trim().length > 0;
+  if (!normalizedPlatforms.includes('instagram')) return false;
+  const manual = typeof campaign?.creative?.instagramAudio?.url === 'string'
+    && campaign.creative.instagramAudio.url.trim().length > 0;
+  if (manual) return true;
+
+  const selectedTone = campaign?.tone || campaign?.creative?.tone || null;
+  const auto = resolveToneAudioUrl(selectedTone, { baseUrl: getPublicBaseUrl() });
+  return typeof auto === 'string' && auto.trim().length > 0;
 }
 
 function extractAyrsharePostId(result) {
@@ -255,7 +261,10 @@ async function publishCampaignToSocial(campaign) {
 
   if (hasInstagramAudioAttachment(campaign, normalizedPlatforms)) {
     const primaryImageUrl = getPrimaryCampaignImageUrl(campaign);
-    const rawAudioUrl = campaign?.creative?.instagramAudio?.url || '';
+    const selectedTone = campaign?.tone || campaign?.creative?.tone || null;
+    const rawAudioUrl = campaign?.creative?.instagramAudio?.url
+      || resolveToneAudioUrl(selectedTone, { baseUrl: getPublicBaseUrl() })
+      || '';
     const requestedDurationSeconds = campaign?.creative?.instagramAudio?.durationSeconds || null;
     const otherPlatforms = normalizedPlatforms.filter((platform) => platform !== 'instagram');
 
