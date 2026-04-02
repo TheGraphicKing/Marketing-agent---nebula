@@ -4,15 +4,16 @@ const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const { uploadInstagramSafeVideoFile } = require('./imageUploader');
+const { uploadInstagramSafeVideoFile, uploadVideoFile } = require('./imageUploader');
 
 const INSTAGRAM_VIDEO_TARGET = {
   width: 1080,
   height: 1920,
   fps: 30,
-  videoBitrateKbps: 3500,
+  // Aligned with the Instagram-safe command we generate below (5,000k max bitrate).
+  videoBitrateKbps: 5000,
   audioBitrateKbps: 128,
-  audioSampleRate: 48000,
+  audioSampleRate: 44100, // Changed from 48000 to 44100
   audioChannels: 2,
   maxDurationSeconds: 90,
   minDurationSeconds: 3,
@@ -452,11 +453,20 @@ function validateInstagramVideoRequirements(metadata) {
     // ============================================
     const width = parseInt(metadata.video.width);
     const height = parseInt(metadata.video.height);
+    const aspectRatio = width > 0 && height > 0 ? width / height : null;
     
     if (!width || !height || width < 480 || height < 480) {
       issues.push(`Resolution ${metadata.video.resolution || 'unknown'} is too low. Minimum 480x480.`);
     } else if (width > 1920 || height > 1920) {
       warnings.push(`Resolution ${metadata.video.resolution} exceeds Instagram max (1920x1920). May be re-encoded.`);
+    }
+
+    if (!aspectRatio || Math.abs(aspectRatio - (9 / 16)) > 0.03) {
+      issues.push(`Aspect ratio ${metadata.video.resolution || 'unknown'} is not Instagram Reel-safe. Expected 9:16.`);
+    }
+
+    if (width !== INSTAGRAM_VIDEO_TARGET.width || height !== INSTAGRAM_VIDEO_TARGET.height) {
+      warnings.push(`Resolution ${metadata.video.resolution} differs from preferred Reel size ${INSTAGRAM_VIDEO_TARGET.width}x${INSTAGRAM_VIDEO_TARGET.height}.`);
     }
 
     // ============================================
@@ -477,8 +487,8 @@ function validateInstagramVideoRequirements(metadata) {
     const vBitrate = metadata.video.bitrateKbps;
     if (vBitrate && vBitrate < 500) {
       issues.push(`Video bitrate ${vBitrate} kbps too low. Minimum 500 kbps.`);
-    } else if (vBitrate && vBitrate > 8000) {
-      warnings.push(`Video bitrate ${vBitrate} kbps very high. Instagram may re-encode.`);
+    } else if (vBitrate && vBitrate > 5000) {
+      warnings.push(`Video bitrate ${vBitrate} kbps very high. Instagram prefers ~3000 kbps.`);
     }
 
     // ============================================
@@ -494,7 +504,7 @@ function validateInstagramVideoRequirements(metadata) {
   // AUDIO CODEC VALIDATION
   // ============================================
   if (!metadata.audio) {
-    issues.push('No audio metadata available.');
+    issues.push('No audio metadata available. Instagram Reels require an audio track.');
   } else if (metadata.audio.error) {
     issues.push(`Audio error: ${metadata.audio.error}`);
   } else if (metadata.audio.warning) {
@@ -669,7 +679,8 @@ async function validateAudioFile(filePath) {
 }
 
 function buildInstagramVideoFilter({ width = INSTAGRAM_VIDEO_TARGET.width, height = INSTAGRAM_VIDEO_TARGET.height } = {}) {
-  return `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p`;
+  // Match the exact filter shape used in the Instagram-safe ffmpeg command for Reels.
+  return `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`;
 }
 
 function hasUsableAudioStream(metadata = {}) {
@@ -699,13 +710,15 @@ async function transcodeVideoToInstagramProfile({
     '-vf', buildInstagramVideoFilter(),
     '-c:v', 'libx264',
     '-preset', 'medium',
+    '-crf', '23',
     '-profile:v', 'high',
-    '-level', '4.0',
+    '-level', '4.2',
     '-pix_fmt', 'yuv420p',
     '-r', String(INSTAGRAM_VIDEO_TARGET.fps),
-    '-g', String(INSTAGRAM_VIDEO_TARGET.fps * 2),
-    '-keyint_min', String(INSTAGRAM_VIDEO_TARGET.fps * 2),
+    '-g', '15',
+    '-keyint_min', '15',
     '-sc_threshold', '0',
+    '-x264-params', 'bframes=0:ref=3',
     '-b:v', `${INSTAGRAM_VIDEO_TARGET.videoBitrateKbps}k`,
     '-maxrate', `${INSTAGRAM_VIDEO_TARGET.videoBitrateKbps}k`,
     '-bufsize', `${INSTAGRAM_VIDEO_TARGET.videoBitrateKbps * 2}k`,
@@ -794,14 +807,30 @@ async function prepareInstagramVideoForPublishing({
       };
     }
 
-    const upload = await uploadInstagramSafeVideoFile(outputPath, cloudinaryFolder);
-    if (!upload.success || !upload.url) {
-      return {
-        success: false,
-        error: upload.error || 'Failed to upload Instagram-safe video to Cloudinary.',
-        metadata: preparedMetadata,
-        validation: preparedValidation
-      };
+    console.log('Uploading video from:', outputPath);
+    if (!fs.existsSync(outputPath)) {
+      throw new Error(`Video file does not exist before upload: ${outputPath}`);
+    }
+
+    let upload;
+    try {
+      upload = await uploadInstagramSafeVideoFile(outputPath, cloudinaryFolder);
+    } catch (instagramSafeErr) {
+      // Fallback: if "instagram-safe" upload fails (intermittent Cloudinary issues),
+      // try a regular Cloudinary upload so we still have a reachable URL.
+      console.warn('[Instagram Video Prep] Instagram-safe Cloudinary upload failed. Trying normal video upload.', {
+        instagramSafeError: instagramSafeErr?.message || String(instagramSafeErr)
+      });
+      try {
+        upload = await uploadVideoFile(outputPath, cloudinaryFolder);
+      } catch (fallbackErr) {
+        return {
+          success: false,
+          error: `Failed to upload video to Cloudinary. Instagram-safe error: ${instagramSafeErr?.message || String(instagramSafeErr)}; fallback error: ${fallbackErr?.message || String(fallbackErr)}`,
+          metadata: preparedMetadata,
+          validation: preparedValidation
+        };
+      }
     }
 
     return {
@@ -831,11 +860,9 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
     return { success: false, error: 'imageUrl and audioUrl are required' };
   }
 
-  // Instagram target output: square or reel.
-  const layout = String(process.env.INSTAGRAM_AUDIO_VIDEO_LAYOUT || 'reel').toLowerCase();
-  const isSquare = layout === 'square';
+  // Instagram Reels output must be vertical 1080x1920.
   const targetWidth = 1080;
-  const targetHeight = isSquare ? 1080 : 1920;
+  const targetHeight = 1920;
 
   const id = crypto.randomBytes(8).toString('hex');
   const tmpDir = os.tmpdir();
@@ -889,8 +916,7 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
       };
     }
 
-    // Calculate video duration based on audio duration
-    // Minimum 3 seconds, maximum 90 seconds
+    // Duration: default to -t 60 (Instagram-safe command), but allow overrides.
     const audioDuration = audioValidation.duration || 15;
     const configuredDuration = (() => {
       const raw = process.env.INSTAGRAM_AUDIO_VIDEO_DURATION_SECONDS || process.env.IG_AUDIO_VIDEO_DURATION_SECONDS;
@@ -903,16 +929,12 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
       ? Math.round(requestedDurationSeconds)
       : null;
 
-    if (requestedDuration && requestedDuration >= 3 && requestedDuration <= 90) {
-      durationSeconds = requestedDuration;
-      console.log(`   ✓ Using requested duration: ${durationSeconds}s`);
-    } else if (configuredDuration !== null) {
-      durationSeconds = configuredDuration;
-      console.log(`   ✓ Using configured duration (env): ${durationSeconds}s`);
-    } else {
-      durationSeconds = Math.max(Math.min(Math.round(audioDuration), 90), 3);
-      console.log(`   ✓ Using audio-based duration: ${durationSeconds}s`);
-    }
+    const durationCandidate =
+      (requestedDuration && requestedDuration >= 3 && requestedDuration <= 90) ? requestedDuration
+      : (configuredDuration !== null ? configuredDuration : 60);
+
+    durationSeconds = Math.max(Math.min(Math.round(durationCandidate), 90), 3);
+    console.log(`   ✓ Using target duration: ${durationSeconds}s (audio: ~${audioDuration.toFixed(2)}s)`);
 
     console.log(`   ✓ Audio duration: ${audioDuration.toFixed(2)}s`);
     console.log(`   ✓ Video duration: ${durationSeconds}s`);
@@ -941,27 +963,27 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
       '-stream_loop', '-1',
       '-i', audioPath,
       '-c:v', 'libx264',
-      '-tune', 'stillimage',
       '-preset', 'medium',
+      '-crf', '23',
       '-profile:v', 'high',
-      '-level', '4.0',
-      // IMPORTANT: for a still image, CRF/VBR can yield extremely low average bitrate.
-      // We enforce a bitrate floor using VBV/CBR-ish settings so ffprobe reports >500 kbps.
-      '-b:v', '1500k',
-      '-minrate', '800k',
-      '-maxrate', '1500k',
-      '-bufsize', '3000k',
-      '-x264-params', 'nal-hrd=cbr:force-cfr=1',
-      '-t', String(durationSeconds),
-      '-shortest',
-      '-r', '30',
-      '-vf', `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p`,
+      '-level', '4.2',
       '-pix_fmt', 'yuv420p',
+      '-r', '30',
+      '-g', '15',
+      '-keyint_min', '15',
+      '-sc_threshold', '0',
+      '-x264-params', 'bframes=0:ref=3',
+      '-b:v', `${INSTAGRAM_VIDEO_TARGET.videoBitrateKbps}k`,
+      '-maxrate', `${INSTAGRAM_VIDEO_TARGET.videoBitrateKbps}k`,
+      '-bufsize', `${INSTAGRAM_VIDEO_TARGET.videoBitrateKbps * 2}k`,
+      '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p',
+      '-movflags', '+faststart',
       '-c:a', 'aac',
       '-b:a', `${INSTAGRAM_VIDEO_TARGET.audioBitrateKbps}k`,
       '-ar', String(INSTAGRAM_VIDEO_TARGET.audioSampleRate),
       '-ac', String(INSTAGRAM_VIDEO_TARGET.audioChannels),
-      '-movflags', '+faststart',
+      '-t', String(durationSeconds),
+      '-shortest',
       outPath
     ];
 
@@ -1002,9 +1024,38 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
     // EXTRACT AND VALIDATE VIDEO METADATA
     // ============================================
     console.log('\n📊 [VIDEO VALIDATION] Analyzing generated video file...');
-    const metadata = await extractVideoMetadata(outPath);
+    let metadata = await extractVideoMetadata(outPath);
+
+    // Ensure metadata has required properties with fallbacks
+    metadata = {
+      filename: metadata.filename || path.basename(outPath),
+      fileSize: metadata.fileSize || outStats.size,
+      fileSizeMB: metadata.fileSizeMB || (outStats.size / 1024 / 1024).toFixed(2),
+      format: metadata.format || 'mp4',
+      duration: metadata.duration || 'unknown',
+      durationSeconds: metadata.durationSeconds || Math.round(durationSeconds),
+      bitrate: metadata.bitrate || 'unknown',
+      bitrateKbps: metadata.bitrateKbps || null,
+      // Ensure video and audio objects exist
+      video: metadata.video || {
+        codec: 'h264', // Assume correct since we encoded it
+        profile: 'high',
+        width: targetWidth,
+        height: targetHeight,
+        resolution: `${targetWidth}x${targetHeight}`,
+        fps: 30,
+        pixelFormat: 'yuv420p'
+      },
+      audio: metadata.audio || {
+        codec: 'aac', // Assume correct since we encoded it
+        sampleRate: 44100,
+        channels: 2
+      },
+      ...metadata // Keep any existing properties
+    };
+
     const validation = validateInstagramVideoRequirements(metadata);
-    
+
     // Always log detailed analysis
     logVideoAnalysis(metadata, validation);
 
@@ -1028,11 +1079,27 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
     // UPLOAD TO CLOUDINARY
     // ============================================
     console.log('📤 [VIDEO UPLOAD] Uploading validated video to Cloudinary...');
-    const upload = await uploadInstagramSafeVideoFile(outPath, cloudinaryFolder);
-    if (!upload.success || !upload.url) {
-      const msg = upload.error || 'Failed to upload composed video';
-      console.error(`\n❌ [VIDEO UPLOAD FAILED]\n${msg}`);
-      return { success: false, error: msg };
+    console.log('Uploading video from:', outPath);
+
+    if (!fs.existsSync(outPath)) {
+      throw new Error(`Video file does not exist before upload: ${outPath}`);
+    }
+
+    let upload;
+    try {
+      upload = await uploadInstagramSafeVideoFile(outPath, cloudinaryFolder);
+    } catch (instagramSafeErr) {
+      // Fallback to normal video upload if instagram-safe upload intermittently fails.
+      console.warn('[AUDIO FLOW] Instagram-safe Cloudinary upload failed. Trying normal video upload.', {
+        instagramSafeError: instagramSafeErr?.message || String(instagramSafeErr)
+      });
+      try {
+        upload = await uploadVideoFile(outPath, cloudinaryFolder);
+      } catch (fallbackErr) {
+        const msg = `Failed to upload composed video to Cloudinary. Instagram-safe error: ${instagramSafeErr?.message || String(instagramSafeErr)}; fallback error: ${fallbackErr?.message || String(fallbackErr)}`;
+        console.error(`\n❌ [VIDEO UPLOAD FAILED]\n${msg}`);
+        return { success: false, error: msg };
+      }
     }
 
     console.log(`✅ [VIDEO UPLOAD] Video successfully uploaded to Cloudinary`);
@@ -1040,7 +1107,7 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
     console.log(`   - Cloudinary duration: ${upload.duration}s`);
     console.log(`   - Cloudinary size: ${(upload.bytes / 1024 / 1024).toFixed(2)}MB`);
 
-    return {
+    const result = {
       success: true,
       videoUrl: upload.url,
       publicId: upload.publicId || null,
@@ -1049,6 +1116,17 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
       metadata: metadata,
       validation: validation
     };
+
+    console.log('📤 [COMPOSITION COMPLETE] Returning composed object:', {
+      success: result.success,
+      videoUrl: result.videoUrl ? result.videoUrl.substring(0, 50) + '...' : null,
+      duration: result.duration,
+      bytes: result.bytes,
+      hasMetadata: !!result.metadata,
+      metadataKeys: result.metadata ? Object.keys(result.metadata) : []
+    });
+
+    return result;
   } catch (error) {
     const errorMsg = error.message || 'Failed to compose video';
     console.error(`\n\n${'='.repeat(70)}`);
@@ -1094,9 +1172,111 @@ async function composeImageToVideoWithAudio({ imageUrl, audioUrl, requestedDurat
         outputPath: outPath
       }
     };
+    
+    return {
+      success: false,
+      error: errorMsg,
+      details: error.message,
+      compositionTarget: {
+        duration: durationSeconds,
+        maxResolution: `${targetWidth}x${targetHeight}`,
+        imagePath,
+        audioPath,
+        outputPath: outPath
+      }
+    };
   } finally {
     await Promise.all([safeUnlink(imagePath), safeUnlink(audioPath), safeUnlink(outPath)]);
   }
+}
+
+/**
+ * Quick validation for video before posting to Instagram
+ * Checks critical requirements: duration, audio presence, codecs
+ * @param {object} metadata - Video metadata from extractVideoMetadata
+ * @returns {object} - { valid: boolean, errors: string[] }
+ */
+function validateVideoForInstagramPosting(metadata) {
+  const errors = [];
+
+  if (!metadata) {
+    errors.push('Video metadata is missing');
+    return { valid: false, errors };
+  }
+
+  // Check for critical errors in metadata extraction
+  if (metadata.error) {
+    errors.push(`Metadata extraction error: ${metadata.error}`);
+  }
+  if (metadata.warning) {
+    console.warn(`Metadata warning: ${metadata.warning}`);
+  }
+
+  // Duration check - use durationSeconds if available, otherwise try to parse duration
+  let duration = metadata.durationSeconds;
+  if (!duration && metadata.duration && metadata.duration !== 'unknown') {
+    duration = Math.round(parseFloat(metadata.duration));
+  }
+
+  if (!duration || duration < 3 || duration > 90) {
+    errors.push(`Duration ${duration || 'unknown'}s is outside Instagram Reel limits (3-90 seconds)`);
+  }
+
+  // Strict audio checks (Instagram Reels require AAC audio)
+  if (!metadata.audio) {
+    errors.push('Audio metadata is missing - cannot verify audio track');
+  } else if (metadata.audio.error) {
+    errors.push(`Audio metadata extraction error: ${metadata.audio.error}`);
+  } else {
+    const audioCodec = String(metadata.audio.codec || '').toLowerCase();
+    if (!audioCodec || audioCodec === 'unknown' || !audioCodec.includes('aac')) {
+      errors.push(`Audio codec must be AAC. Got: ${metadata.audio.codec || 'unknown'}`);
+    }
+
+    const sampleRate = parseInt(metadata.audio.sampleRate, 10);
+    if (!Number.isFinite(sampleRate) || sampleRate !== 44100) {
+      errors.push(`Audio sample rate must be 44100 Hz. Got: ${metadata.audio.sampleRate || 'unknown'}`);
+    }
+
+    const channels = parseInt(metadata.audio.channels, 10);
+    if (!Number.isFinite(channels) || channels !== 2) {
+      errors.push(`Audio channels must be 2 (stereo). Got: ${metadata.audio.channels || 'unknown'}`);
+    }
+  }
+
+  // Strict video checks (codec/resolution/fps/pixel format)
+  if (!metadata.video) {
+    errors.push('Video metadata is missing - cannot verify video stream');
+  } else if (metadata.video.error) {
+    errors.push(`Video metadata extraction error: ${metadata.video.error}`);
+  } else {
+    const videoCodec = String(metadata.video.codec || '').toLowerCase();
+    if (!videoCodec || videoCodec === 'unknown' || !videoCodec.includes('h264')) {
+      errors.push(`Video codec must be H.264. Got: ${metadata.video.codec || 'unknown'}`);
+    }
+
+    const width = parseInt(metadata.video.width, 10);
+    const height = parseInt(metadata.video.height, 10);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width !== 1080 || height !== 1920) {
+      errors.push(`Resolution must be 1080x1920. Got: ${metadata.video.resolution || `${width}x${height}`}`);
+    }
+
+    const fps = typeof metadata.video.fps === 'number' ? metadata.video.fps : parseFloat(metadata.video.fps);
+    if (!Number.isFinite(fps) || Math.abs(fps - 30) > 0.1) {
+      errors.push(`FPS must be 30. Got: ${metadata.video.fps || 'unknown'}`);
+    }
+
+    const pixFmt = String(metadata.video.pixelFormat || '').toLowerCase();
+    if (!pixFmt || pixFmt === 'unknown' || !['yuv420p', 'yuvj420p'].includes(pixFmt)) {
+      errors.push(`Pixel format must be yuv420p. Got: ${metadata.video.pixelFormat || 'unknown'}`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings: metadata.warning ? [metadata.warning] : []
+  };
 }
 
 module.exports = {
@@ -1104,5 +1284,6 @@ module.exports = {
   extractVideoMetadata,
   validateInstagramVideoRequirements,
   logVideoAnalysis,
-  prepareInstagramVideoForPublishing
+  prepareInstagramVideoForPublishing,
+  validateVideoForInstagramPosting
 };

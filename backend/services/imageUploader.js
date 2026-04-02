@@ -5,22 +5,26 @@
  */
 
 const cloudinary = require('cloudinary').v2;
+const fs = require('fs');
+const path = require('path');
 
-const INSTAGRAM_SAFE_VIDEO_TRANSFORMATION = [
-  {
-    width: 1080,
-    height: 1920,
-    crop: 'pad',
-    background: 'black'
-  },
-  {
-    quality: 'auto:good',
-    fetch_format: 'mp4',
-    video_codec: 'h264',
-    audio_codec: 'aac',
-    bit_rate: '3500k'
-  }
-];
+function isRetriableCloudinaryError(error) {
+  const code = error?.code;
+  const msg = (error?.message || error?.toString?.() || '').toLowerCase();
+  const retriableCodes = new Set([
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'EAI_AGAIN',
+    'ENOTFOUND',
+    'ECONNREFUSED',
+    'UND_ERR_CONNECT_TIMEOUT'
+  ]);
+  return (code && retriableCodes.has(code)) || msg.includes('timeout') || msg.includes('econnreset');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Configure Cloudinary
 cloudinary.config({
@@ -36,41 +40,67 @@ cloudinary.config({
  * @returns {Promise<{success: boolean, url?: string, error?: string}>}
  */
 async function uploadBase64Image(base64Data, folder = 'nebula-campaigns') {
-  try {
-    // Ensure the base64 string has the proper data URL prefix
-    let uploadData = base64Data;
-    if (!base64Data.startsWith('data:')) {
-      // Assume it's a JPEG if no prefix
-      uploadData = `data:image/jpeg;base64,${base64Data}`;
+  const maxRetries = 2;
+  const baseDelayMs = 500;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Ensure the base64 string has the proper data URL prefix
+      let uploadData = base64Data;
+      if (!base64Data.startsWith('data:')) {
+        // Assume it's a JPEG if no prefix
+        uploadData = `data:image/jpeg;base64,${base64Data}`;
+      }
+
+      const result = await cloudinary.uploader.upload(uploadData, {
+        folder: folder,
+        resource_type: 'image',
+        timeout: 60000,
+        transformation: [
+          { quality: 'auto:good' },
+          { fetch_format: 'auto' }
+        ]
+      });
+
+      console.log('✅ Image uploaded to Cloudinary:', result.secure_url);
+
+      return {
+        success: true,
+        url: result.secure_url,
+        publicId: result.public_id,
+        width: result.width,
+        height: result.height,
+        bytes: result.bytes,
+        format: result.format
+      };
+    } catch (error) {
+      const errMsg = error?.message
+        || (typeof error === 'string' ? error : null)
+        || error?.toString?.()
+        || 'Cloudinary upload failed (no message)';
+
+      console.error('❌ Cloudinary upload error:', errMsg, {
+        attempt: attempt + 1,
+        maxRetries: maxRetries + 1,
+        name: error?.name,
+        code: error?.code,
+        stack: error?.stack
+      });
+
+      if (attempt < maxRetries && isRetriableCloudinaryError(error)) {
+        const waitMs = baseDelayMs * (attempt + 1);
+        await sleep(waitMs);
+        continue;
+      }
+
+      return {
+        success: false,
+        error: errMsg
+      };
     }
-
-    const result = await cloudinary.uploader.upload(uploadData, {
-      folder: folder,
-      resource_type: 'image',
-      transformation: [
-        { quality: 'auto:good' },
-        { fetch_format: 'auto' }
-      ]
-    });
-
-    console.log('✅ Image uploaded to Cloudinary:', result.secure_url);
-
-    return {
-      success: true,
-      url: result.secure_url,
-      publicId: result.public_id,
-      width: result.width,
-      height: result.height,
-      bytes: result.bytes,
-      format: result.format
-    };
-  } catch (error) {
-    console.error('❌ Cloudinary upload error:', error.message);
-    return {
-      success: false,
-      error: error.message
-    };
   }
+
+  return { success: false, error: 'Cloudinary upload failed after retries' };
 }
 
 /**
@@ -114,35 +144,60 @@ function isBase64AudioDataUrl(url) {
  * @returns {Promise<{success: boolean, url?: string, publicId?: string, bytes?: number, format?: string, error?: string}>}
  */
 async function uploadBase64Audio(base64Data, folder = 'nebula-audio') {
-  try {
-    let uploadData = base64Data;
-    if (!base64Data.startsWith('data:')) {
-      // Assume mp3 if no prefix
-      uploadData = `data:audio/mpeg;base64,${base64Data}`;
+  const maxRetries = 2;
+  const baseDelayMs = 500;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      let uploadData = base64Data;
+      if (!base64Data.startsWith('data:')) {
+        // Assume mp3 if no prefix
+        uploadData = `data:audio/mpeg;base64,${base64Data}`;
+      }
+
+      const result = await cloudinary.uploader.upload(uploadData, {
+        folder: folder,
+        resource_type: 'video',
+        timeout: 60000
+      });
+
+      console.log('✅ Audio uploaded to Cloudinary:', result.secure_url);
+
+      return {
+        success: true,
+        url: result.secure_url,
+        publicId: result.public_id,
+        bytes: result.bytes,
+        format: result.format,
+        duration: result.duration
+      };
+    } catch (error) {
+      const errMsg = error?.message
+        || (typeof error === 'string' ? error : null)
+        || error?.toString?.()
+        || 'Cloudinary audio upload failed (no message)';
+      console.error('❌ Cloudinary audio upload error:', errMsg, {
+        attempt: attempt + 1,
+        maxRetries: maxRetries + 1,
+        name: error?.name,
+        code: error?.code,
+        stack: error?.stack
+      });
+
+      if (attempt < maxRetries && isRetriableCloudinaryError(error)) {
+        const waitMs = baseDelayMs * (attempt + 1);
+        await sleep(waitMs);
+        continue;
+      }
+
+      return {
+        success: false,
+        error: errMsg
+      };
     }
-
-    const result = await cloudinary.uploader.upload(uploadData, {
-      folder: folder,
-      resource_type: 'video'
-    });
-
-    console.log('✅ Audio uploaded to Cloudinary:', result.secure_url);
-
-    return {
-      success: true,
-      url: result.secure_url,
-      publicId: result.public_id,
-      bytes: result.bytes,
-      format: result.format,
-      duration: result.duration
-    };
-  } catch (error) {
-    console.error('❌ Cloudinary audio upload error:', error.message);
-    return {
-      success: false,
-      error: error.message
-    };
   }
+
+  return { success: false, error: 'Cloudinary audio upload failed after retries' };
 }
 
 /**
@@ -176,10 +231,23 @@ async function ensurePublicAudioUrl(audioUrl) {
  */
 async function uploadVideoFile(filePath, folder = 'nebula-videos') {
   try {
-    const result = await cloudinary.uploader.upload(filePath, {
+    const absPath = path.resolve(filePath);
+
+    if (!fs.existsSync(absPath)) {
+      throw new Error(`Video file does not exist before upload: ${absPath}`);
+    }
+
+    console.log('Uploading video from:', absPath);
+
+    const result = await cloudinary.uploader.upload(absPath, {
       folder: folder,
-      resource_type: 'video'
+      resource_type: 'video',
+      timeout: 60000
     });
+
+    if (!result || !result.secure_url) {
+      throw new Error('Cloudinary upload failed - no URL returned');
+    }
 
     console.log('✅ Video uploaded to Cloudinary:', result.secure_url);
 
@@ -192,55 +260,58 @@ async function uploadVideoFile(filePath, folder = 'nebula-videos') {
       duration: result.duration
     };
   } catch (error) {
-    console.error('❌ Cloudinary video upload error:', error.message);
-    return {
-      success: false,
-      error: error.message
-    };
+    console.error('Upload failed:', error);
+    throw error;
   }
 }
 
 /**
- * Upload a local video file and return an Instagram-safe Cloudinary delivery URL.
- * The transformed delivery URL forces MP4/H.264/AAC and a padded 1080x1920 canvas.
+ * Upload a local video file and return the raw Cloudinary URL without transformations.
+ * No transformations are applied to ensure Instagram-safe encoding is preserved.
  * @param {string} filePath - Path to the file on disk
  * @param {string} folder - Optional folder name in Cloudinary
  * @returns {Promise<{success: boolean, url?: string, originalUrl?: string, publicId?: string, bytes?: number, format?: string, duration?: number, error?: string}>}
  */
 async function uploadInstagramSafeVideoFile(filePath, folder = 'nebula-instagram-videos') {
   try {
-    const result = await cloudinary.uploader.upload(filePath, {
+    const absPath = path.resolve(filePath);
+
+    if (!fs.existsSync(absPath)) {
+      throw new Error(`Video file does not exist before upload: ${absPath}`);
+    }
+
+    console.log('Uploading video from:', absPath);
+
+    const result = await cloudinary.uploader.upload(absPath, {
       folder,
       resource_type: 'video',
       format: 'mp4',
-      eager_async: false,
-      eager: [INSTAGRAM_SAFE_VIDEO_TRANSFORMATION]
+      // Removed eager transformations - using raw uploaded video URL only
+      timeout: 60000
     });
 
-    const instagramSafeUrl = cloudinary.url(result.public_id, {
-      resource_type: 'video',
-      secure: true,
-      format: 'mp4',
-      transformation: INSTAGRAM_SAFE_VIDEO_TRANSFORMATION
-    });
+    // Return the raw uploaded URL without any transformations
+    if (!result || !result.secure_url) {
+      throw new Error('Cloudinary upload failed - no URL returned');
+    }
 
-    console.log('Cloudinary Instagram-safe video URL:', instagramSafeUrl);
+    const rawVideoUrl = result.secure_url;
+
+    console.log('✅ Instagram-safe video uploaded to Cloudinary (no transformations):', rawVideoUrl);
+    console.log('   - Raw URL format: /video/upload/v' + result.version + '/' + result.public_id + '.mp4');
 
     return {
       success: true,
-      url: instagramSafeUrl,
-      originalUrl: result.secure_url,
+      url: rawVideoUrl,
+      originalUrl: rawVideoUrl, // Same as url since no transformations
       publicId: result.public_id,
       bytes: result.bytes,
       format: 'mp4',
       duration: result.duration
     };
   } catch (error) {
-    console.error('Cloudinary Instagram-safe video upload error:', error.message);
-    return {
-      success: false,
-      error: error.message
-    };
+    console.error('Upload failed:', error);
+    throw error;
   }
 }
 
@@ -251,7 +322,7 @@ async function uploadInstagramSafeVideoFile(filePath, folder = 'nebula-instagram
  * @param {string} imageUrl - The image URL to process
  * @returns {Promise<string|null>} - Publicly accessible URL
  */
-async function ensurePublicUrl(imageUrl) {
+async function ensurePublicUrl(imageUrl, { strict = false } = {}) {
   if (!imageUrl) return null;
   
   // If it's already a hosted URL, return as-is
@@ -262,7 +333,12 @@ async function ensurePublicUrl(imageUrl) {
   // If it's a base64 data URL, upload to Cloudinary
   if (isBase64DataUrl(imageUrl)) {
     const result = await uploadBase64Image(imageUrl);
-    return result.success ? result.url : null;
+    if (result.success) return result.url;
+    const msg = result.error || 'Cloudinary base64 image upload failed';
+    if (strict) {
+      throw new Error(msg);
+    }
+    return null;
   }
   
   // Unknown format
@@ -412,7 +488,6 @@ module.exports = {
   uploadBase64Audio,
   uploadVideoFile,
   uploadInstagramSafeVideoFile,
-  INSTAGRAM_SAFE_VIDEO_TRANSFORMATION,
   uploadLogo,
   uploadImageWithLogoOverlay,
   deleteImage

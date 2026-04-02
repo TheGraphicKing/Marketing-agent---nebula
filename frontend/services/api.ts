@@ -121,6 +121,103 @@ async function apiCall<T>(
   }
 }
 
+async function downloadBlobFromApi(
+  endpoint: string,
+  fileName: string,
+  requiresAuth: boolean = false
+): Promise<{ success: boolean; fileName: string; bytes: number }> {
+  const headers: HeadersInit = {};
+
+  if (requiresAuth) {
+    const token = getToken();
+    if (token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    let message = 'Failed to download video';
+
+    try {
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        message = data?.error || data?.message || message;
+      } else {
+        const text = await response.text();
+        if (text) message = text;
+      }
+    } catch (_) {}
+
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  if (!blob.size) {
+    throw new Error('Downloaded video file is empty');
+  }
+
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+
+  return {
+    success: true,
+    fileName,
+    bytes: blob.size
+  };
+}
+
+function extractGeneratedInstagramVideoUrl(payload: any): string | null {
+  return payload?.generatedInstagramVideoUrl ||
+    payload?.result?.instagram?.instagramFix?.videoDebug?.preparedUrl ||
+    payload?.result?.instagram?.instagramFix?.mediaUrl ||
+    payload?.result?.instagramFix?.videoDebug?.preparedUrl ||
+    payload?.result?.instagramFix?.mediaUrl ||
+    null;
+}
+
+async function autoDownloadGeneratedInstagramVideo(
+  videoUrl: string,
+  fileName: string = 'instagram-video.mp4'
+): Promise<{ success: boolean; fileName: string; bytes: number }> {
+  if (!videoUrl || typeof videoUrl !== 'string') {
+    throw new Error('Generated video URL is missing');
+  }
+
+  console.log('[Video Download] Starting Instagram video download:', videoUrl);
+
+  const result = await downloadBlobFromApi(
+    `/content/download-video?url=${encodeURIComponent(videoUrl)}&fileName=${encodeURIComponent(fileName)}`,
+    fileName,
+    true
+  );
+
+  console.log('[Video Download] Video downloaded successfully');
+  window.dispatchEvent(new CustomEvent('video-download-success', {
+    detail: {
+      videoUrl,
+      fileName,
+      bytes: result.bytes,
+      message: 'Video downloaded successfully'
+    }
+  }));
+
+  return result;
+}
+
 // ============================================
 // MOCK DATA FOR NON-AUTH FEATURES
 // ============================================
@@ -2042,7 +2139,12 @@ export const apiService = {
       { method: 'POST', body: JSON.stringify({ platforms, scheduledFor }) },
       true
     );
+
     return response;
+  },
+
+  downloadGeneratedVideo: async (videoUrl: string, fileName: string = 'instagram-video.mp4'): Promise<{ success: boolean; fileName: string; bytes: number }> => {
+    return autoDownloadGeneratedInstagramVideo(videoUrl, fileName);
   },
 
   // Get real analytics for a campaign

@@ -6,6 +6,10 @@ const { uploadBase64Image } = require('../services/imageUploader');
 const { deductCredits } = require('../middleware/trialGuard');
 const { ensureCreditCycle } = require('../middleware/creditGuard');
 const { composeImageToVideoWithAudio } = require('../services/mediaComposer');
+const {
+  downloadAndInspectVideoFromUrl,
+  streamRemoteVideoAsDownload
+} = require('../services/videoDownload');
 const User = require('../models/User');
 
 /**
@@ -196,6 +200,85 @@ router.post('/image-audio-to-video', protect, async (req, res) => {
       error: error.message || 'Failed to compose video',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
+  }
+});
+
+/**
+ * @route   POST /api/content/download-video
+ * @desc    Download a generated Cloudinary MP4 to the backend downloads folder and inspect it
+ * @access  Private
+ */
+router.post('/download-video', protect, async (req, res) => {
+  try {
+    const { videoUrl, fileName, inspect = true } = req.body;
+
+    if (!videoUrl || typeof videoUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'Valid videoUrl is required' });
+    }
+
+    console.log('[VIDEO DOWNLOAD] Saving generated video locally...');
+    console.log(`   - URL: ${videoUrl.substring(0, 120)}${videoUrl.length > 120 ? '...' : ''}`);
+    console.log(`   - Requested file name: ${fileName || '(auto)'}`);
+
+    const result = await downloadAndInspectVideoFromUrl(videoUrl, {
+      fileName,
+      inspect: inspect !== false
+    });
+
+    console.log('[VIDEO DOWNLOAD] Saved successfully');
+    console.log(`   - Local path: ${result.filePath}`);
+    console.log(`   - Size: ${(result.bytes / 1024 / 1024).toFixed(2)} MB`);
+    if (result.inspection?.summary) {
+      console.log(`   - Audio present: ${result.inspection.summary.hasAudio}`);
+      console.log(`   - Duration: ${result.inspection.summary.durationSeconds || 'unknown'}s`);
+      console.log(`   - Resolution: ${result.inspection.summary.resolution || 'unknown'}`);
+    }
+
+    return res.json({
+      success: true,
+      download: {
+        filePath: result.filePath,
+        fileName: result.fileName,
+        bytes: result.bytes,
+        contentType: result.contentType
+      },
+      inspection: result.inspection
+    });
+  } catch (error) {
+    console.error('[VIDEO DOWNLOAD] Failed:', error.message);
+    return res.status(400).json({
+      success: false,
+      error: error.message || 'Failed to download video'
+    });
+  }
+});
+
+/**
+ * @route   GET /api/content/download-video
+ * @desc    Proxy a generated Cloudinary MP4 as a browser download
+ * @access  Private
+ */
+router.get('/download-video', protect, async (req, res) => {
+  try {
+    const { url: videoUrl, fileName } = req.query;
+
+    if (!videoUrl || typeof videoUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'Query parameter "url" is required' });
+    }
+
+    console.log('[VIDEO DOWNLOAD] Streaming video to browser download...');
+    console.log(`   - URL: ${videoUrl.substring(0, 120)}${videoUrl.length > 120 ? '...' : ''}`);
+
+    await streamRemoteVideoAsDownload(videoUrl, res, { fileName });
+  } catch (error) {
+    console.error('[VIDEO DOWNLOAD] Browser download failed:', error.message);
+    if (!res.headersSent) {
+      return res.status(400).json({
+        success: false,
+        error: error.message || 'Failed to stream video download'
+      });
+    }
+    res.end();
   }
 });
 

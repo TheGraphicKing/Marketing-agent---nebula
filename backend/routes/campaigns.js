@@ -19,6 +19,19 @@ const {
 } = require('../services/instagram-fix');
 const { URL } = require('url');
 
+function isMongoTimeoutOrSelectionError(err) {
+  const name = String(err?.name || '');
+  const msg = String(err?.message || '');
+  const blob = `${name} ${msg}`.toLowerCase();
+  return (
+    blob.includes('mongoserverselectionerror') ||
+    blob.includes('mongonetworktimeouterror') ||
+    blob.includes('timed out') ||
+    blob.includes('ec onnreset') || // sometimes seen as ECONNRESET in logs
+    blob.includes('econnreset')
+  );
+}
+
 async function validateMediaUrl(mediaUrl) {
   if (!mediaUrl || typeof mediaUrl !== 'string') return { valid: false, reason: 'No media URL provided' };
   if (!/^https?:\/\//i.test(mediaUrl)) return { valid: false, reason: 'Media URL is not HTTP/HTTPS: ' + mediaUrl };
@@ -100,6 +113,70 @@ function sanitizeHashtags(rawHashtags = []) {
   return Array.from(new Set(sanitized)).slice(0, 25);
 }
 
+async function deleteScheduledAyrsharePostBeforeReschedule(postId, { profileKey, logger = console } = {}) {
+  if (!postId || typeof postId !== 'string') {
+    logger.warn('[Ayrshare Reschedule] Missing or invalid post ID. Skipping delete.');
+    return {
+      success: false,
+      skipped: true,
+      canScheduleReplacement: true,
+      reason: 'missing_post_id'
+    };
+  }
+
+  logger.log(`[Ayrshare Reschedule] Checking existing post before delete: ${postId}`);
+
+  let statusResult = null;
+  try {
+    statusResult = await getPostStatus(postId, { profileKey });
+    logger.log(`[Ayrshare Reschedule] Status response for ${postId}: ${JSON.stringify(statusResult?.data || {})}`);
+  } catch (error) {
+    logger.warn(`[Ayrshare Reschedule] Failed to fetch status for ${postId}: ${error.message || error}`);
+  }
+
+  const ayrshareStatus = String(
+    statusResult?.data?.status ||
+    statusResult?.data?.posts?.[0]?.status ||
+    ''
+  ).toLowerCase();
+
+  if (['success', 'posted', 'published'].includes(ayrshareStatus)) {
+    logger.log(`[Ayrshare Reschedule] Post ${postId} is already published. Skipping delete.`);
+    return {
+      success: true,
+      skipped: true,
+      canScheduleReplacement: true,
+      status: ayrshareStatus,
+      reason: 'already_published'
+    };
+  }
+
+  logger.log(`[Ayrshare Reschedule] Deleting scheduled post ${postId} before rescheduling.`);
+  const deleteResult = await deleteAyrsharePost(postId, { profileKey });
+  logger.log(`[Ayrshare Reschedule] Delete result for ${postId}: ${JSON.stringify(deleteResult?.data || deleteResult || {})}`);
+
+  if (deleteResult.success) {
+    logger.log(`[Ayrshare Reschedule] Successfully deleted scheduled post ${postId}.`);
+    return {
+      success: true,
+      deleted: true,
+      canScheduleReplacement: true,
+      status: ayrshareStatus || 'scheduled',
+      data: deleteResult.data || null
+    };
+  }
+
+  logger.warn(`[Ayrshare Reschedule] Delete failed for ${postId}: ${deleteResult.error || 'Unknown delete error'}`);
+  return {
+    success: false,
+    deleted: false,
+    canScheduleReplacement: ['success', 'posted', 'published'].includes(ayrshareStatus),
+    status: ayrshareStatus || 'unknown',
+    error: deleteResult.error || 'Failed to delete old scheduled post',
+    data: deleteResult.data || null
+  };
+}
+
 /** Generate validated social posts JSON for publishing. */
 async function generateSocialMediaPosts(input) {
   const {
@@ -132,6 +209,11 @@ async function generateSocialMediaPosts(input) {
 
   const hasInstagram = normalizedPlatforms.includes('instagram');
   const isInstagramAudio = hasInstagram && audioUrl && typeof audioUrl === 'string' && audioUrl.trim().length > 0;
+  // IMPORTANT: `validateMediaUrl` can successfully validate media even when the remote
+  // server returns a JSON `content-type` header for HEAD/blocked requests.
+  // Use `mediaKind` (derived from extension + minimal type detection) to avoid
+  // misclassifying a video as "image" (or vice-versa) when `content-type` is wrong.
+  const derivedMediaType = mediaValidation?.mediaKind === 'video' ? 'video' : 'image';
 
   // Instagram post
   if (hasInstagram) {
@@ -141,7 +223,7 @@ async function generateSocialMediaPosts(input) {
       hashtags: hashtagList,
       imageDescription: imageDescription || 'Image for Instagram campaign',
       scheduleDate: normalizedSchedule,
-      mediaType: isInstagramAudio ? 'video' : mediaValidation.contentType?.startsWith('video/') ? 'video' : 'image',
+      mediaType: isInstagramAudio ? 'video' : derivedMediaType,
       mediaUrl: isInstagramAudio ? mediaUrl : mediaUrl,
       audioUrl: isInstagramAudio ? audioUrl : null
     };
@@ -157,7 +239,7 @@ async function generateSocialMediaPosts(input) {
       hashtags: hashtagList,
       imageDescription: imageDescription || 'Media for social campaign',
       scheduleDate: normalizedSchedule,
-      mediaType: mediaValidation.contentType?.startsWith('video/') ? 'video' : 'image',
+      mediaType: derivedMediaType,
       mediaUrl,
       audioUrl: null
     };
@@ -175,7 +257,7 @@ async function generateSocialMediaPosts(input) {
 // Import image uploader for converting base64 to hosted URLs
 const { ensurePublicUrl, ensurePublicAudioUrl, uploadBase64Audio, isBase64DataUrl } = require('../services/imageUploader');
 // Media composer (image -> video + audio) for Instagram audio posts
-const { composeImageToVideoWithAudio } = require('../services/mediaComposer');
+const { composeImageToVideoWithAudio, validateVideoForInstagramPosting } = require('../services/mediaComposer');
 const {
   normalizePlatforms: normalizePlatformsList,
   normalizeScheduleDate: normalizeScheduleDateDetails,
@@ -191,6 +273,7 @@ const BrandAsset = require('../models/BrandAsset');
 
 // Import logo detection from Gemini
 const { detectLogoInImage } = require('../services/geminiAI');
+const { publishCampaignToSocial } = require('../services/campaignPublisher');
 
 /**
  * GET /api/campaigns
@@ -296,6 +379,48 @@ router.get('/', protect, async (req, res) => {
               // If Instagram reports a transient error and Ayrshare allows retry, try once instead of reverting to Draft.
               if (canRetry && isInstagramOnly && campaign.socialPostId && retryCount < maxRetries) {
                 try {
+                  const campaignLooksLikeInstagramVideo = Boolean(
+                    campaign?.creative?.instagramAudio?.url ||
+                    campaign?.creative?.videoUrl ||
+                    ['video', 'reel'].includes(String(campaign?.creative?.type || '').toLowerCase()) ||
+                    (Array.isArray(campaign?.creative?.imageUrls) &&
+                      campaign.creative.imageUrls.some((url) => /\.(mp4|mov|m4v|webm)(\?|#|$)/i.test(String(url || ''))))
+                  );
+
+                  if (campaignLooksLikeInstagramVideo) {
+                    console.log(`[Instagram Retry] Rebuilding failed scheduled Instagram video payload for campaign ${campaign._id}.`);
+                    const freshRetryRes = await publishCampaignToSocial(campaign);
+                    const pendingId = freshRetryRes?.postId || campaign.socialPostId;
+                    if (freshRetryRes?.success) {
+                      const nextRetryCount = retryCount + 1;
+                      await Campaign.findByIdAndUpdate(campaign._id, {
+                        $set: {
+                          status: 'posted',
+                          publishedAt: now,
+                          socialPostId: pendingId,
+                          socialPostIds: { instagram: pendingId },
+                          ayrshareStatus: 'success',
+                          lastPublishError: null,
+                          instagramAccountKey: freshRetryRes?.instagramFix?.accountKey || campaign.instagramAccountKey || null,
+                          publishResult: {
+                            verifiedError: postData || null,
+                            retry: freshRetryRes?.data || freshRetryRes,
+                            retryRequestedAt: now.toISOString(),
+                            retryCount: nextRetryCount
+                          }
+                        }
+                      });
+
+                      campaign.status = 'posted';
+                      campaign.publishedAt = now;
+                      campaign.socialPostId = pendingId;
+                      campaign.ayrshareStatus = 'success';
+                      campaign.lastPublishError = null;
+                      console.log(`🔁 Rebuilt and published Instagram video payload for ${campaign.name} (${pendingId})`);
+                      continue;
+                    }
+                  }
+
                   const retryRes = await retryAyrsharePost(campaign.socialPostId, { profileKey });
                   const pendingId = retryRes?.data?.id || campaign.socialPostId;
                   if (retryRes?.success) {
@@ -1068,6 +1193,8 @@ router.post('/:id/publish', protect, async (req, res) => {
       new Set([...(existingSocialPostIdsFromMap || []), campaign.socialPostId].filter((v) => typeof v === 'string' && v))
     );
     const preserveExistingSchedule = campaign.status === 'scheduled' && (!!campaign.scheduledFor || existingAyrsharePostIds.length > 0);
+    const preDeletedAyrsharePostIds = new Set();
+    const rescheduleDeleteWarnings = [];
 
     const persistPublishFailure = async (message, publishResult = null) => {
       try {
@@ -1103,6 +1230,52 @@ router.post('/:id/publish', protect, async (req, res) => {
       }
     };
 
+    if (isScheduled && existingAyrsharePostIds.length > 0) {
+      console.log(`[Ayrshare Reschedule] Preparing to replace ${existingAyrsharePostIds.length} existing post(s) for campaign ${campaign._id}.`);
+
+      for (const postId of existingAyrsharePostIds) {
+        try {
+          const deleteCheck = await deleteScheduledAyrsharePostBeforeReschedule(postId, { profileKey, logger: console });
+
+          if (deleteCheck.deleted) {
+            preDeletedAyrsharePostIds.add(postId);
+            continue;
+          }
+
+          if (!deleteCheck.canScheduleReplacement) {
+            const message = deleteCheck.error || 'Could not safely delete the previous scheduled post before rescheduling.';
+            rescheduleDeleteWarnings.push({ postId, message, status: deleteCheck.status || 'unknown' });
+
+            return res.status(409).json({
+              success: false,
+              message: 'Could not safely replace the old scheduled post. The existing scheduled post was not deleted, so the new schedule was not created to avoid duplicates.',
+              code: 'RESCHEDULE_DELETE_FAILED',
+              warnings: rescheduleDeleteWarnings
+            });
+          }
+
+          if (!deleteCheck.success) {
+            rescheduleDeleteWarnings.push({
+              postId,
+              message: deleteCheck.error || 'Delete skipped with warning',
+              status: deleteCheck.status || 'unknown'
+            });
+          }
+        } catch (e) {
+          const message = e?.message || String(e);
+          console.warn(`[Ayrshare Reschedule] Unexpected delete error for ${postId}:`, message);
+          rescheduleDeleteWarnings.push({ postId, message, status: 'unknown' });
+
+          return res.status(409).json({
+            success: false,
+            message: 'Reschedule was stopped because the old scheduled post could not be safely deleted.',
+            code: 'RESCHEDULE_DELETE_FAILED',
+            warnings: rescheduleDeleteWarnings
+          });
+        }
+      }
+    }
+
     // NOTE: We no longer delete existing scheduled Ayrshare posts *before* a new publish succeeds.
     // Deleting first can cause the campaign to lose its original schedule if the new publish fails.
     // Old scheduled posts (if any) are cleaned up after a successful publish.
@@ -1134,7 +1307,23 @@ router.post('/:id/publish', protect, async (req, res) => {
     // Build the post content
     let postContent = campaign.creative?.textContent || campaign.creative?.caption || campaign.content || campaign.name;
     const mediaUrls = Array.isArray(campaign.creative?.imageUrls) ? campaign.creative.imageUrls : [];
-    let mediaUrl = pickPrimaryMediaUrl(mediaUrls) || pickPrimaryMediaUrl(campaign.creative?.mediaUrl) || pickPrimaryMediaUrl(campaign.creative?.videoUrl);
+    const normalizedPlatformsForDecision = Array.isArray(platforms)
+      ? platforms.map((p) => String(p || '').toLowerCase())
+      : [];
+    const isInstagramForDecision = normalizedPlatformsForDecision.includes('instagram');
+    const hasAudioForDecision =
+      typeof campaign?.creative?.instagramAudio?.url === 'string' &&
+      campaign.creative.instagramAudio.url.trim().length > 0;
+
+    console.log('Decision:', {
+      hasAudio: hasAudioForDecision,
+      isInstagram: isInstagramForDecision,
+      mode: (isInstagramForDecision && hasAudioForDecision) ? 'REEL' : 'IMAGE'
+    });
+
+    // IMPORTANT: Only treat this as a Reel/video when Instagram audio is present.
+    // When there is NO audio, we always post the IMAGE to all platforms (even if Instagram-only).
+    let mediaUrl = pickPrimaryMediaUrl(mediaUrls) || pickPrimaryMediaUrl(campaign.creative?.mediaUrl);
     
     // Debug logging for template poster publish
     console.log('📋 Campaign publish debug:');
@@ -1176,16 +1365,33 @@ router.post('/:id/publish', protect, async (req, res) => {
     console.log('Hashtags count:', limitedHashtags.length, '(limited from', allHashtags.length, ')');
     console.log('Media URL:', mediaUrl ? 'yes' : 'no');
     
+    const instagramAudioUrlForStrict = campaign.creative?.instagramAudio?.url || null;
+    const hasValidInstagramAudioForStrict =
+      typeof instagramAudioUrlForStrict === 'string' &&
+      instagramAudioUrlForStrict.trim().length > 0;
+    const hasInstagramInPlatformsForStrict = platforms.some(p => String(p).toLowerCase() === 'instagram');
+    const strictMediaUpload = hasInstagramInPlatformsForStrict && hasValidInstagramAudioForStrict;
+
     // If the image is a base64 data URL, upload to Cloudinary first
     if (mediaUrl && isBase64DataUrl(mediaUrl)) {
       console.log('📤 Uploading base64 image to Cloudinary...');
-      const publicUrl = await ensurePublicUrl(mediaUrl);
-      if (publicUrl) {
-        console.log('✅ Image uploaded, public URL:', publicUrl);
-        mediaUrl = publicUrl;
-      } else {
-        console.warn('⚠️ Failed to upload image, posting without media');
-        mediaUrl = null;
+      try {
+        const publicUrl = await ensurePublicUrl(mediaUrl, { strict: strictMediaUpload });
+        if (publicUrl) {
+          console.log('✅ Image uploaded, public URL:', publicUrl);
+          mediaUrl = publicUrl;
+        } else if (!strictMediaUpload) {
+          console.warn('⚠️ Failed to upload image, posting without media');
+          mediaUrl = null;
+        }
+      } catch (err) {
+        if (strictMediaUpload) {
+          const msg = `STOP: Cloudinary image upload failed (required for Instagram Reel). ${err?.message || String(err)}`;
+          console.error(msg);
+          await persistPublishFailure(msg);
+          return res.status(400).json({ success: false, message: msg });
+        }
+        throw err;
       }
     }
 
@@ -1280,6 +1486,12 @@ router.post('/:id/publish', protect, async (req, res) => {
 
     // If Instagram audio is present, MUST compose a video. No fallback to image allowed.
     let instagramComposedVideoUrl = null;
+    let composed = null; // keep scope available for post-stage logging/validation
+    // Snapshot the composed result immediately after ffmpeg finishes.
+    // Some later code paths may accidentally reassign `composed`, but we always
+    // want to post based on the actual ffmpeg output we validated earlier.
+    let composedSnapshot = null;
+
     if (shouldAttachInstagramAudio && mediaValidation?.mediaKind && mediaValidation.mediaKind !== 'image') {
       const msg = `Instagram audio requires an image base media. Received ${mediaValidation.mediaKind}.`;
       console.error(msg);
@@ -1313,7 +1525,16 @@ router.post('/:id/publish', protect, async (req, res) => {
       }
 
       console.log('🎬 [AUDIO FLOW] Composing video from image + audio using ffmpeg...');
-      const composed = await composeImageToVideoWithAudio({ imageUrl: mediaUrl, audioUrl: audioPublicUrl, requestedDurationSeconds });
+      composed = await composeImageToVideoWithAudio({ imageUrl: mediaUrl, audioUrl: audioPublicUrl, requestedDurationSeconds });
+      console.log('[DEBUG] Composed result assigned:', { success: composed?.success, hasVideoUrl: !!composed?.videoUrl, error: composed?.error });
+      
+      // Validate composition result immediately
+      if (!composed || typeof composed !== 'object') {
+        const msg = '🚫 CRITICAL: composeImageToVideoWithAudio returned null or invalid object';
+        console.error(msg);
+        await persistPublishFailure(msg);
+        return res.status(500).json({ success: false, message: msg });
+      }
       
       if (!composed.success || !composed.videoUrl) {
         // Video composition or validation failed
@@ -1327,25 +1548,26 @@ router.post('/:id/publish', protect, async (req, res) => {
         // Include validation details in failure response
         await persistPublishFailure(msg, {
           composer: composed,
-          validation: composed.validation || null,
-          metadata: composed.metadata || null
+          validation: composed?.validation || null,
+          metadata: composed?.metadata || null
         });
         
         return res.status(500).json({
           success: false,
           message: msg,
           videoValidationFailed: true,
-          validationDetails: composed.validation || null,
-          videoMetadata: composed.metadata || null
+          validationDetails: composed?.validation || null,
+          videoMetadata: composed?.metadata || null
         });
       }
 
-      instagramComposedVideoUrl = composed.videoUrl;
+      instagramComposedVideoUrl = composed?.videoUrl;
+      composedSnapshot = composed;
       console.log(`✅ [AUDIO FLOW] Video successfully composed!`);
-      console.log(`   - Composed video URL: ${instagramComposedVideoUrl.substring(0, 80)}...`);
-      console.log(`   - Duration: ${composed.duration || 'unknown'}`);
-      console.log(`   - Size: ${composed.bytes || 'unknown'} bytes`);
-      if (composed.metadata) {
+      console.log(`   - Composed video URL: ${instagramComposedVideoUrl?.substring(0, 80)}...`);
+      console.log(`   - Duration: ${composed?.duration || 'unknown'}`);
+      console.log(`   - Size: ${composed?.bytes || 'unknown'} bytes`);
+      if (composed?.metadata) {
         console.log('\n✅ [VIDEO VALIDATION] Video metadata confirm:');
         console.log(`   - Format: ${composed.metadata.format}`);
         console.log(`   - Video codec: ${composed.metadata.video?.codec || 'unknown'}`);
@@ -1457,6 +1679,62 @@ router.post('/:id/publish', protect, async (req, res) => {
       console.log(`   - Media type flag: isVideo=true`);
       console.log(`   - Platforms: ['instagram'] (audio excluded from other platforms)`);
       
+      // Debug logging for Instagram video posting
+      console.log('\n📹 [INSTAGRAM VIDEO DEBUG] Final video details sent to Ayrshare:');
+      console.log(`   - Video URL: ${instagramComposedVideoUrl}`);
+      console.log(`   - Post type: reel`);
+      console.log(`   - Is video: true`);
+      console.log(`   - Media type: video`);
+      if (composedSnapshot?.metadata) {
+        console.log(`   - Encoding details:`);
+        console.log(`     * Video codec: ${composedSnapshot.metadata.video?.codec || 'unknown'} (${composedSnapshot.metadata.video?.profile || 'unknown'})`);
+        console.log(`     * Resolution: ${composedSnapshot.metadata.video?.resolution || 'unknown'}`);
+        console.log(`     * Frame rate: ${composedSnapshot.metadata.video?.fps || 'unknown'} fps`);
+        console.log(`     * Video bitrate: ${composedSnapshot.metadata.video?.bitrateKbps || 'unknown'} kbps`);
+        console.log(`     * Pixel format: ${composedSnapshot.metadata.video?.pixelFormat || 'unknown'}`);
+        console.log(`     * Audio codec: ${composedSnapshot.metadata.audio?.codec || 'unknown'}`);
+        console.log(`     * Audio sample rate: ${composedSnapshot.metadata.audio?.sampleRate || 'unknown'} Hz`);
+        console.log(`     * Audio bitrate: ${composedSnapshot.metadata.audio?.bitrateKbps || 'unknown'} kbps`);
+        console.log(`     * Duration: ${composedSnapshot.metadata.duration || 'unknown'}s`);
+      }
+      console.log(`   - Cloudinary transformations applied: NONE (raw video URL only)`);
+      console.log(`   - Adding 5-10 second delay before posting...`);
+      
+      // Add small delay before posting as recommended
+      await new Promise(resolve => setTimeout(resolve, 8000)); // 8 seconds
+      
+      // Final validation before posting
+      console.log('\n🔍 [INSTAGRAM VIDEO VALIDATION] Pre-posting checks...');
+      console.log('Final composed snapshot object:', JSON.stringify(composedSnapshot, null, 2));
+
+      if (!composedSnapshot) {
+        const msg = '🚫 Composed video snapshot is null - composition failed';
+        console.error(msg);
+        await persistPublishFailure(msg);
+        return res.status(500).json({ success: false, message: msg });
+      }
+
+      if (!composedSnapshot.metadata) {
+        const msg = '🚫 Video metadata is missing from composed object';
+        console.error(msg);
+        await persistPublishFailure(msg, { composed: composedSnapshot });
+        return res.status(500).json({ success: false, message: msg });
+      }
+
+      const prePostValidation = validateVideoForInstagramPosting(composedSnapshot.metadata);
+      if (!prePostValidation.valid) {
+        const msg = `🚫 Pre-posting validation failed: ${prePostValidation.errors.join(' | ')}`;
+        console.error(msg);
+        await persistPublishFailure(msg);
+        return res.status(400).json({ success: false, message: msg });
+      }
+      
+      console.log('✅ [INSTAGRAM VIDEO VALIDATION] All pre-posting checks passed');
+      console.log(`   - Duration: ${composedSnapshot?.metadata?.durationSeconds}s ✓`);
+      console.log(`   - Has audio: ✓`);
+      console.log(`   - Video codec: ${composedSnapshot?.metadata?.video?.codec || 'unknown'} ✓`);
+      console.log(`   - Audio codec: ${composedSnapshot?.metadata?.audio?.codec || 'unknown'} ✓`);
+      
       // Post to Instagram with composed video + audio
       instagramResult = await publishSocialPostWithSafetyWrapper({
         user,
@@ -1468,6 +1746,7 @@ router.post('/:id/publish', protect, async (req, res) => {
           shortenLinks: true,
           profileKey: profileKey,
           scheduleDate: scheduleDateIso || scheduledFor,
+          type: 'reel',
           isVideo: true,  // Signal to Ayrshare that this is a video, not an image
           mediaType: 'video',
           instagramVideoPrepared: true
@@ -1644,7 +1923,7 @@ router.post('/:id/publish', protect, async (req, res) => {
           [extractedPostId, ...Object.values(socialPostIds || {})]
             .filter((v) => typeof v === 'string' && v)
         );
-        const toDelete = existingAyrsharePostIds.filter((id) => !newIds.has(id));
+        const toDelete = existingAyrsharePostIds.filter((id) => !newIds.has(id) && !preDeletedAyrsharePostIds.has(id));
 
         if (toDelete.length > 0) {
           void (async () => {
@@ -1673,6 +1952,8 @@ router.post('/:id/publish', protect, async (req, res) => {
         platforms,
         scheduled: isScheduled,
         scheduledFor: effectiveScheduleDate,
+        generatedInstagramVideoUrl: instagramComposedVideoUrl || instagramResult?.instagramFix?.videoDebug?.preparedUrl || allResults?.instagramFix?.videoDebug?.preparedUrl || null,
+        warnings: rescheduleDeleteWarnings,
         result: allResults,
         normalized: {
           scheduleAdjusted: requestedSchedule.adjusted || Boolean(effectiveScheduleDate && effectiveScheduleDate !== (scheduleDateIso || scheduledFor || null)),
@@ -1731,18 +2012,82 @@ router.post('/:id/publish', protect, async (req, res) => {
                 platforms,
                 scheduled: !!isScheduled,
                 scheduledFor: isScheduled ? (scheduleDateIso || scheduledFor || null) : null,
+                generatedInstagramVideoUrl: instagramComposedVideoUrl || instagramResult?.instagramFix?.videoDebug?.preparedUrl || allResults?.instagramFix?.videoDebug?.preparedUrl || null,
                 result: { initial: allResults || null, verified: statusCheck?.data || null }
               });
             }
           } catch (_) {}
 
           try {
+            const retryScheduledFor = new Date(Date.now() + 5 * 60 * 1000);
+            const retryScheduledForIso = retryScheduledFor.toISOString();
+            const retryMediaUrl = instagramComposedVideoUrl || mediaUrl || null;
+            const retryMediaLooksLikeVideo = Boolean(
+              retryMediaUrl &&
+              /\.(mp4|mov|m4v|webm)(\?|#|$)/i.test(String(retryMediaUrl))
+            );
+
+            if (retryMediaLooksLikeVideo) {
+              console.log('[Instagram Retry] Rebuilding a fresh Instagram Reel payload instead of using Ayrshare post retry.');
+              const freshRetryResult = await publishSocialPostWithSafetyWrapper({
+                user,
+                campaign,
+                platforms: ['instagram'],
+                content: fullPost,
+                options: {
+                  mediaUrls: retryMediaUrl ? [retryMediaUrl] : undefined,
+                  shortenLinks: true,
+                  profileKey,
+                  scheduleDate: retryScheduledForIso,
+                  type: 'reel',
+                  isVideo: true,
+                  mediaType: 'video',
+                  instagramVideoPrepared: Boolean(instagramComposedVideoUrl)
+                },
+                context: 'campaign_publish_instagram_retry'
+              });
+
+              const pendingId = freshRetryResult?.data?.posts?.[0]?.id ||
+                freshRetryResult?.data?.id ||
+                freshRetryResult?.data?.postIds?.[0] ||
+                failureId;
+
+              if (freshRetryResult?.success) {
+                const retryRequestedAt = new Date().toISOString();
+                await Campaign.findByIdAndUpdate(campaign._id, {
+                  $set: {
+                    status: 'scheduled',
+                    scheduledFor: retryScheduledFor,
+                    socialPostId: pendingId,
+                    socialPostIds: { instagram: pendingId },
+                    publishResult: { initial: allResults || null, retry: freshRetryResult?.data || freshRetryResult, retryRequestedAt },
+                    lastPublishError: null,
+                    platforms,
+                    ayrshareStatus: 'pending',
+                    instagramAccountKey: freshRetryResult?.instagramFix?.accountKey || instagramResult?.instagramFix?.accountKey || allResults?.instagramFix?.accountKey || campaign.instagramAccountKey || null
+                  }
+                });
+
+                return res.json({
+                  success: true,
+                  message: isScheduled
+                    ? 'Instagram had a temporary issue. We rebuilt the Reel payload and rescheduled it.'
+                    : 'Instagram had a temporary issue. We rebuilt the Reel payload and queued a retry.',
+                  postId: pendingId,
+                  platforms,
+                  scheduled: true,
+                  scheduledFor: retryScheduledForIso,
+                  generatedInstagramVideoUrl: retryMediaUrl,
+                  result: { initial: allResults || null, retry: freshRetryResult?.data || freshRetryResult, retryRequestedAt }
+                });
+              }
+            }
+
             const retryRes = await retryAyrsharePost(failureId, { profileKey });
             const pendingId = retryRes?.data?.id || failureId;
 
             if (retryRes?.success) {
               const retryRequestedAt = new Date().toISOString();
-              const retryScheduledFor = new Date(Date.now() + 5 * 60 * 1000);
               await Campaign.findByIdAndUpdate(campaign._id, {
                 $set: {
                   status: 'scheduled',
@@ -1766,6 +2111,7 @@ router.post('/:id/publish', protect, async (req, res) => {
                 platforms,
                 scheduled: true,
                 scheduledFor: retryScheduledFor.toISOString(),
+                generatedInstagramVideoUrl: retryMediaUrl,
                 result: { initial: allResults || null, retry: retryRes?.data || retryRes, retryRequestedAt }
               });
             }
@@ -1842,10 +2188,18 @@ router.post('/:id/publish', protect, async (req, res) => {
       }
     } catch (_) {}
 
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to publish campaign', 
-      error: error.message 
+    if (isMongoTimeoutOrSelectionError(error)) {
+      return res.status(503).json({
+        success: false,
+        message: 'MongoDB connection timed out. Please try again in a few seconds.',
+        error: error.message || 'MongoDB timeout'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to publish campaign',
+      error: error.message
     });
   }
 });

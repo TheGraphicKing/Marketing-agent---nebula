@@ -332,8 +332,11 @@ const startServer = async () => {
   try {
     console.log('Connecting to MongoDB...');
     await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+      // Atlas/network hiccups can cause fast failures right in the middle
+      // of scheduling/publishing. Give Mongoose more time to pick a server.
+      serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 30000,
     });
     console.log('✅ MongoDB connected successfully');
     mongoConnected = true;

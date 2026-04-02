@@ -112,6 +112,70 @@ async function inspectInstagramMedia(options = {}) {
   };
 }
 
+function createInstagramVideoPayloadError(message, details = {}) {
+  const error = new Error(message);
+  error.code = 'INSTAGRAM_VIDEO_REQUIRES_REEL';
+  error.category = 'validation';
+  error.details = details;
+  return error;
+}
+
+async function enforceInstagramVideoPublishingRules({ platforms, options = {}, logger = console } = {}) {
+  const normalizedPlatforms = normalizePlatforms(platforms);
+  const includesInstagram = normalizedPlatforms.includes('instagram');
+  const enforcedOptions = { ...options };
+
+  if (!includesInstagram) {
+    return {
+      options: enforcedOptions,
+      mediaInfo: null,
+      postKind: 'non_instagram'
+    };
+  }
+
+  const mediaInfo = await inspectInstagramMedia(enforcedOptions);
+  const declaredType = String(enforcedOptions.type || '').trim().toLowerCase();
+  const hasVideo = Boolean(mediaInfo?.hasVideo);
+
+  if (hasVideo) {
+    if (declaredType && declaredType !== 'reel') {
+      throw createInstagramVideoPayloadError(
+        `Instagram video posts must be published as Reels. Received type "${enforcedOptions.type}".`,
+        {
+          declaredType: enforcedOptions.type,
+          mediaUrl: mediaInfo?.mediaUrl || null
+        }
+      );
+    }
+
+    enforcedOptions.type = 'reel';
+    enforcedOptions.isVideo = true;
+    enforcedOptions.mediaType = 'video';
+  } else {
+    if (declaredType === 'reel') {
+      logger.warn('[Instagram Fix] Removing reel type because the payload does not contain video media.');
+    }
+
+    delete enforcedOptions.type;
+    delete enforcedOptions.isVideo;
+    delete enforcedOptions.mediaType;
+  }
+
+  logger.log('[Instagram Fix] Final Instagram payload mode:', JSON.stringify({
+    postKind: hasVideo ? 'reel' : 'feed',
+    type: enforcedOptions.type || null,
+    mediaUrls: Array.isArray(enforcedOptions.mediaUrls) ? enforcedOptions.mediaUrls : [],
+    isVideo: Boolean(enforcedOptions.isVideo),
+    mediaType: enforcedOptions.mediaType || null
+  }));
+
+  return {
+    options: enforcedOptions,
+    mediaInfo,
+    postKind: hasVideo ? 'reel' : 'feed'
+  };
+}
+
 function getInstagramDisplayInfo(user = {}) {
   const displayNames = Array.isArray(user?.ayrshare?.displayNames) ? user.ayrshare.displayNames : [];
   return displayNames.find((entry) => String(entry?.platform || '').toLowerCase() === 'instagram') || null;
@@ -561,7 +625,59 @@ async function publishSocialPostWithSafetyWrapper({
         workingOptions.scheduleAdjustment = spaced;
       }
 
-      const mediaInfo = await inspectInstagramMedia(workingOptions);
+      let mediaInfo = null;
+      try {
+        const enforcedPayload = await enforceInstagramVideoPublishingRules({
+          platforms: normalizedPlatforms,
+          options: workingOptions,
+          logger: console
+        });
+        Object.assign(workingOptions, enforcedPayload.options);
+        mediaInfo = enforcedPayload.mediaInfo;
+      } catch (error) {
+        const message = error?.message || 'Instagram video posts must be published as Reels.';
+        await logAttempt({
+          userId: user?._id || null,
+          campaignId: campaign?._id || null,
+          accountKey,
+          profileKey: workingOptions.profileKey || user?.ayrshare?.profileKey || '',
+          platforms: normalizedPlatforms,
+          status: 'blocked',
+          attemptNumber: 0,
+          maxRetries: INSTAGRAM_MAX_RETRIES,
+          scheduledFor: workingOptions.scheduleDate ? new Date(workingOptions.scheduleDate) : null,
+          contentHash,
+          captionLength: normalizedInstagram.captionLength,
+          hashtagCount: normalizedInstagram.hashtagCount,
+          errorCode: error?.code || 'INSTAGRAM_VIDEO_REQUIRES_REEL',
+          errorCategory: error?.category || 'validation',
+          message,
+          requestSummary: {
+            context,
+            mediaUrls: Array.isArray(workingOptions.mediaUrls) ? workingOptions.mediaUrls : [],
+            type: workingOptions.type || null
+          }
+        });
+
+        return {
+          success: false,
+          error: message,
+          code: error?.code || 'INSTAGRAM_VIDEO_REQUIRES_REEL',
+          category: error?.category || 'validation',
+          requiresReconnect: false,
+          rateLimited: false,
+          data: null,
+          instagramFix: {
+            accountKey,
+            adjustedScheduleDate: workingOptions.scheduleDate || null,
+            contentAdjusted: normalizedInstagram.adjusted,
+            hashtagCount: normalizedInstagram.hashtagCount,
+            mediaUrl: Array.isArray(workingOptions.mediaUrls) ? (workingOptions.mediaUrls[0] || null) : null,
+            videoTransformed: false
+          }
+        };
+      }
+
       console.log('[Instagram Fix] Publish media debug:');
       console.log(`   Media URL: ${mediaInfo?.mediaUrl || 'none'}`);
       console.log(`   Video/audio flags: isVideo=${Boolean(workingOptions.isVideo)} mediaType=${workingOptions.mediaType || 'none'}`);
@@ -662,6 +778,7 @@ async function publishSocialPostWithSafetyWrapper({
         workingOptions.mediaUrls = [preparedVideo.videoUrl];
         workingOptions.isVideo = true;
         workingOptions.mediaType = 'video';
+        workingOptions.type = 'reel';
         workingOptions.instagramVideoPrepared = true;
         workingOptions.instagramVideoDebug = {
           originalUrl: mediaInfo.mediaUrl,
@@ -671,6 +788,13 @@ async function publishSocialPostWithSafetyWrapper({
           validation: preparedVideo.validation || null,
           hasAudio: preparedVideo.hasAudio
         };
+
+        const enforcedPreparedPayload = await enforceInstagramVideoPublishingRules({
+          platforms: normalizedPlatforms,
+          options: workingOptions,
+          logger: console
+        });
+        Object.assign(workingOptions, enforcedPreparedPayload.options);
 
         console.log(`[Instagram Fix] Using Instagram-safe video URL: ${preparedVideo.videoUrl}`);
       }
@@ -684,6 +808,16 @@ async function publishSocialPostWithSafetyWrapper({
 
     while (attemptNumber <= maxRetries) {
       attemptNumber += 1;
+      if (includesInstagram) {
+        console.log('[Instagram Fix] Final Ayrshare payload summary:', JSON.stringify({
+          platforms: normalizedPlatforms,
+          type: workingOptions.type || null,
+          mediaUrls: Array.isArray(workingOptions.mediaUrls) ? workingOptions.mediaUrls : [],
+          isVideo: Boolean(workingOptions.isVideo),
+          mediaType: workingOptions.mediaType || null,
+          scheduleDate: workingOptions.scheduleDate || null
+        }, null, 2));
+      }
       const rawResult = await postToSocialMedia(normalizedPlatforms, normalizedContent, workingOptions);
       const classification = includesInstagram ? classifyInstagramPublishFailure(rawResult) : {
         isError: rawResult?.success === false,
@@ -719,7 +853,8 @@ async function publishSocialPostWithSafetyWrapper({
         requestSummary: {
           context,
           mediaUrls: Array.isArray(workingOptions.mediaUrls) ? workingOptions.mediaUrls : mediaUrls,
-          scheduleDate: workingOptions.scheduleDate || null
+          scheduleDate: workingOptions.scheduleDate || null,
+          type: workingOptions.type || null
         },
         responseSummary: rawResult?.data || rawResult || null
       });
@@ -755,6 +890,7 @@ async function publishSocialPostWithSafetyWrapper({
           workingOptions.mediaUrls = [fallbackVideo.videoUrl];
           workingOptions.isVideo = true;
           workingOptions.mediaType = 'video';
+          workingOptions.type = 'reel';
           workingOptions.instagramVideoPrepared = true;
           workingOptions.instagramVideoDebug = {
             originalUrl: originalInstagramVideoUrl,
@@ -815,6 +951,7 @@ module.exports = {
   INSTAGRAM_MAX_RETRIES,
   INSTAGRAM_MIN_DELAY_MINUTES,
   classifyInstagramPublishFailure,
+  enforceInstagramVideoPublishingRules,
   getInstagramAccountHealthReport,
   normalizeInstagramContent,
   publishSocialPostWithSafetyWrapper,
