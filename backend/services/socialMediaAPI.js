@@ -93,45 +93,126 @@ async function postToSocialMedia(platforms, content, options = {}) {
     return { success: false, error: 'API not configured' };
   }
 
+  // Ensure platforms is always an array of lower-case strings
+  platforms = Array.isArray(platforms)
+    ? platforms.map((p) => String(p || '').toLowerCase())
+    : [];
+
+  const payload = {
+    post: content,
+    platforms: platforms,
+    mediaUrls: options.mediaUrls || [],
+    shortenLinks: options.shortenLinks || true,
+    ...(options.scheduleDate ? { scheduleDate: options.scheduleDate } : {}),
+    ...(options.isVideo ? { isVideo: true } : {}),
+    ...(options.mediaType ? { mediaType: options.mediaType } : {}),
+    ...(options.instagramOptions ? { instagramOptions: options.instagramOptions } : {})
+  };
+
   try {
-    // Build headers - include Profile-Key if provided for user-specific accounts
     const headers = {
       'Authorization': `Bearer ${AYRSHARE_API_KEY}`
     };
-    
-    // If profileKey is provided, add it to headers for user-specific posting
+
     if (options.profileKey) {
       headers['Profile-Key'] = options.profileKey;
       console.log('Using Profile-Key for posting:', options.profileKey.substring(0, 20) + '...');
     }
-    
+
+    console.log('📤 [Ayrshare] postToSocialMedia payload:', JSON.stringify(payload, null, 2));
+
+    // Add detailed Instagram debugging
+    if (payload.platforms && payload.platforms.includes('instagram')) {
+      console.log('📸 [INSTAGRAM DEBUG] Instagram post details:');
+      console.log('   - Post content length:', payload.post ? payload.post.length : 0);
+      console.log('   - Media URLs:', payload.mediaUrls);
+      console.log('   - Schedule date:', payload.scheduleDate);
+      console.log('   - Instagram options:', payload.instagramOptions);
+      console.log('   - Is video:', payload.isVideo);
+    }
+
     const response = await makeRequest('https://api.ayrshare.com/api/post', {
       method: 'POST',
       headers: headers,
-      timeout: 120000, // 2 minutes timeout for posts with media
-      body: {
-        post: content,
-        platforms: platforms, // ['instagram', 'twitter', 'facebook', 'linkedin']
-        mediaUrls: options.mediaUrls || [],
-        scheduleDate: options.scheduleDate || null, // ISO date string for scheduling
-        shortenLinks: options.shortenLinks || true
-      }
+      timeout: 120000,
+      body: payload
     });
 
-    console.log('Ayrshare post response:', response.status);
-    console.log('Ayrshare FULL response:', JSON.stringify(response.data, null, 2));
-    
-    // Log full error details if there's an error
-    if (response.data?.errors) {
-      console.log('Ayrshare errors (full):', JSON.stringify(response.data.errors, null, 2));
+    console.log('📥 [Ayrshare] status:', response.status);
+    console.log('📥 [Ayrshare] response data:', JSON.stringify(response.data, null, 2));
+
+    let effectiveError = null;
+    if (response.data?.errors && Array.isArray(response.data.errors) && response.data.errors.length) {
+      const errMessages = response.data.errors.map((e) => `${e.code || 'unknown'}: ${e.message || e}`);
+      effectiveError = errMessages.join(' | ');
+
+      // Special detection for known Ayrshare error codes
+      if (response.data.errors.some((e) => e.code === 138 || e.code === '138')) {
+        effectiveError = `Ayrshare error 138 (Instagram processing) - ${effectiveError}`;
+
+        // Add detailed Instagram error debugging
+        console.log('❌ [INSTAGRAM ERROR 138] Detailed error analysis:');
+        console.log('   - Full error response:', JSON.stringify(response.data, null, 2));
+        console.log('   - Error codes:', response.data.errors.map(e => e.code));
+        console.log('   - Error messages:', response.data.errors.map(e => e.message));
+        console.log('   - Post ID (if available):', response.data.id || 'none');
+        console.log('   - Retry available:', response.data.errors.some(e => e.retryAvailable));
+
+      } else if (response.data.errors.some((e) => e.code === 161 || e.code === '161')) {
+        effectiveError = `Ayrshare error 161 (Instagram authentication/account connection) - ${effectiveError}`;
+      }
     }
-    if (response.data?.posts) {
-      console.log('Ayrshare posts details:', JSON.stringify(response.data.posts, null, 2));
+
+    if (response.status !== 200 || (response.data && response.data.status === 'error') || effectiveError) {
+      const returnedError = effectiveError || response.data?.message || response.data?.error || 'Unknown Ayrshare error';
+      console.error('❌ Ayrshare publish error:', returnedError);
+      return {
+        success: false,
+        error: returnedError,
+        status: response.status,
+        data: response.data
+      };
     }
-    
-    return { success: response.status === 200, data: response.data };
+
+    return { success: true, data: response.data, status: response.status };
   } catch (error) {
     console.error('Ayrshare post error:', error);
+    return { success: false, error: error.message || 'Ayrshare request failed' };
+  }
+}
+
+/**
+ * Retry a failed post via Ayrshare.
+ * Ayrshare: PUT https://api.ayrshare.com/api/post/retry
+ */
+async function retryPost(postId, options = {}) {
+  if (!AYRSHARE_API_KEY) {
+    console.warn('Ayrshare API key not configured');
+    return { success: false, error: 'API not configured' };
+  }
+  if (!postId) {
+    return { success: false, error: 'No post ID provided' };
+  }
+
+  try {
+    const headers = {
+      'Authorization': `Bearer ${AYRSHARE_API_KEY}`
+    };
+
+    if (options.profileKey) {
+      headers['Profile-Key'] = options.profileKey;
+    }
+
+    const response = await makeRequest('https://api.ayrshare.com/api/post/retry', {
+      method: 'PUT',
+      headers,
+      timeout: 60000,
+      body: { id: postId }
+    });
+
+    return { success: response.status === 200, data: response.data };
+  } catch (error) {
+    console.error('Ayrshare retry post error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -2061,6 +2142,7 @@ module.exports = {
   getUserSocialAnalytics,
   getPostHistory,
   getPostStatus,
+  retryPost,
   deletePost,
   getAyrshareProfile,
   getAyrshareConnectUrl,

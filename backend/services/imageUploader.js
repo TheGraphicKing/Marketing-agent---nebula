@@ -6,6 +6,22 @@
 
 const cloudinary = require('cloudinary').v2;
 
+const INSTAGRAM_SAFE_VIDEO_TRANSFORMATION = [
+  {
+    width: 1080,
+    height: 1920,
+    crop: 'pad',
+    background: 'black'
+  },
+  {
+    quality: 'auto:good',
+    fetch_format: 'mp4',
+    video_codec: 'h264',
+    audio_codec: 'aac',
+    bit_rate: '3500k'
+  }
+];
+
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -185,6 +201,50 @@ async function uploadVideoFile(filePath, folder = 'nebula-videos') {
 }
 
 /**
+ * Upload a local video file and return an Instagram-safe Cloudinary delivery URL.
+ * The transformed delivery URL forces MP4/H.264/AAC and a padded 1080x1920 canvas.
+ * @param {string} filePath - Path to the file on disk
+ * @param {string} folder - Optional folder name in Cloudinary
+ * @returns {Promise<{success: boolean, url?: string, originalUrl?: string, publicId?: string, bytes?: number, format?: string, duration?: number, error?: string}>}
+ */
+async function uploadInstagramSafeVideoFile(filePath, folder = 'nebula-instagram-videos') {
+  try {
+    const result = await cloudinary.uploader.upload(filePath, {
+      folder,
+      resource_type: 'video',
+      format: 'mp4',
+      eager_async: false,
+      eager: [INSTAGRAM_SAFE_VIDEO_TRANSFORMATION]
+    });
+
+    const instagramSafeUrl = cloudinary.url(result.public_id, {
+      resource_type: 'video',
+      secure: true,
+      format: 'mp4',
+      transformation: INSTAGRAM_SAFE_VIDEO_TRANSFORMATION
+    });
+
+    console.log('Cloudinary Instagram-safe video URL:', instagramSafeUrl);
+
+    return {
+      success: true,
+      url: instagramSafeUrl,
+      originalUrl: result.secure_url,
+      publicId: result.public_id,
+      bytes: result.bytes,
+      format: 'mp4',
+      duration: result.duration
+    };
+  } catch (error) {
+    console.error('Cloudinary Instagram-safe video upload error:', error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Convert image URL to Cloudinary URL if needed
  * If it's already a hosted URL, return as-is
  * If it's a base64 data URL, upload to Cloudinary first
@@ -351,6 +411,8 @@ module.exports = {
   ensurePublicAudioUrl,
   uploadBase64Audio,
   uploadVideoFile,
+  uploadInstagramSafeVideoFile,
+  INSTAGRAM_SAFE_VIDEO_TRANSFORMATION,
   uploadLogo,
   uploadImageWithLogoOverlay,
   deleteImage

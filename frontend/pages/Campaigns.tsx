@@ -10,6 +10,7 @@ import { useTheme, getThemeClasses } from '../context/ThemeContext';
 import BoostPostModal from '../components/BoostPostModal';
 import LogoSelector from '../components/LogoSelector';
 import PlatformPreview from '../components/PlatformPreview';
+import { buildScheduledForISOString, formatLocalDateYYYYMMDD, formatLocalTimeHHMM } from '../utils/datetime';
 
 // ============================================
 // PLATFORM CHARACTER LIMITS & FORMAT RULES
@@ -746,16 +747,19 @@ const Campaigns: React.FC = () => {
   const [selectedCampaignLoading, setSelectedCampaignLoading] = useState(false);
   
   // Post Modal State
-  const [postModalOpen, setPostModalOpen] = useState(false);
-  const [postingCampaign, setPostingCampaign] = useState<Campaign | null>(null);
-  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [publishResult, setPublishResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [showPostPreview, setShowPostPreview] = useState(false);
+	  const [postModalOpen, setPostModalOpen] = useState(false);
+	  const [postingCampaign, setPostingCampaign] = useState<Campaign | null>(null);
+	  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+	  const connectedPlatformsRef = useRef<string[]>([]);
+	  useEffect(() => { connectedPlatformsRef.current = connectedPlatforms; }, [connectedPlatforms]);
+	  const [isRefreshingConnectedPlatforms, setIsRefreshingConnectedPlatforms] = useState(false);
+	  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+	  const [isPublishing, setIsPublishing] = useState(false);
+	  const [publishResult, setPublishResult] = useState<{ success: boolean; message: string } | null>(null);
+	  const [showPostPreview, setShowPostPreview] = useState(false);
 
   // Instagram-only audio for the Post-to-Social modal
-  const [postInstagramAudio, setPostInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null } | null>(null);
+  const [postInstagramAudio, setPostInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null; durationSeconds?: number | null } | null>(null);
   const [postInstagramAudioUrlInput, setPostInstagramAudioUrlInput] = useState('');
   const [isUploadingPostInstagramAudio, setIsUploadingPostInstagramAudio] = useState(false);
   
@@ -870,9 +874,9 @@ const Campaigns: React.FC = () => {
   };
 
   // Bulk delete selected campaigns
-  const deleteSelectedCampaigns = async () => {
-    if (selectedCampaignIds.size === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedCampaignIds.size} campaign(s)? Posted or scheduled posts will also be removed from social media platforms. This action cannot be undone.`)) return;
+	  const deleteSelectedCampaigns = async () => {
+	    if (selectedCampaignIds.size === 0) return;
+	    if (!confirm(`Are you sure you want to delete ${selectedCampaignIds.size} campaign(s)? Posted or scheduled posts will also be removed from social media platforms. This action cannot be undone.`)) return;
     
     setIsDeleting(true);
     try {
@@ -884,27 +888,63 @@ const Campaigns: React.FC = () => {
       alert('Failed to delete some campaigns. Please try again.');
     } finally {
       setIsDeleting(false);
-    }
-  };
+	    }
+	  };
 
-  // Load connected platforms
-  useEffect(() => {
-    const loadConnectedPlatforms = async () => {
-      try {
-        const res = await apiService.getSocials();
-        const connected = (res.connections || [])
-          .filter((c: any) => c.connected)
-          .map((c: any) => {
-            const p = c.platform.toLowerCase();
-            return p === 'x' ? 'twitter' : p;
-          });
-        setConnectedPlatforms(connected);
-      } catch (e) {
-        console.error('Failed to load socials:', e);
-      }
-    };
-    loadConnectedPlatforms();
-  }, []);
+	  const normalizePlatformKey = useCallback((platform: string) => {
+	    const p = (platform || '').toLowerCase();
+	    return p === 'x' ? 'twitter' : p;
+	  }, []);
+
+	  const refreshConnectedPlatforms = useCallback(async () => {
+	    try {
+	      const res = await apiService.getSocials();
+	      const connected = (res.connections || [])
+	        .filter((c: any) => c.connected)
+	        .map((c: any) => normalizePlatformKey(c.platform));
+	      setConnectedPlatforms(connected);
+	      return connected as string[];
+	    } catch (e) {
+	      console.error('Failed to load socials:', e);
+	      
+	      return connectedPlatformsRef.current as string[];
+	    }
+	  }, [normalizePlatformKey]);
+
+	  // Load/refresh connected platforms
+	  useEffect(() => {
+	    refreshConnectedPlatforms();
+	  }, [refreshConnectedPlatforms]);
+
+	  // Refresh connections when returning from OAuth/popup flows (new tab/popup -> back to this tab)
+	  useEffect(() => {
+	    const handleFocus = () => { refreshConnectedPlatforms(); };
+	    const handleVisibility = () => { if (!document.hidden) refreshConnectedPlatforms(); };
+	    window.addEventListener('focus', handleFocus);
+	    document.addEventListener('visibilitychange', handleVisibility);
+	    return () => {
+	      window.removeEventListener('focus', handleFocus);
+	      document.removeEventListener('visibilitychange', handleVisibility);
+	    };
+	  }, [refreshConnectedPlatforms]);
+
+	  // When opening the Post modal, re-check connections and auto-select a connected platform
+	  useEffect(() => {
+	    if (!postModalOpen) return;
+	    (async () => {
+	      const connected = await refreshConnectedPlatforms();
+	      setSelectedPlatforms(prev => {
+	        const stillConnected = prev.filter(p => connected.includes(p));
+	        if (stillConnected.length > 0) return stillConnected;
+
+	        const campaignPlatforms = postingCampaign?.platforms?.map(p => p.toLowerCase()) || [];
+	        const preferred = connected.filter(p => campaignPlatforms.includes(p));
+	        if (preferred.length > 0) return preferred;
+
+	        return connected.slice(0, 1);
+	      });
+	    })();
+	  }, [postModalOpen, postingCampaign, refreshConnectedPlatforms]);
 
   // Allow closing post modal via Escape key
   useEffect(() => {
@@ -926,7 +966,8 @@ const Campaigns: React.FC = () => {
     const campaignPlatforms = campaign.platforms?.map(p => p.toLowerCase()) || [];
     const preSelected = connectedPlatforms.filter(p => campaignPlatforms.includes(p));
     setSelectedPlatforms(preSelected.length > 0 ? preSelected : connectedPlatforms.slice(0, 1));
-    setPublishResult(null);
+    const existingError = campaign.lastPublishError ? String(campaign.lastPublishError) : '';
+    setPublishResult(existingError ? { success: false, message: existingError } : null);
     // Prefill schedule when editing a scheduled campaign
     let existingSchedule = null as Date | null;
     if (campaign.scheduledFor) {
@@ -965,9 +1006,14 @@ const Campaigns: React.FC = () => {
     });
   };
 
-  const persistPostInstagramAudioToCampaign = async (audio: { url: string; publicId?: string | null; originalName?: string | null } | null) => {
+  const persistPostInstagramAudioToCampaign = async (audio: { url: string; publicId?: string | null; originalName?: string | null; durationSeconds?: number | null } | null) => {
     if (!postingCampaign?._id) return;
-    const { campaign } = await apiService.updateCampaign(postingCampaign._id, { 'creative.instagramAudio': audio } as any);
+    const { campaign } = await apiService.updateCampaign(postingCampaign._id, {
+      'creative.instagramAudio.url': audio?.url || null,
+      'creative.instagramAudio.publicId': audio?.publicId || null,
+      'creative.instagramAudio.originalName': audio?.originalName || null,
+      'creative.instagramAudio.durationSeconds': audio?.durationSeconds || null
+    } as any);
     setPostingCampaign(campaign);
   };
 
@@ -1019,10 +1065,46 @@ const Campaigns: React.FC = () => {
 
     setIsUploadingPostInstagramAudio(true);
     try {
+        const localDurationSeconds: number | null = await new Promise((resolve) => {
+          try {
+            const objectUrl = URL.createObjectURL(file);
+            const audio = new Audio();
+            audio.preload = 'metadata';
+            audio.src = objectUrl;
+
+            const cleanup = () => {
+              try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+              audio.onloadedmetadata = null;
+              audio.onerror = null;
+            };
+
+            audio.onloadedmetadata = () => {
+              const d = audio.duration;
+              cleanup();
+              resolve(Number.isFinite(d) && d > 0 ? d : null);
+            };
+
+            audio.onerror = () => {
+              cleanup();
+              resolve(null);
+            };
+          } catch (_) {
+            resolve(null);
+          }
+        });
+
       const audioDataUrl = await readFileAsDataUrl(file);
       const res = await apiService.uploadCampaignAudio(audioDataUrl, file.name);
       if (res.success && res.url) {
-        const next = { url: res.url, publicId: res.publicId || null, originalName: file.name };
+          const durationSeconds =
+            localDurationSeconds ??
+            (res.duration ? Number(res.duration) : null);
+        const next = {
+          url: res.url,
+          publicId: res.publicId || null,
+          originalName: file.name,
+            durationSeconds
+        };
         setPostInstagramAudio(next);
         setPostInstagramAudioUrlInput(res.url);
         await persistPostInstagramAudioToCampaign(next);
@@ -1037,62 +1119,183 @@ const Campaigns: React.FC = () => {
     }
   };
 
-  // Handle platform selection toggle
-  const togglePlatformSelection = (platform: string) => {
-    if (!connectedPlatforms.includes(platform.toLowerCase())) return; // Can't select unconnected
-    setSelectedPlatforms(prev => 
-      prev.includes(platform.toLowerCase())
-        ? prev.filter(p => p !== platform.toLowerCase())
-        : [...prev, platform.toLowerCase()]
-    );
-  };
+	  // Handle platform selection toggle
+	  const togglePlatformSelection = (platform: string) => {
+	    const key = normalizePlatformKey(platform);
+	    if (!connectedPlatforms.includes(key)) return; // Can't select unconnected
+	    setSelectedPlatforms(prev => 
+	      prev.includes(key)
+	        ? prev.filter(p => p !== key)
+	        : [...prev, key]
+	    );
+	  };
 
   // Handle publish (immediate or scheduled)
   const handlePublish = async () => {
     if (!postingCampaign || selectedPlatforms.length === 0) return;
     
-    // Validate schedule date/time if scheduling
-    if (isScheduleMode) {
-      if (!scheduleDate || !scheduleTime) {
-        setPublishResult({ success: false, message: 'Please select a date and time for scheduling' });
-        return;
-      }
-      const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
-      if (scheduledDateTime <= new Date()) {
-        setPublishResult({ success: false, message: 'Scheduled time must be in the future' });
-        return;
-      }
-    }
+      let normalizedSchedule: { iso: string; date: Date; adjusted: boolean } | null = null;
+	    if (isScheduleMode) {
+	      if (!scheduleDate || !scheduleTime) {
+	        setPublishResult({ success: false, message: 'Please select a date and time for scheduling' });
+	        return;
+	      }
+
+        normalizedSchedule = buildScheduledForISOString(scheduleDate, scheduleTime, {
+          minLeadMinutes: 5,
+          safetySeconds: 30
+        });
+
+        if (!normalizedSchedule) {
+          setPublishResult({ success: false, message: 'Invalid schedule date/time' });
+          return;
+        }
+
+        // If the selected time is too close/in the past, bump it forward so Ayrshare accepts it.
+        if (normalizedSchedule.adjusted) {
+          setScheduleDate(formatLocalDateYYYYMMDD(normalizedSchedule.date));
+          setScheduleTime(formatLocalTimeHHMM(normalizedSchedule.date));
+        }
+	    }
     
     setIsPublishing(true);
     setPublishResult(null);
     
     try {
       // Build schedule date ISO string if scheduling
-      const scheduledFor = isScheduleMode 
-        ? new Date(`${scheduleDate}T${scheduleTime}`).toISOString()
-        : undefined;
+      const scheduledFor = isScheduleMode ? normalizedSchedule?.iso : undefined;
+      
+      // ============================================
+      // PRE-PUBLISH VALIDATION LOGGING
+      // ============================================
+      console.log('🎬 [PUBLISH FLOW] Starting campaign publish...');
+      console.log(`   - Campaign ID: ${postingCampaign._id}`);
+      console.log(`   - Campaign name: ${postingCampaign.name}`);
+      console.log(`   - Selected platforms: [${selectedPlatforms.join(', ')}]`);
+      console.log(`   - Schedule mode: ${isScheduleMode ? 'YES' : 'NO'}`);
+      if (isScheduleMode) {
+        console.log(`   - Scheduled for: ${scheduledFor}`);
+      }
+      
+      // Check for Instagram audio
+      const hasInstagramAudio = selectedPlatforms.includes('instagram') && !!postInstagramAudio?.url;
+      console.log(`\n🎵 [AUDIO CHECK]`);
+      console.log(`   - Instagram in platforms: ${selectedPlatforms.includes('instagram') ? 'YES' : 'NO'}`);
+      console.log(`   - Audio object exists: ${!!postInstagramAudio ? 'YES' : 'NO'}`);
+      console.log(`   - Audio URL: ${postInstagramAudio?.url ? postInstagramAudio.url.substring(0, 80) + '...' : 'NONE'}`);
+      console.log(`   - Will send audio to backend: ${hasInstagramAudio ? 'YES (video will be composed)' : 'NO (standard image posting)'}`);
       
       const result = await apiService.publishCampaign(postingCampaign._id, selectedPlatforms, scheduledFor);
       
-      if (result.success) {
-        const successMessage = isScheduleMode 
-          ? `Scheduled for ${new Date(`${scheduleDate}T${scheduleTime}`).toLocaleString()} on ${selectedPlatforms.join(', ')}!`
-          : `Posted successfully to ${selectedPlatforms.join(', ')}!`;
-        setPublishResult({ success: true, message: successMessage });
-        // Update campaign status in local state
-        setCampaigns(prev => prev.map(c => 
-          c._id === postingCampaign._id ? { ...c, status: isScheduleMode ? 'scheduled' : 'posted' } : c
-        ));
-        // Close modal after success
-        setTimeout(() => {
-          setPostModalOpen(false);
-          setPostingCampaign(null);
-        }, 2000);
-      } else {
-        setPublishResult({ success: false, message: result.message || 'Failed to post. Please try again.' });
+      console.log('\n📊 [PUBLISH RESPONSE]');
+      console.log(`   - Success: ${result.success ? 'YES' : 'NO'}`);
+      console.log(`   - Message: ${result.message}`);
+      if (hasInstagramAudio) {
+        console.log(`   - Audio flow status: ${result.audioFlowInfo ? 'Tracked' : 'Not in response'}`);
+        if (result.audioFlowInfo) {
+          console.log(`     - Audio URL was present: ${result.audioFlowInfo.audioUrlPresent ? 'YES' : 'NO'}`);
+          console.log(`     - Image URL was present: ${result.audioFlowInfo.imageUrlPresent ? 'YES' : 'NO'}`);
+          console.log(`     - Video was composed: ${result.audioFlowInfo.videoComposed ? 'YES' : 'NO'}`);
+          console.log(`     - Instagram result: ${result.audioFlowInfo.instagramResult || 'success'}`);
+        }
       }
+      
+	      if (result.success) {
+          const backendScheduled = !!result?.scheduled;
+          const actuallyScheduled = backendScheduled || isScheduleMode;
+          const resolvedScheduledFor = actuallyScheduled
+            ? (result?.scheduledFor || scheduledFor)
+            : undefined;
+          const scheduledLabel = (actuallyScheduled && resolvedScheduledFor)
+            ? new Date(resolvedScheduledFor).toLocaleString()
+            : null;
+	        const successMessage = actuallyScheduled
+	          ? `Scheduled for ${scheduledLabel} on ${selectedPlatforms.join(', ')}!`
+	          : `Posted successfully to ${selectedPlatforms.join(', ')}!`;
+	        
+          console.log('\n✅ [PUBLISH SUCCESS]');
+          if (selectedPlatforms.includes('instagram') && postInstagramAudio?.url) {
+            console.log('   🎵 Instagram audio flow completed successfully!');
+            console.log(`   - Video was generated and posted to Instagram`);
+            console.log(`   - Original image may have been posted to other platforms`);
+          }
+          console.log(`   - Status: ${successMessage}`);
+          
+	        setPublishResult({ success: true, message: successMessage });
+	        // Update campaign status in local state
+	        setCampaigns(prev => prev.map(c => 
+	          c._id === postingCampaign._id ? { 
+	            ...c, 
+	            status: actuallyScheduled ? 'scheduled' : 'posted',
+	            ...(actuallyScheduled ? { scheduledFor: resolvedScheduledFor } : {}),
+	            ...(result?.postId ? { socialPostId: result.postId } : {}),
+	            ...(Array.isArray(result?.platforms) ? { platforms: result.platforms } : {})
+	          } : c
+	        ));
+	        // Close modal after success
+	        setTimeout(() => {
+	          closePostModal();
+	        }, 2000);
+	      } else {
+          console.log('\n❌ [PUBLISH FAILED]');
+          
+          // Check for video validation failure
+          if (result.videoValidationFailed || result.validationDetails) {
+            console.log('   🎵 [VIDEO VALIDATION FAILED]');
+            if (result.validationDetails) {
+              const validation = result.validationDetails;
+              console.log(`   - Severity: ${validation.severity}`);
+              if (validation.issues && validation.issues.length > 0) {
+                console.log('   - Critical Issues:');
+                validation.issues.forEach((issue: string) => {
+                  console.log(`     • ${issue}`);
+                });
+              }
+              if (validation.warnings && validation.warnings.length > 0) {
+                console.log('   - Warnings:');
+                validation.warnings.forEach((warning: string) => {
+                  console.log(`     • ${warning}`);
+                });
+              }
+            }
+            if (result.videoMetadata) {
+              const meta = result.videoMetadata;
+              console.log('   - Video Metadata:');
+              console.log(`     Format: ${meta.format}`);
+              console.log(`     Duration: ${meta.duration}s`);
+              console.log(`     File size: ${meta.fileSizeMB}MB`);
+              if (meta.video) {
+                console.log(`     Video codec: ${meta.video.codec}`);
+                console.log(`     Resolution: ${meta.video.resolution}`);
+                console.log(`     FPS: ${meta.video.fps}`);
+              }
+              if (meta.audio) {
+                console.log(`     Audio codec: ${meta.audio.codec || 'MISSING'}`);
+              }
+            }
+          } else if (selectedPlatforms.includes('instagram') && postInstagramAudio?.url) {
+            console.log('   🎵 [AUDIO FAILURE DIAGNOSIS]');
+            if (result.audioFlowInfo) {
+              console.log(`   - Audio was present: ${result.audioFlowInfo.audioUrlPresent}`);
+              console.log(`   - Image was present: ${result.audioFlowInfo.imageUrlPresent}`);
+              console.log(`   - Video composition status: ${result.audioFlowInfo.videoComposed}`);
+              console.log(`   - Error: ${result.audioFlowInfo.instagramResult}`);
+            }
+          }
+          
+          console.log(`   - Error message: ${result.message || 'Unknown error'}`);
+          
+          // Build detailed error message for user
+          let displayMessage = result.message || 'Failed to post. Please try again.';
+          if (result.validationDetails && result.validationDetails.issues?.length > 0) {
+            displayMessage = `Video validation failed:\n\n${result.validationDetails.issues.join('\n')}\n\nPlease check your audio file and try again.`;
+          }
+          
+	        setPublishResult({ success: false, message: displayMessage });
+	      }
     } catch (error: any) {
+      console.log('\n❌ [PUBLISH ERROR - EXCEPTION]');
+      console.log(`   - Error: ${error.message || error}`);
       setPublishResult({ success: false, message: error.message || 'Failed to post. Please try again.' });
     } finally {
       setIsPublishing(false);
@@ -2633,11 +2836,12 @@ Generated by Nebulaa Gravity Marketing Agent
               <div className="p-4">
                 <p className={`text-sm font-medium mb-3 ${theme.text}`}>Select platforms to post:</p>
                 <div className="space-y-2">
-                  {['Instagram', 'Facebook', 'X', 'LinkedIn'].map(platform => {
-                    const isConnected = connectedPlatforms.includes(platform.toLowerCase());
-                    const isSelected = selectedPlatforms.includes(platform.toLowerCase());
-                    
-                    return (
+	                  {['Instagram', 'Facebook', 'X', 'LinkedIn'].map(platform => {
+	                    const platformKey = normalizePlatformKey(platform);
+	                    const isConnected = connectedPlatforms.includes(platformKey);
+	                    const isSelected = selectedPlatforms.includes(platformKey);
+	                    
+	                    return (
                       <button
                         key={platform}
                         type="button"
@@ -2672,11 +2876,28 @@ Generated by Nebulaa Gravity Marketing Agent
                   })}
                 </div>
                 
-                {connectedPlatforms.length === 0 && (
-                  <p className={`text-sm text-center mt-4 ${theme.textSecondary}`}>
-                    No platforms connected. <a href="/#/connect-socials" className="text-[#ffcc29] hover:underline">Connect now</a>
-                  </p>
-                )}
+	                {connectedPlatforms.length === 0 && (
+	                  <div className="text-center mt-4 space-y-2">
+	                    <p className={`text-sm ${theme.textSecondary}`}>
+	                      No platforms connected. <a href="/#/connect-socials" className="text-[#ffcc29] hover:underline">Connect now</a>
+	                    </p>
+	                    <button
+	                      type="button"
+	                      onClick={async () => {
+	                        setIsRefreshingConnectedPlatforms(true);
+	                        try {
+	                          await refreshConnectedPlatforms();
+	                        } finally {
+	                          setIsRefreshingConnectedPlatforms(false);
+	                        }
+	                      }}
+	                      disabled={isRefreshingConnectedPlatforms}
+	                      className="text-xs font-semibold text-[#ffcc29] hover:underline disabled:opacity-50"
+	                    >
+	                      {isRefreshingConnectedPlatforms ? 'Refreshing...' : 'Refresh status'}
+	                    </button>
+	                  </div>
+	                )}
               </div>
 
               {/* Instagram Audio (Optional) */}
@@ -2741,7 +2962,7 @@ Generated by Nebulaa Gravity Marketing Agent
                       )}
 
                       <p className={`text-xs ${theme.textMuted}`}>
-                        Applied only to Instagram. Other platforms publish without audio.
+                        Applied only to Instagram. We publish Instagram as a video with your audio embedded (this plays as normal video sound, not as Instagram Music). Instagram web doesn’t support adding music to image posts. Other platforms publish without audio.
                       </p>
                     </div>
                   </div>
@@ -3343,7 +3564,19 @@ Generated by Nebulaa Gravity Marketing Agent
                     try {
                       if (createPostScheduleDate && createPostScheduleTime) {
                         // Schedule for later
-                        const scheduledDate = new Date(`${createPostScheduleDate}T${createPostScheduleTime}`).toISOString();
+                        const normalized = buildScheduledForISOString(createPostScheduleDate, createPostScheduleTime, {
+                          minLeadMinutes: 5,
+                          safetySeconds: 30
+                        });
+                        if (!normalized) {
+                          alert('Invalid schedule date/time');
+                          return;
+                        }
+                        if (normalized.adjusted) {
+                          setCreatePostScheduleDate(formatLocalDateYYYYMMDD(normalized.date));
+                          setCreatePostScheduleTime(formatLocalTimeHHMM(normalized.date));
+                        }
+                        const scheduledDate = normalized.iso;
                         const result = await apiService.postToSocial(
                           createPostPlatform,
                           fullCaption,
@@ -3692,22 +3925,47 @@ const CampaignCard: React.FC<{
                 <p>{campaign.platforms.length > 1 ? 'Platforms' : 'Platform'}: <span className={`font-medium capitalize ${theme.text}`}>{campaign.platforms.join(', ')}</span></p>
                 <div className="flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
-                    <span>
-                      {campaign.status === 'posted' && campaign.publishedAt
-                        ? new Date(campaign.publishedAt).toLocaleString()
-                        : (() => {
-                            const raw = campaign.scheduling.startDate;
-                            const d = new Date(raw);
-                            if (isNaN(d.getTime())) return `${raw} at ${campaign.scheduling.postTime}`;
-                            const today = new Date(); today.setHours(0,0,0,0);
-                            const cmp = new Date(d); cmp.setHours(0,0,0,0);
-                            const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-                            const label = cmp.getTime() === today.getTime() ? 'Today' : cmp.getTime() === tomorrow.getTime() ? 'Tomorrow' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                            return `${label} at ${campaign.scheduling.postTime}`;
-                          })()
-                      }
-                    </span>
+	                    <span>
+	                      {campaign.status === 'posted' && campaign.publishedAt
+	                        ? new Date(campaign.publishedAt).toLocaleString()
+	                        : (() => {
+	                            // Prefer canonical scheduled datetime when available (e.g., after rescheduling)
+	                            if (campaign.status === 'scheduled' && campaign.scheduledFor) {
+	                              const scheduled = new Date(campaign.scheduledFor);
+	                              if (!isNaN(scheduled.getTime())) {
+	                                const today = new Date(); today.setHours(0,0,0,0);
+	                                const cmp = new Date(scheduled); cmp.setHours(0,0,0,0);
+	                                const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+	                                const label = cmp.getTime() === today.getTime()
+	                                  ? 'Today'
+	                                  : cmp.getTime() === tomorrow.getTime()
+	                                    ? 'Tomorrow'
+	                                    : scheduled.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+	                                const hh = String(scheduled.getHours()).padStart(2, '0');
+	                                const mm = String(scheduled.getMinutes()).padStart(2, '0');
+	                                return `${label} at ${hh}:${mm}`;
+	                              }
+	                            }
+
+	                            const raw = campaign.scheduling.startDate;
+	                            const d = new Date(raw);
+	                            const fallbackTime = campaign.scheduling.postTime || '10:00';
+	                            if (isNaN(d.getTime())) return `${raw} at ${fallbackTime}`;
+	                            const today = new Date(); today.setHours(0,0,0,0);
+	                            const cmp = new Date(d); cmp.setHours(0,0,0,0);
+	                            const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+	                            const label = cmp.getTime() === today.getTime() ? 'Today' : cmp.getTime() === tomorrow.getTime() ? 'Tomorrow' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+	                            return `${label} at ${fallbackTime}`;
+	                          })()
+	                      }
+	                    </span>
                 </div>
+                {campaign.lastPublishError && campaign.status !== 'posted' && (
+                  <div className={`flex items-start gap-1 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+                    <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                    <span className="line-clamp-2">{campaign.lastPublishError}</span>
+                  </div>
+                )}
             </div>
         </div>
 
@@ -3842,7 +4100,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [callToAction, setCallToAction] = useState('');
     const [productLogo, setProductLogo] = useState<string | null>(null);
     const [productLogoName, setProductLogoName] = useState<string>('');
-    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null } | null>(null);
+    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null; durationSeconds?: number | null } | null>(null);
     const [instagramAudioUrlInput, setInstagramAudioUrlInput] = useState<string>('');
     const [isUploadingInstagramAudio, setIsUploadingInstagramAudio] = useState(false);
     const [showBrandLogoSelector, setShowBrandLogoSelector] = useState(false);
@@ -4061,10 +4319,45 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
 
       setIsUploadingInstagramAudio(true);
       try {
+        const localDurationSeconds: number | null = await new Promise((resolve) => {
+          try {
+            const objectUrl = URL.createObjectURL(file);
+            const audio = new Audio();
+            audio.preload = 'metadata';
+            audio.src = objectUrl;
+
+            const cleanup = () => {
+              try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+              audio.onloadedmetadata = null;
+              audio.onerror = null;
+            };
+
+            audio.onloadedmetadata = () => {
+              const d = audio.duration;
+              cleanup();
+              resolve(Number.isFinite(d) && d > 0 ? d : null);
+            };
+
+            audio.onerror = () => {
+              cleanup();
+              resolve(null);
+            };
+          } catch (_) {
+            resolve(null);
+          }
+        });
+
         const audioDataUrl = await readFileAsDataUrl(file);
         const res = await apiService.uploadCampaignAudio(audioDataUrl, file.name);
         if (res.success && res.url) {
-          const next = { url: res.url, publicId: res.publicId || null, originalName: file.name };
+          const durationSeconds =
+            localDurationSeconds ?? (res.duration ? Number(res.duration) : null);
+          const next = {
+            url: res.url,
+            publicId: res.publicId || null,
+            originalName: file.name,
+            durationSeconds
+          };
           setInstagramAudio(next);
           setInstagramAudioUrlInput(res.url);
         } else {
@@ -4333,18 +4626,34 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
               continue;
             }
             
-            // Build scheduled date/time - ensure it's in the future
-            // Ayrshare requires schedule dates to be at least 5 minutes in the future
-            const scheduledDateTime = new Date(`${post.suggestedDate}T${post.suggestedTime}:00`);
+            // Build scheduled date/time - Ayrshare requires a minimum lead time.
             const now = new Date();
-            
-            // Only adjust if the schedule time is truly in the past
-            if (scheduledDateTime <= now) {
-              console.warn(`⚠️ Post ${i + 1} schedule time is in the past, adjusting to 2 min from now`);
-              scheduledDateTime.setTime(now.getTime() + (2 + i) * 60 * 1000); // stagger by 1 min each
+            const normalized = buildScheduledForISOString(post.suggestedDate, post.suggestedTime, {
+              now,
+              minLeadMinutes: 5,
+              safetySeconds: 30
+            });
+
+            if (!normalized) {
+              errorMessages.push(`${post.platform} (${post.suggestedDate}): Invalid schedule date/time`);
+              console.error(`❌ Invalid schedule for post ${i + 1}:`, post.suggestedDate, post.suggestedTime);
+              try { await apiService.updateCampaign(campaign._id, { status: 'draft' }); } catch(e) {}
+              continue;
             }
-            
-            const scheduledFor = scheduledDateTime.toISOString();
+
+            // If we had to bump the schedule forward (too soon/past), stagger each post by 1 minute.
+            const scheduledFor = normalized.adjusted
+              ? (buildScheduledForISOString(post.suggestedDate, post.suggestedTime, {
+                  now,
+                  minLeadMinutes: 5,
+                  safetySeconds: 30,
+                  staggerMinutes: i
+                })?.iso || normalized.iso)
+              : normalized.iso;
+
+            if (normalized.adjusted) {
+              console.warn(`⚠️ Post ${i + 1} schedule time was too soon/past, adjusted to ${new Date(scheduledFor).toLocaleString()}`);
+            }
             try {
               const publishResult = await apiService.publishCampaign(
                 campaign._id,
@@ -4851,7 +5160,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                         )}
 
                                         <p className={`text-xs ${theme.textMuted}`}>
-                                          Applied only to Instagram. Other platforms publish without audio.
+                                          Applied only to Instagram. We publish Instagram as a video with your audio embedded (this plays as normal video sound, not as Instagram Music). Instagram web doesn’t support adding music to image posts. Other platforms publish without audio.
                                         </p>
                                       </div>
                                     </div>
@@ -5575,7 +5884,7 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
     const [isDragging, setIsDragging] = useState(false);
 
     // Instagram-only audio (optional) — only used when Instagram is selected
-    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null } | null>(null);
+    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null; durationSeconds?: number | null } | null>(null);
     const [instagramAudioUrlInput, setInstagramAudioUrlInput] = useState('');
     const [isUploadingInstagramAudio, setIsUploadingInstagramAudio] = useState(false);
 
@@ -5867,10 +6176,45 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
 
       setIsUploadingInstagramAudio(true);
       try {
+        const localDurationSeconds: number | null = await new Promise((resolve) => {
+          try {
+            const objectUrl = URL.createObjectURL(file);
+            const audio = new Audio();
+            audio.preload = 'metadata';
+            audio.src = objectUrl;
+
+            const cleanup = () => {
+              try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+              audio.onloadedmetadata = null;
+              audio.onerror = null;
+            };
+
+            audio.onloadedmetadata = () => {
+              const d = audio.duration;
+              cleanup();
+              resolve(Number.isFinite(d) && d > 0 ? d : null);
+            };
+
+            audio.onerror = () => {
+              cleanup();
+              resolve(null);
+            };
+          } catch (_) {
+            resolve(null);
+          }
+        });
+
         const audioDataUrl = await readFileAsDataUrl(file);
         const res = await apiService.uploadCampaignAudio(audioDataUrl, file.name);
         if (res.success && res.url) {
-          const next = { url: res.url, publicId: res.publicId || null, originalName: file.name };
+          const durationSeconds =
+            localDurationSeconds ?? (res.duration ? Number(res.duration) : null);
+          const next = {
+            url: res.url,
+            publicId: res.publicId || null,
+            originalName: file.name,
+            durationSeconds
+          };
           setInstagramAudio(next);
           setInstagramAudioUrlInput(res.url);
         } else {
@@ -6111,6 +6455,20 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
       setPublishResult(null);
 
       try {
+        const normalized = isScheduleMode
+          ? buildScheduledForISOString(scheduleDate, scheduleTime, { minLeadMinutes: 5, safetySeconds: 30 })
+          : null;
+        if (isScheduleMode && !normalized) {
+          throw new Error('Invalid schedule date/time');
+        }
+        if (isScheduleMode && normalized?.adjusted) {
+          setScheduleDate(formatLocalDateYYYYMMDD(normalized.date));
+          setScheduleTime(formatLocalTimeHHMM(normalized.date));
+        }
+
+        let anyBackendScheduled = false;
+        let lastBackendScheduledFor: string | null = null;
+
         // Create campaigns for each generated poster
         for (const poster of generatedPosters) {
           // Process image with aspect ratio if not original
@@ -6151,21 +6509,26 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
           });
 
           // Publish or schedule the campaign
-          const scheduledFor = isScheduleMode 
-            ? new Date(`${scheduleDate}T${scheduleTime}`).toISOString()
-            : undefined;
+          const scheduledFor = isScheduleMode ? normalized?.iso : undefined;
           
           const publishResult = await apiService.publishCampaign(campaign._id, selectedPlatforms, scheduledFor);
           if (!publishResult.success) {
             throw new Error(publishResult.message || 'Failed to publish');
           }
 
+          if (publishResult?.scheduled) {
+            anyBackendScheduled = true;
+            if (publishResult?.scheduledFor) lastBackendScheduledFor = publishResult.scheduledFor;
+          }
+
           onSuccess(campaign);
         }
 
-        const message = isScheduleMode 
+        const message = isScheduleMode
           ? `Scheduled ${generatedPosters.length} poster(s) for ${new Date(`${scheduleDate}T${scheduleTime}`).toLocaleString()}`
-          : `Posted ${generatedPosters.length} poster(s) to ${selectedPlatforms.join(', ')}`;
+          : anyBackendScheduled
+            ? `Queued ${generatedPosters.length} poster(s) for publishing ${lastBackendScheduledFor ? `(${new Date(lastBackendScheduledFor).toLocaleString()})` : '(pending)'} — check again in a few minutes`
+            : `Posted ${generatedPosters.length} poster(s) to ${selectedPlatforms.join(', ')}`;
         
         setPublishResult({ success: true, message });
         
@@ -6653,7 +7016,7 @@ const TemplatePosterModal: React.FC<TemplatePosterModalProps> = ({ onClose, onSu
                           )}
 
                           <p className={`text-xs ${theme.textMuted}`}>
-                            Applied only to Instagram. Other platforms publish without audio.
+                            Applied only to Instagram. We publish Instagram as a video with your audio embedded (this plays as normal video sound, not as Instagram Music). Instagram web doesn’t support adding music to image posts. Other platforms publish without audio.
                           </p>
                         </div>
                       </div>
@@ -7239,7 +7602,7 @@ const UploadPublishModal: React.FC<UploadPublishModalProps> = ({ onClose, onSucc
     const [showUploadPreview, setShowUploadPreview] = useState(false);
 
     // Instagram-only audio (optional) — only used when Instagram is selected
-    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null } | null>(null);
+    const [instagramAudio, setInstagramAudio] = useState<{ url: string; publicId?: string | null; originalName?: string | null; durationSeconds?: number | null } | null>(null);
     const [instagramAudioUrlInput, setInstagramAudioUrlInput] = useState('');
     const [isUploadingInstagramAudio, setIsUploadingInstagramAudio] = useState(false);
 
@@ -7430,10 +7793,45 @@ const UploadPublishModal: React.FC<UploadPublishModalProps> = ({ onClose, onSucc
 
         setIsUploadingInstagramAudio(true);
         try {
+            const localDurationSeconds: number | null = await new Promise((resolve) => {
+              try {
+                const objectUrl = URL.createObjectURL(file);
+                const audio = new Audio();
+                audio.preload = 'metadata';
+                audio.src = objectUrl;
+
+                const cleanup = () => {
+                  try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+                  audio.onloadedmetadata = null;
+                  audio.onerror = null;
+                };
+
+                audio.onloadedmetadata = () => {
+                  const d = audio.duration;
+                  cleanup();
+                  resolve(Number.isFinite(d) && d > 0 ? d : null);
+                };
+
+                audio.onerror = () => {
+                  cleanup();
+                  resolve(null);
+                };
+              } catch (_) {
+                resolve(null);
+              }
+            });
+
             const audioDataUrl = await readFileAsDataUrl(file);
             const res = await apiService.uploadCampaignAudio(audioDataUrl, file.name);
             if (res.success && res.url) {
-                const next = { url: res.url, publicId: res.publicId || null, originalName: file.name };
+                const durationSeconds =
+                  localDurationSeconds ?? (res.duration ? Number(res.duration) : null);
+                const next = {
+                  url: res.url,
+                  publicId: res.publicId || null,
+                  originalName: file.name,
+                  durationSeconds
+                };
                 setInstagramAudio(next);
                 setInstagramAudioUrlInput(res.url);
             } else {
@@ -7471,6 +7869,15 @@ const UploadPublishModal: React.FC<UploadPublishModalProps> = ({ onClose, onSucc
                 continue;
             }
 
+            const normalized = post.isScheduled
+              ? buildScheduledForISOString(post.scheduleDate, post.scheduleTime, { minLeadMinutes: 5, safetySeconds: 30 })
+              : null;
+            if (post.isScheduled && !normalized) {
+              setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'error', resultMessage: 'Invalid schedule date/time' } : p));
+              failCount++;
+              continue;
+            }
+
             setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'publishing' } : p));
 
             try {
@@ -7494,15 +7901,15 @@ const UploadPublishModal: React.FC<UploadPublishModalProps> = ({ onClose, onSucc
                 });
 
                 // Publish
-                const scheduledFor = post.isScheduled 
-                    ? new Date(`${post.scheduleDate}T${post.scheduleTime}`).toISOString()
-                    : undefined;
+                const scheduledFor = post.isScheduled ? normalized?.iso : undefined;
 
                 const publishRes = await apiService.publishCampaign(campaign._id, selectedPlatforms, scheduledFor);
 
                 if (publishRes.success) {
-                    const msg = post.isScheduled 
-                        ? `Scheduled for ${new Date(`${post.scheduleDate}T${post.scheduleTime}`).toLocaleString()}`
+                    const actuallyScheduled = !!publishRes?.scheduled || post.isScheduled;
+                    const resolvedScheduledFor = actuallyScheduled ? (publishRes?.scheduledFor || scheduledFor) : undefined;
+                    const msg = actuallyScheduled
+                        ? `Scheduled for ${resolvedScheduledFor ? new Date(resolvedScheduledFor).toLocaleString() : 'soon'}`
                         : `Posted to ${selectedPlatforms.join(', ')}`;
                     setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'success', resultMessage: msg } : p));
                     onSuccess(campaign);
@@ -7715,7 +8122,7 @@ const UploadPublishModal: React.FC<UploadPublishModalProps> = ({ onClose, onSucc
                                 )}
 
                                 <p className={`text-xs ${theme.textMuted}`}>
-                                    Applied only to Instagram. Other platforms publish without audio.
+                                    Applied only to Instagram. We publish Instagram as a video with your audio embedded (this plays as normal video sound, not as Instagram Music). Instagram web doesn’t support adding music to image posts. Other platforms publish without audio.
                                 </p>
                             </div>
                         </div>

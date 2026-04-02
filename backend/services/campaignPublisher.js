@@ -1,4 +1,5 @@
-const { postToSocialMedia } = require('./socialMediaAPI');
+const User = require('../models/User');
+const { publishSocialPostWithSafetyWrapper } = require('./instagram-fix');
 
 function normalizeHashtag(tag) {
   const t = String(tag || '').trim();
@@ -57,9 +58,18 @@ function buildCampaignPostPayload(campaign) {
 
 async function publishCampaignToSocial(campaign) {
   const { platforms, fullPost, mediaUrls } = buildCampaignPostPayload(campaign);
-  const result = await postToSocialMedia(platforms, fullPost, {
+  const user = campaign?.userId ? await User.findById(campaign.userId) : null;
+  const result = await publishSocialPostWithSafetyWrapper({
+    user,
+    campaign,
+    platforms,
+    content: fullPost,
+    options: {
     mediaUrls,
     shortenLinks: true,
+      profileKey: user?.ayrshare?.profileKey || undefined
+    },
+    context: 'campaign_scheduler'
   });
 
   const postId = result?.data?.id || result?.data?.postIds?.[0] || result?.data?.postId || null;

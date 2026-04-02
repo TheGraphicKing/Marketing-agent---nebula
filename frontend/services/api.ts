@@ -702,9 +702,13 @@ export const apiService = {
       );
       return { connections: response.connections };
     } catch (error) {
-      // Fallback to mock data if not logged in or API fails
-      // Using mock social connections
-      return { connections: socialConnections };
+      // Only fall back to mock data when not authenticated.
+      // If the user is logged in, surface the error so the UI can keep last-known state.
+      const hasToken = typeof window !== "undefined" && !!localStorage.getItem("authToken");
+      if (!hasToken) {
+        return { connections: socialConnections };
+      }
+      throw error;
     }
   },
 

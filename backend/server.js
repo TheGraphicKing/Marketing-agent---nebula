@@ -44,6 +44,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const campaignRoutes = require('./routes/campaigns');
 const competitorRoutes = require('./routes/competitors');
 const reminderRoutes = require('./routes/reminders');
+const accountRoutes = require('./routes/accounts');
 
 // New real-data routes
 const brandRoutes = require('./routes/brand');
@@ -224,6 +225,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/campaigns', aiLimiter, campaignRoutes);
 app.use('/api/competitors', competitorRoutes);
 app.use('/api/reminders', reminderRoutes);
+app.use('/api/accounts', accountRoutes);
 
 // Routes - Real Data Features
 app.use('/api/brand', brandRoutes);

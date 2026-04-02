@@ -5,6 +5,7 @@ const { generateImageFromCustomPrompt, refineImageWithPrompt } = require('../ser
 const { uploadBase64Image } = require('../services/imageUploader');
 const { deductCredits } = require('../middleware/trialGuard');
 const { ensureCreditCycle } = require('../middleware/creditGuard');
+const { composeImageToVideoWithAudio } = require('../services/mediaComposer');
 const User = require('../models/User');
 
 /**
@@ -99,6 +100,102 @@ router.post('/modify', protect, async (req, res) => {
   } catch (error) {
     console.error('Content modify error:', error.message);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @route   POST /api/content/image-audio-to-video
+ * @desc    Convert image + audio into MP4 video for Instagram
+ * @access  Private
+ */
+router.post('/image-audio-to-video', protect, async (req, res) => {
+  try {
+    const { imageUrl, audioUrl } = req.body;
+
+    // Validate inputs
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'Valid imageUrl is required' });
+    }
+    if (!audioUrl || typeof audioUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'Valid audioUrl is required' });
+    }
+
+    // Get user for credit check
+    const user = await User.findById(req.user.userId || req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // Ensure credit cycle is up to date
+    await ensureCreditCycle(user);
+
+    // Check if user has sufficient credits (2 credits for video composition)
+    if (user.credits.balance < 2) {
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient credits for video composition',
+        creditsRemaining: user.credits.balance,
+        required: 2
+      });
+    }
+
+    console.log(`🎬 [VIDEO COMPOSITION] Starting image + audio to video conversion`);
+    console.log(`   User: ${user._id}`);
+    console.log(`   Image URL: ${imageUrl.substring(0, 80)}...`);
+    console.log(`   Audio URL: ${audioUrl.substring(0, 80)}...`);
+
+    const requestedDurationSeconds = Number(req.body.durationSeconds || req.body.requestedDurationSeconds || 0);
+
+    // Compose video
+    const result = await composeImageToVideoWithAudio({
+      imageUrl,
+      audioUrl,
+      requestedDurationSeconds: Number.isFinite(requestedDurationSeconds) ? requestedDurationSeconds : null,
+      cloudinaryFolder: 'nebula-instagram-audio-posts'
+    });
+
+    if (!result.success) {
+      console.error(`❌ [VIDEO COMPOSITION FAILED] ${result.error}`);
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        validation: result.validation,
+        metadata: result.metadata,
+        audioValidation: result.audioValidation
+      });
+    }
+
+    // Deduct 2 credits for video composition
+    const creditResult = await deductCredits(
+      user._id,
+      'compose_video',
+      1,
+      'Convert image + audio to video'
+    );
+
+    console.log(`✅ [VIDEO COMPOSITION SUCCESS]`);
+    console.log(`   Video URL: ${result.videoUrl.substring(0, 100)}...`);
+    console.log(`   Duration: ${result.duration}s`);
+    console.log(`   Size: ${(result.bytes / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`   Credits deducted: 2, Remaining: ${creditResult.creditsRemaining}`);
+
+    return res.json({
+      success: true,
+      videoUrl: result.videoUrl,
+      publicId: result.publicId,
+      duration: result.duration,
+      bytes: result.bytes,
+      metadata: result.metadata,
+      validation: result.validation,
+      creditsRemaining: creditResult.creditsRemaining
+    });
+  } catch (error) {
+    console.error('❌ [VIDEO COMPOSITION ERROR]', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to compose video',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

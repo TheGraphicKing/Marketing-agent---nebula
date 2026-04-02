@@ -133,6 +133,7 @@ export interface Campaign {
   socialPostId?: string;
   socialPostIds?: Record<string, string> | null;
   ayrshareStatus?: string;
+  lastPublishError?: string | null;
   createdAt: string;
 }
 

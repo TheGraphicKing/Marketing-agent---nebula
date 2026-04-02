@@ -25,6 +25,8 @@ async function processDueCampaigns({ now = new Date(), limit = 20 } = {}) {
           publishedAt: new Date(),
           publishResult: result.data,
           lastPublishError: null,
+          instagramAccountKey: result?.instagramFix?.accountKey || null,
+          ayrshareStatus: 'success'
         };
 
         if (nextRecurring) {
@@ -52,6 +54,7 @@ async function processDueCampaigns({ now = new Date(), limit = 20 } = {}) {
           publishedAt: new Date(),
           publishResult: { simulated: true, reason: result.error || 'API not configured' },
           lastPublishError: null,
+          ayrshareStatus: 'success'
         };
 
         if (nextRecurring) {
@@ -75,12 +78,14 @@ async function processDueCampaigns({ now = new Date(), limit = 20 } = {}) {
         $set: {
           lastPublishError: result.error || result.message || 'Failed to publish',
           publishResult: result.data || result,
+          ayrshareStatus: 'error'
         },
       });
     } catch (e) {
       await Campaign.findByIdAndUpdate(campaign._id, {
         $set: {
           lastPublishError: e.message || 'Failed to publish',
+          ayrshareStatus: 'error'
         },
       });
     }

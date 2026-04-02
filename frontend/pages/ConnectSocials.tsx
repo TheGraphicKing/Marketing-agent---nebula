@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { SocialConnection } from '../types';
@@ -23,11 +23,95 @@ const ConnectSocials: React.FC = () => {
   // Connection State
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [showFakeAuthWindow, setShowFakeAuthWindow] = useState(false);
+  const [manualAuthUrl, setManualAuthUrl] = useState<string | null>(null);
   const [authStep, setAuthStep] = useState(0); // 0: loading, 1: consent, 2: success
   const [usernameInput, setUsernameInput] = useState('');
+  const authPopupRef = useRef<Window | null>(null);
+  const authPopupMonitorRef = useRef<number | null>(null);
   
   // Loading states per platform
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null);
+
+  const clearAuthPopupMonitor = () => {
+    if (authPopupMonitorRef.current !== null) {
+      window.clearInterval(authPopupMonitorRef.current);
+      authPopupMonitorRef.current = null;
+    }
+  };
+
+  const startAuthPopupMonitor = (platform: string, popup: Window) => {
+    clearAuthPopupMonitor();
+    authPopupRef.current = popup;
+
+    authPopupMonitorRef.current = window.setInterval(async () => {
+      if (!popup || popup.closed) {
+        clearAuthPopupMonitor();
+        authPopupRef.current = null;
+        setLoadingPlatform(null);
+        setConnectingPlatform(null);
+
+        try {
+          await loadSocials();
+        } catch (error) {
+          console.error(`Failed to refresh ${platform} status after auth window closed:`, error);
+        }
+      }
+    }, 800);
+  };
+
+  const writePopupLoadingState = (popup: Window, platform: string) => {
+    try {
+      popup.document.write(`
+        <html>
+          <head><title>Connecting ${platform}</title></head>
+          <body style="margin:0;font-family:sans-serif;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+            <div style="text-align:center;max-width:420px;padding:24px;">
+              <div style="font-size:18px;font-weight:700;margin-bottom:12px;">Preparing ${platform} connection...</div>
+              <div style="font-size:14px;color:#94a3b8;">This window will redirect to the secure auth flow in a moment.</div>
+            </div>
+          </body>
+        </html>
+      `);
+      popup.document.close();
+    } catch (_) {}
+  };
+
+  const openAuthPopup = (authUrl: string, platform: string, existingPopup?: Window | null) => {
+    const popupName = `nebula-social-${platform.toLowerCase()}`;
+    const popup =
+      existingPopup && !existingPopup.closed
+        ? existingPopup
+        : window.open('', popupName, 'width=640,height=820,menubar=no,toolbar=no,status=no,scrollbars=yes,resizable=yes');
+
+    if (!popup) {
+      setManualAuthUrl(authUrl);
+      setNotification({
+        type: 'error',
+        message: `Your browser blocked the ${platform} auth window. Click "Open Auth Page" to launch it in a new tab.`
+      });
+      return false;
+    }
+
+    try {
+      popup.location.href = authUrl;
+      popup.focus();
+      setManualAuthUrl(null);
+      setNotification({
+        type: 'success',
+        message: `Finish connecting ${platform} in the new window. This page will stay open.`
+      });
+      startAuthPopupMonitor(platform, popup);
+      return true;
+    } catch (error) {
+      console.error(`Failed to open ${platform} auth popup:`, error);
+      setManualAuthUrl(authUrl);
+      setNotification({
+        type: 'error',
+        message: `Could not open the ${platform} auth window automatically. Click "Open Auth Page" to continue.`
+      });
+      return false;
+    }
+  };
 
   useEffect(() => {
     // Check URL params for OAuth callback results
@@ -47,6 +131,14 @@ const ConnectSocials: React.FC = () => {
         // ✅ KEY FIX: If we're inside the Ayrshare popup window (window.opener exists),
         // auto-close this window so the user returns to the original tab automatically.
         if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage({
+              type: 'nebula-social-connected',
+              platform,
+              account: account ? decodeURIComponent(account) : null
+            }, window.location.origin);
+          } catch (_) {}
+
           // Show a brief success page then close
           document.title = `${displayName} Connected ✅`;
           document.body.innerHTML = `
@@ -106,6 +198,35 @@ const ConnectSocials: React.FC = () => {
     }
   }, [location.search]);
 
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'nebula-social-connected') return;
+
+      const platform = String(event.data.platform || '');
+      const displayName = platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Social account';
+      const accountName = event.data.account ? ` (${event.data.account})` : '';
+
+      clearAuthPopupMonitor();
+      authPopupRef.current = null;
+      setLoadingPlatform(null);
+      setConnectingPlatform(null);
+      setManualAuthUrl(null);
+      setNotification({
+        type: 'success',
+        message: `${displayName}${accountName} connected successfully!`
+      });
+      loadSocials();
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  useEffect(() => {
+    return () => clearAuthPopupMonitor();
+  }, []);
+
   // Auto-dismiss notifications
   useEffect(() => {
     if (notification) {
@@ -120,128 +241,57 @@ const ConnectSocials: React.FC = () => {
       setSocials(res.connections || []);
     } catch (e) {
       console.error(e);
+      setNotification({ type: "error", message: "Could not load social connection status. Please try again in a moment." });
     } finally {
       setLoading(false);
     }
   };
 
   const initiateConnection = async (platform: string) => {
+    setManualAuthUrl(null);
     setLoadingPlatform(platform);
     setConnectingPlatform(platform);
-    
+    const popupName = `nebula-social-${platform.toLowerCase()}`;
+    const pendingPopup = window.open('', popupName, 'width=640,height=820,menubar=no,toolbar=no,status=no,scrollbars=yes,resizable=yes');
+
+    if (pendingPopup) {
+      writePopupLoadingState(pendingPopup, platform);
+    }
+
     try {
       const response = await apiService.getPlatformAuthUrl(platform);
-      
+
       if (response.success && response.authUrl) {
-        if (response.method === 'ayrshare_jwt') {
-          // Open Ayrshare as a controlled popup window so we can detect when it closes
-          const popupWidth = 600;
-          const popupHeight = 700;
-          const left = window.screenX + (window.outerWidth - popupWidth) / 2;
-          const top = window.screenY + (window.outerHeight - popupHeight) / 2;
-          
-          const popup = window.open(
-            response.authUrl,
-            `ayrshare_connect_${platform}`,
-            `width=${popupWidth},height=${popupHeight},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
-          );
-
+        const opened = openAuthPopup(response.authUrl, platform, pendingPopup);
+        if (opened) {
           setLoadingPlatform(null);
-          setConnectingPlatform(null);
-
-          if (!popup) {
-            // Popup was blocked — fallback to new tab
-            window.open(response.authUrl, '_blank', 'noopener,noreferrer');
-            setNotification({
-              type: 'success',
-              message: `Connect your ${platform} in the new tab, then click "Refresh Status" when done.`
-            });
-            return;
-          }
-
-          popup.focus();
-          setNotification({
-            type: 'success',
-            message: `Connect your ${platform} in the popup. This page will auto-refresh when done.`
-          });
-
-          // Poll every second to detect when the popup closes
-          const pollTimer = setInterval(async () => {
-            if (popup.closed) {
-              clearInterval(pollTimer);
-
-              // Ayrshare caches the /api/user response for ~60 seconds.
-              // So we retry the status check up to 8 times, every 8 seconds,
-              // until the new account appears or we exhaust retries.
-              const maxRetries = 8;
-              const retryDelay = 8000; // 8 seconds between retries
-              let attempt = 0;
-
-              const checkWithRetry = async () => {
-                attempt++;
-                const platformLower = platform.toLowerCase();
-
-                setNotification({
-                  type: 'success',
-                  message: `Checking ${platform} connection... (${attempt}/${maxRetries})`
-                });
-
-                // Call loadSocials and check if the platform is now connected
-                try {
-                  const res = await apiService.getSocials();
-                  const updatedSocials = res.connections || [];
-                  setSocials(updatedSocials);
-
-                  const isNowConnected = updatedSocials.find(
-                    (s: SocialConnection) =>
-                      s.platform.toLowerCase() === platformLower && s.connected
-                  );
-
-                  if (isNowConnected) {
-                    setNotification({
-                      type: 'success',
-                      message: `${platform} connected successfully! ✅`
-                    });
-                    return; // Done!
-                  }
-                } catch (e) {
-                  console.error('Status check error:', e);
-                }
-
-                if (attempt < maxRetries) {
-                  // Wait and retry
-                  setTimeout(checkWithRetry, retryDelay);
-                } else {
-                  // Exhausted retries
-                  setNotification({
-                    type: 'error',
-                    message: `Could not confirm ${platform} connection. Try clicking "Refresh Status" in 1 minute.`
-                  });
-                }
-              };
-
-              // Start first check after 3 seconds
-              setTimeout(checkWithRetry, 3000);
-            }
-          }, 1000);
-
-        } else {
-          // For direct OAuth (e.g. YouTube), redirect in same window
-          window.location.href = response.authUrl;
+          return;
         }
+
+        if (pendingPopup && !pendingPopup.closed) {
+          pendingPopup.close();
+        }
+        setLoadingPlatform(null);
+        setConnectingPlatform(null);
       } else {
-        setNotification({ 
-          type: 'error', 
-          message: response.message || `Failed to initiate ${platform} connection.` 
+        if (pendingPopup && !pendingPopup.closed) {
+          pendingPopup.close();
+        }
+        setNotification({
+          type: 'error',
+          message: response.message || `Failed to initiate ${platform} connection.`
         });
         setLoadingPlatform(null);
         setConnectingPlatform(null);
       }
     } catch (error: any) {
+      if (pendingPopup && !pendingPopup.closed) {
+        pendingPopup.close();
+      }
       console.error('OAuth connect error:', error);
-      setNotification({ 
-        type: 'error', 
-        message: error.message || `Failed to connect to ${platform}.` 
+      setNotification({
+        type: 'error',
+        message: error.message || `Failed to connect to ${platform}.`
       });
       setLoadingPlatform(null);
       setConnectingPlatform(null);
@@ -336,6 +386,27 @@ const ConnectSocials: React.FC = () => {
         </div>
       )}
 
+      {manualAuthUrl && (
+        <div className="fixed top-20 right-4 z-50 max-w-md p-4 rounded-lg shadow-lg border bg-yellow-50 border-yellow-200 text-yellow-900 animate-in slide-in-from-top-2 duration-300">
+          <p className="text-sm mb-2">Your browser blocked the automatic redirect to Ayrshare.</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => manualAuthUrl && openAuthPopup(manualAuthUrl, connectingPlatform || 'social')}
+              className="flex-1 text-center bg-yellow-400 text-black font-bold rounded px-3 py-2 hover:bg-yellow-300"
+            >
+              Open Auth Page
+            </button>
+            <button
+              onClick={() => setManualAuthUrl(null)}
+              className="bg-white border border-yellow-300 text-yellow-900 rounded px-3 py-2 hover:bg-yellow-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-8 flex justify-between items-end">
         <div>
             <h1 className={`text-2xl font-bold ${theme.text}`}>Connect Socials</h1>
@@ -343,12 +414,16 @@ const ConnectSocials: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={async () => { setLoading(true); await loadSocials(); }}
-            className={`rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-bold transition-colors ${
-              isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200'
+            onClick={() => loadSocials()}
+            disabled={loading}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isDarkMode
+                ? 'bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:bg-slate-800 disabled:text-slate-500'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:bg-slate-50 disabled:text-slate-400'
             }`}
           >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh Status
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh Status
           </button>
           <div className={`rounded-full px-4 py-1.5 flex items-center gap-2 text-xs font-bold ${
             isDarkMode ? 'bg-blue-500/20 border border-blue-400/30 text-blue-400' : 'bg-blue-50 border border-blue-200 text-blue-700'

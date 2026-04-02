@@ -9,15 +9,179 @@ const { protect } = require('../middleware/auth');
 const { checkTrial, deductCredits, requireCredits } = require('../middleware/trialGuard');
 const Campaign = require('../models/Campaign');
 const User = require('../models/User');
+const crypto = require('crypto');
 const { callGemini, parseGeminiJSON, generateICPAndStrategy, generateCampaignImageNanoBanana } = require('../services/geminiAI');
 // Import Ayrshare for social media posting
-const { postToSocialMedia, getPostStatus, deletePost: deleteAyrsharePost } = require('../services/socialMediaAPI');
+const { getPostStatus, retryPost: retryAyrsharePost, deletePost: deleteAyrsharePost } = require('../services/socialMediaAPI');
+const {
+  classifyInstagramPublishFailure,
+  publishSocialPostWithSafetyWrapper
+} = require('../services/instagram-fix');
+const { URL } = require('url');
+
+async function validateMediaUrl(mediaUrl) {
+  if (!mediaUrl || typeof mediaUrl !== 'string') return { valid: false, reason: 'No media URL provided' };
+  if (!/^https?:\/\//i.test(mediaUrl)) return { valid: false, reason: 'Media URL is not HTTP/HTTPS: ' + mediaUrl };
+
+  const extMatch = mediaUrl.match(/\.([^.?#]+)(\?|#|$)/);
+  const ext = extMatch ? extMatch[1].toLowerCase() : null;
+  const supportedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov'];
+
+  if (ext && !supportedExts.includes(ext)) {
+    return { valid: false, reason: `Unsupported media extension .${ext}. Supported: ${supportedExts.join(', ')}` };
+  }
+
+  try {
+    // Try lightweight HEAD request to validate access. Some CDN/prefix may not support HEAD; fallback to GET.
+    let fetchFn = global.fetch || (await import('node-fetch')).default;
+    const headResp = await fetchFn(mediaUrl, { method: 'HEAD', redirect: 'follow', timeout: 12000 });
+    if (headResp.ok) {
+      const contentType = headResp.headers.get('content-type');
+      const length = headResp.headers.get('content-length');
+      if (contentType && !contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+        return { valid: false, reason: `Invalid content-type ${contentType}` };
+      }
+      return { valid: true, contentType, contentLength: length };
+    }
+
+    const getResp = await fetchFn(mediaUrl, { method: 'GET', redirect: 'follow', timeout: 12000 });
+    if (!getResp.ok) {
+      return { valid: false, reason: `HTTP ${getResp.status} ${getResp.statusText}` };
+    }
+    const contentType = getResp.headers.get('content-type');
+    if (contentType && !contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+      return { valid: false, reason: `Invalid content-type ${contentType}` };
+    }
+
+    return { valid: true, contentType, contentLength: getResp.headers.get('content-length') };
+  } catch (err) {
+    return { valid: false, reason: `Unable to verify URL: ${err.message}` };
+  }
+}
+
+/**
+ * Normalize schedule date per requirements:
+ * - Must be future at least 10 minutes from now
+ * - ISO format string
+ * - Null => immediate posting
+ */
+function normalizeScheduleDate(rawDate) {
+  if (!rawDate) return null;
+
+  const now = new Date();
+  const minFutureMs = 10 * 60 * 1000;
+  let target = new Date(rawDate);
+
+  if (Number.isNaN(target.getTime())) {
+    target = new Date(now.getTime() + minFutureMs);
+  }
+
+  if (target.getTime() < now.getTime() + minFutureMs) {
+    target = new Date(now.getTime() + minFutureMs);
+  }
+
+  return target.toISOString();
+}
+
+function buildInstagramCaption(baseCaption = '', callToAction = '') {
+  const hook = baseCaption.trim().split('\n')[0] || '🔥 Quick update:';
+  const cta = callToAction.trim();
+  const captionBody = baseCaption.trim() ? baseCaption.trim() : 'Check this out now!';
+
+  const finalCTA = cta ? `${cta.trim()} ` : '';
+  return `${hook}\n\n${captionBody}\n\n${finalCTA}Tap link in bio to learn more.`.trim();
+}
+
+function sanitizeHashtags(rawHashtags = []) {
+  if (!Array.isArray(rawHashtags)) return [];
+  const sanitized = rawHashtags
+    .map((tag) => (typeof tag === 'string' ? tag.trim().replace(/^#+/, '#') : ''))
+    .filter((tag) => /^#[A-Za-z0-9_]+$/.test(tag));
+  return Array.from(new Set(sanitized)).slice(0, 25);
+}
+
+/** Generate validated social posts JSON for publishing. */
+async function generateSocialMediaPosts(input) {
+  const {
+    platforms = ['instagram'],
+    mediaUrl,
+    audioUrl,
+    caption = '',
+    hashtags = [],
+    imageDescription = '',
+    scheduleDate = null,
+    callToAction = ''
+  } = input || {};
+
+  const results = {
+    posts: []
+  };
+
+  if (!mediaUrl || typeof mediaUrl !== 'string') {
+    throw new Error('mediaUrl is required and must be a non-empty string');
+  }
+
+  const mediaValidation = await validateMediaUrl(mediaUrl);
+  if (!mediaValidation.valid) {
+    throw new Error(`Media validation failed: ${mediaValidation.reason}`);
+  }
+
+  const normalizedSchedule = normalizeScheduleDate(scheduleDate);
+  const hashtagList = sanitizeHashtags(hashtags);
+  const normalizedPlatforms = (Array.isArray(platforms) ? platforms : [platforms]).map((p) => String(p).toLowerCase());
+
+  const hasInstagram = normalizedPlatforms.includes('instagram');
+  const isInstagramAudio = hasInstagram && audioUrl && typeof audioUrl === 'string' && audioUrl.trim().length > 0;
+
+  // Instagram post
+  if (hasInstagram) {
+    const instagramPost = {
+      platform: 'instagram',
+      caption: buildInstagramCaption(caption, callToAction),
+      hashtags: hashtagList,
+      imageDescription: imageDescription || 'Image for Instagram campaign',
+      scheduleDate: normalizedSchedule,
+      mediaType: isInstagramAudio ? 'video' : mediaValidation.contentType?.startsWith('video/') ? 'video' : 'image',
+      mediaUrl: isInstagramAudio ? mediaUrl : mediaUrl,
+      audioUrl: isInstagramAudio ? audioUrl : null
+    };
+    results.posts.push(instagramPost);
+  }
+
+  // Other platforms
+  const otherPlatforms = normalizedPlatforms.filter((p) => p !== 'instagram');
+  for (const platform of otherPlatforms) {
+    const otherPost = {
+      platform,
+      caption: caption || 'Check this out now!',
+      hashtags: hashtagList,
+      imageDescription: imageDescription || 'Media for social campaign',
+      scheduleDate: normalizedSchedule,
+      mediaType: mediaValidation.contentType?.startsWith('video/') ? 'video' : 'image',
+      mediaUrl,
+      audioUrl: null
+    };
+    results.posts.push(otherPost);
+  }
+
+  if (results.posts.length === 0) {
+    throw new Error('No valid platforms found. At least one platform is required.');
+  }
+
+  return results;
+}
+
 
 // Import image uploader for converting base64 to hosted URLs
 const { ensurePublicUrl, ensurePublicAudioUrl, uploadBase64Audio, isBase64DataUrl } = require('../services/imageUploader');
-
 // Media composer (image -> video + audio) for Instagram audio posts
 const { composeImageToVideoWithAudio } = require('../services/mediaComposer');
+const {
+  normalizePlatforms: normalizePlatformsList,
+  normalizeScheduleDate: normalizeScheduleDateDetails,
+  pickPrimaryMediaUrl,
+  validateAndNormalizePost
+} = require('../utils/socialPostValidation');
 
 // Import logo overlay service for compositing logos onto posters
 const { overlayLogoAndUpload, replaceLogoAtBboxAndUpload } = require('../services/logoOverlay');
@@ -91,18 +255,99 @@ router.get('/', protect, async (req, res) => {
             if (ayrshareStatus === 'success' || ayrshareStatus === 'posted') {
               // Ayrshare confirmed it was actually posted!
               await Campaign.findByIdAndUpdate(campaign._id, { 
-                $set: { status: 'posted', publishedAt: now, ayrshareStatus: 'success' } 
+                $set: { status: 'posted', publishedAt: now, ayrshareStatus: 'success', lastPublishError: null } 
               });
               campaign.status = 'posted';
               campaign.publishedAt = now;
               console.log(`✅ Confirmed posted: ${campaign.name}`);
             } else if (ayrshareStatus === 'error') {
-              // Ayrshare says it failed
-              await Campaign.findByIdAndUpdate(campaign._id, { 
-                $set: { status: 'draft', ayrshareStatus: 'error' } 
+              const classifiedFailure = classifyInstagramPublishFailure({
+                success: false,
+                data: postData,
+                error: postData?.message || postData?.posts?.[0]?.message || ''
               });
-              campaign.status = 'draft';
-              console.log(`❌ Ayrshare post failed: ${campaign.name}`);
+              // Ayrshare says it failed
+              const failureMessage =
+                classifiedFailure?.userMessage ||
+                postData?.message ||
+                postData?.posts?.[0]?.message ||
+                postData?.posts?.[0]?.errors?.[0]?.message ||
+                postData?.errors?.[0]?.message ||
+                'Ayrshare reported an error';
+
+              const retryAvailable = !!postData?.retryAvailable;
+              const normalized = Array.isArray(campaign.platforms)
+                ? campaign.platforms.map((p) => String(p || '').toLowerCase()).filter(Boolean)
+                : [];
+              const isInstagramOnly = normalized.length === 1 && normalized[0] === 'instagram';
+
+              const looksTransient = /cannot process your post at this time/i.test(failureMessage) || /please try your post again/i.test(failureMessage);
+              const canRetry = retryAvailable || looksTransient;
+              const retryCount = Number.isFinite(Number(campaign.publishResult?.retryCount))
+                ? Number(campaign.publishResult.retryCount)
+                : (campaign.publishResult?.retryRequestedAt ? 1 : 0);
+              const maxRetries = (() => {
+                const raw = process.env.INSTAGRAM_SCHEDULED_RETRY_MAX || process.env.IG_SCHEDULED_RETRY_MAX;
+                const n = raw ? Number.parseInt(String(raw), 10) : NaN;
+                if (Number.isFinite(n) && n >= 0 && n <= 10) return n;
+                return 3;
+              })();
+
+              // If Instagram reports a transient error and Ayrshare allows retry, try once instead of reverting to Draft.
+              if (canRetry && isInstagramOnly && campaign.socialPostId && retryCount < maxRetries) {
+                try {
+                  const retryRes = await retryAyrsharePost(campaign.socialPostId, { profileKey });
+                  const pendingId = retryRes?.data?.id || campaign.socialPostId;
+                  if (retryRes?.success) {
+                    const nextRetryCount = retryCount + 1;
+                    const delayMinutes = Math.min(60, 5 * Math.pow(2, Math.max(0, nextRetryCount - 1))); // 5, 10, 20...
+                    const nextAttemptAt = new Date(now.getTime() + delayMinutes * 60 * 1000);
+                    await Campaign.findByIdAndUpdate(campaign._id, {
+                      $set: {
+                        status: 'scheduled',
+                        scheduledFor: nextAttemptAt,
+                        socialPostId: pendingId,
+                        socialPostIds: { instagram: pendingId },
+                        ayrshareStatus: 'pending',
+                        lastPublishError: null,
+                        publishResult: {
+                          verifiedError: postData || null,
+                          retry: retryRes?.data || retryRes,
+                          retryRequestedAt: now.toISOString(),
+                          retryCount: nextRetryCount
+                        }
+                      }
+                    });
+
+                    campaign.status = 'scheduled';
+                    campaign.scheduledFor = nextAttemptAt;
+                    campaign.socialPostId = pendingId;
+                    campaign.ayrshareStatus = 'pending';
+                    campaign.lastPublishError = null;
+                    console.log(`🔁 Retried failed Instagram post for ${campaign.name} — pending (${pendingId}) (attempt ${nextRetryCount}/${maxRetries}, next check in ~${delayMinutes}m)`);
+                    continue;
+                  }
+                } catch (retryError) {
+                  console.warn(`⚠️ Retry failed for campaign ${campaign._id}:`, retryError?.message || retryError);
+                }
+              }
+
+              // If it's transient/ retryable, do NOT revert to draft. Keep scheduled so user can retry later.
+              if (canRetry && isInstagramOnly) {
+                await Campaign.findByIdAndUpdate(campaign._id, {
+                  $set: { status: 'scheduled', ayrshareStatus: 'error', lastPublishError: failureMessage }
+                });
+                campaign.status = 'scheduled';
+                campaign.lastPublishError = failureMessage;
+                console.log(`⏳ Instagram transient error persists; keeping scheduled: ${campaign.name}`);
+              } else {
+                await Campaign.findByIdAndUpdate(campaign._id, { 
+                  $set: { status: 'draft', ayrshareStatus: 'error', lastPublishError: failureMessage } 
+                });
+                campaign.status = 'draft';
+                campaign.lastPublishError = failureMessage;
+                console.log(`❌ Ayrshare post failed: ${campaign.name}`);
+              }
             } else {
               // Still scheduled/pending on Ayrshare side - don't change status
               console.log(`⏳ Still pending on Ayrshare: ${campaign.name} (status: ${ayrshareStatus})`);
@@ -762,17 +1007,33 @@ router.post('/:id/publish', protect, async (req, res) => {
     }
     
     // Get the platforms from request body (user selected) or fall back to campaign platforms
-    const platforms = req.body.platforms || campaign.platforms || ['instagram'];
+    const platforms = normalizePlatformsList(req.body.platforms || campaign.platforms || ['instagram']);
     
     // Check if this is a scheduled post
-    const scheduledFor = req.body.scheduledFor;
+    const requestedSchedule = normalizeScheduleDateDetails(req.body.scheduledFor);
+    const scheduledFor = requestedSchedule.scheduleDate;
     const isScheduled = !!scheduledFor;
+    let scheduleDateIso = null;
+    let scheduleDateObj = null;
+
+    if (requestedSchedule.adjusted && scheduledFor) {
+      console.log(`âš ï¸ Schedule adjusted (${requestedSchedule.reason}) to ${scheduledFor}`);
+    }
     
     if (isScheduled) {
       console.log('📅 Scheduling post for:', scheduledFor);
-      // Validate schedule date is in the future
+      // Validate schedule date is in the future and not too soon
       const schedDate = new Date(scheduledFor);
       const now = new Date();
+      const MIN_SCHEDULE_LEAD_MINUTES = 5;
+      const MIN_SCHEDULE_LEAD_MS = MIN_SCHEDULE_LEAD_MINUTES * 60 * 1000;
+
+      if (isNaN(schedDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid scheduled datetime. Received: ${scheduledFor}`
+        });
+      }
       if (schedDate <= now) {
         console.warn('⚠️ Schedule date is in the past:', scheduledFor, 'Current:', now.toISOString());
         return res.status(400).json({ 
@@ -780,6 +1041,17 @@ router.post('/:id/publish', protect, async (req, res) => {
           message: `Schedule date must be in the future. Received: ${scheduledFor}, Current time: ${now.toISOString()}`
         });
       }
+
+      if (schedDate.getTime() < now.getTime() + MIN_SCHEDULE_LEAD_MS) {
+        console.warn('⚠️ Schedule date is too soon:', scheduledFor, 'Current:', now.toISOString());
+        return res.status(400).json({
+          success: false,
+          message: `Schedule time must be at least ${MIN_SCHEDULE_LEAD_MINUTES} minutes in the future. Received: ${scheduledFor}, Current time: ${now.toISOString()}`
+        });
+      }
+
+      scheduleDateIso = schedDate.toISOString();
+      scheduleDateObj = schedDate;
     }
     
     if (!profileKey) {
@@ -789,9 +1061,52 @@ router.post('/:id/publish', protect, async (req, res) => {
       });
     }
 
-    // If this campaign already has a scheduled Ayrshare post, delete it before rescheduling/reposting
-    // to avoid creating duplicate scheduled posts.
-    if (campaign.status === 'scheduled') {
+    const existingSocialPostIdsFromMap = (campaign.socialPostIds && typeof campaign.socialPostIds === 'object')
+      ? Object.values(campaign.socialPostIds)
+      : [];
+    const existingAyrsharePostIds = Array.from(
+      new Set([...(existingSocialPostIdsFromMap || []), campaign.socialPostId].filter((v) => typeof v === 'string' && v))
+    );
+    const preserveExistingSchedule = campaign.status === 'scheduled' && (!!campaign.scheduledFor || existingAyrsharePostIds.length > 0);
+
+    const persistPublishFailure = async (message, publishResult = null) => {
+      try {
+        // If we already have a scheduled Ayrshare post, do NOT revert to Draft on a failed reschedule attempt.
+        // Keep the existing schedule and show the error instead.
+        if (preserveExistingSchedule) {
+          await Campaign.findByIdAndUpdate(campaign._id, {
+            $set: {
+              lastPublishError: message,
+              publishResult: publishResult || null
+            }
+          });
+          return;
+        }
+
+        const shouldClearScheduling = isScheduled || campaign.status === 'scheduled';
+        const update = {
+          status: 'draft',
+          ayrshareStatus: 'error',
+          lastPublishError: message,
+          publishResult: publishResult || null
+        };
+
+        if (shouldClearScheduling) {
+          update.scheduledFor = null;
+          update.socialPostId = null;
+          update.socialPostIds = null;
+        }
+
+        await Campaign.findByIdAndUpdate(campaign._id, { $set: update });
+      } catch (e) {
+        console.warn('Failed to persist publish failure details:', e?.message || e);
+      }
+    };
+
+    // NOTE: We no longer delete existing scheduled Ayrshare posts *before* a new publish succeeds.
+    // Deleting first can cause the campaign to lose its original schedule if the new publish fails.
+    // Old scheduled posts (if any) are cleaned up after a successful publish.
+    if (false && campaign.status === 'scheduled') {
       const socialPostIdsFromMap = (campaign.socialPostIds && typeof campaign.socialPostIds === 'object')
         ? Object.values(campaign.socialPostIds)
         : [];
@@ -818,8 +1133,8 @@ router.post('/:id/publish', protect, async (req, res) => {
     
     // Build the post content
     let postContent = campaign.creative?.textContent || campaign.creative?.caption || campaign.content || campaign.name;
-    const mediaUrls = campaign.creative?.imageUrls || [];
-    let mediaUrl = mediaUrls[0] || campaign.creative?.mediaUrl || null;
+    const mediaUrls = Array.isArray(campaign.creative?.imageUrls) ? campaign.creative.imageUrls : [];
+    let mediaUrl = pickPrimaryMediaUrl(mediaUrls) || pickPrimaryMediaUrl(campaign.creative?.mediaUrl) || pickPrimaryMediaUrl(campaign.creative?.videoUrl);
     
     // Debug logging for template poster publish
     console.log('📋 Campaign publish debug:');
@@ -844,13 +1159,17 @@ router.post('/:id/publish', protect, async (req, res) => {
     
     // Combine all hashtags, remove duplicates, and limit to 5 for Instagram
     const allHashtags = [...new Set([...existingHashtags, ...captionHashtags])];
-    const maxHashtags = platforms.includes('instagram') ? 5 : 30; // Instagram max is 5, others allow more
-    const limitedHashtags = allHashtags.slice(0, maxHashtags);
+    const maxHashtags = platforms.includes('instagram') ? 25 : 30;
+    const limitedHashtags = sanitizeHashtags(allHashtags, { max: maxHashtags });
     
     // Format the full post with limited hashtags
-    const fullPost = limitedHashtags.length > 0 
-      ? `${cleanContent}\n\n${limitedHashtags.join(' ')}`
+    const ctaText = String(campaign.creative?.callToAction || '').replace(/_/g, ' ').trim();
+    const baseCaption = platforms.includes('instagram')
+      ? buildInstagramCaption(cleanContent, ctaText)
       : cleanContent;
+    const fullPost = limitedHashtags.length > 0
+      ? `${baseCaption}\n\n${limitedHashtags.join(' ')}`
+      : baseCaption;
     
     console.log('Publishing to platforms:', platforms);
     console.log('Post content:', fullPost.substring(0, 100) + '...');
@@ -869,40 +1188,173 @@ router.post('/:id/publish', protect, async (req, res) => {
         mediaUrl = null;
       }
     }
+
+    let mediaValidation = null;
+    if (mediaUrl) {
+      mediaValidation = await validateMediaUrl(mediaUrl);
+      if (!mediaValidation.valid) {
+        const msg = `Invalid media URL: ${mediaValidation.reason}`;
+        console.error(msg);
+        await persistPublishFailure(msg, { mediaValidation });
+        return res.status(400).json({ success: false, message: msg, mediaValidation });
+      }
+    }
+
+    // ============================================
+    // DUPLICATE CONTENT GUARD (prevents IG rejects)
+    // ============================================
+    const normalizedPlatforms = platforms;
+    const includesInstagram = normalizedPlatforms.includes('instagram');
+    if (includesInstagram) {
+      const normalizeTextForHash = (s) => String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^\p{L}\p{N}\s#@.,!?'"()\-:/]/gu, '') // drop emojis/symbols; keep words + common punctuation
+        .trim();
+
+      const textForHash = normalizeTextForHash(fullPost);
+      const mediaForHash = String(mediaUrl || '').trim();
+      const publishHash = crypto
+        .createHash('sha256')
+        .update(`${textForHash}||${mediaForHash}`)
+        .digest('hex');
+
+      // Check last 48h for a matching publishHash to avoid Ayrshare/IG duplicate rejection.
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      const dup = await Campaign.findOne({
+        userId,
+        _id: { $ne: campaign._id },
+        publishHash,
+        createdAt: { $gte: twoDaysAgo },
+        status: { $in: ['scheduled', 'posted'] },
+        platforms: { $in: ['instagram'] }
+      }).select('_id name status scheduledFor publishedAt createdAt');
+
+      if (dup) {
+        const msg =
+          'Duplicate or similar content detected for Instagram within the last 48 hours. ' +
+          'Instagram may reject duplicate posts and risk your account. Please regenerate/modify the caption or change the image/audio and try again.';
+
+        await Campaign.findByIdAndUpdate(campaign._id, {
+          $set: { lastPublishError: msg, ayrshareStatus: 'error', publishHash }
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: msg,
+          error: msg,
+          duplicateOf: {
+            id: dup._id,
+            name: dup.name,
+            status: dup.status,
+            scheduledFor: dup.scheduledFor,
+            publishedAt: dup.publishedAt,
+            createdAt: dup.createdAt
+          }
+        });
+      }
+
+      // Store the computed hash for this campaign so future attempts can compare.
+      try {
+        await Campaign.findByIdAndUpdate(campaign._id, { $set: { publishHash } });
+      } catch (_) {}
+    }
     
     const instagramAudioUrl = campaign.creative?.instagramAudio?.url || null;
-    const shouldAttachInstagramAudio = platforms.includes('instagram') && !!instagramAudioUrl;
+    
+    // ============================================
+    // INSTAGRAM AUDIO → VIDEO CONVERSION LOGIC
+    // ============================================
+    // STRICT validation: Only when platform is EXPLICITLY 'instagram' AND audio exists
+    const hasInstagramInPlatforms = platforms.some(p => String(p).toLowerCase() === 'instagram');
+    const hasValidInstagramAudio = !!instagramAudioUrl && typeof instagramAudioUrl === 'string' && instagramAudioUrl.trim().length > 0;
+    
+    console.log('🔍 Instagram audio check:');
+    console.log('   - Platform list:', platforms);
+    console.log('   - Has Instagram platform:', hasInstagramInPlatforms);
+    console.log('   - Audio URL exists:', !!instagramAudioUrl);
+    console.log('   - Audio URL value:', instagramAudioUrl ? `${instagramAudioUrl.substring(0, 80)}...` : 'null');
+    console.log('   - Will convert to video:', hasInstagramInPlatforms && hasValidInstagramAudio);
+    
+    const shouldAttachInstagramAudio = hasInstagramInPlatforms && hasValidInstagramAudio;
 
-    // If Instagram audio is selected, compose a video for Instagram only (do not affect other platforms).
+    // If Instagram audio is present, MUST compose a video. No fallback to image allowed.
     let instagramComposedVideoUrl = null;
+    if (shouldAttachInstagramAudio && mediaValidation?.mediaKind && mediaValidation.mediaKind !== 'image') {
+      const msg = `Instagram audio requires an image base media. Received ${mediaValidation.mediaKind}.`;
+      console.error(msg);
+      await persistPublishFailure(msg, { mediaValidation });
+      return res.status(400).json({ success: false, message: msg, mediaValidation });
+    }
     if (shouldAttachInstagramAudio) {
       if (!mediaUrl) {
-        return res.status(400).json({
-          success: false,
-          message: 'Instagram audio requires an image/video to attach to.'
-        });
+        const msg = '🚫 CRITICAL: Instagram audio requires a base image to attach to. No image found in campaign creative.';
+        console.error(msg);
+        await persistPublishFailure(msg);
+        return res.status(400).json({ success: false, message: msg });
       }
 
-      console.log('🎵 Instagram audio selected — preparing audio for publishing...');
+      console.log('🎵 [AUDIO FLOW] Instagram audio detected — FORCING video composition...');
+      console.log(`   - Audio URL: ${instagramAudioUrl.substring(0, 80)}...`);
+      console.log(`   - Base image URL: ${mediaUrl.substring(0, 80)}...`);
+      
       const audioPublicUrl = await ensurePublicAudioUrl(instagramAudioUrl);
       if (!audioPublicUrl) {
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to prepare the selected Instagram audio. Please try uploading a different audio file.'
-        });
+        const msg = '🚫 CRITICAL: Failed to prepare Instagram audio file. Please re-upload the audio and try again.';
+        console.error(msg, { originalUrl: instagramAudioUrl });
+        await persistPublishFailure(msg);
+        return res.status(400).json({ success: false, message: msg });
+      }
+      console.log(`   - Audio prepared (public URL): ${audioPublicUrl.substring(0, 80)}...`);
+
+      const requestedDurationSeconds = campaign.creative?.instagramAudio?.durationSeconds || null;
+      if (requestedDurationSeconds) {
+        console.log(`   - Requested audio/video duration from campaign metadata: ${requestedDurationSeconds}s`);
       }
 
-      console.log('🎞️ Composing Instagram video (image + audio)...');
-      const composed = await composeImageToVideoWithAudio({ imageUrl: mediaUrl, audioUrl: audioPublicUrl });
+      console.log('🎬 [AUDIO FLOW] Composing video from image + audio using ffmpeg...');
+      const composed = await composeImageToVideoWithAudio({ imageUrl: mediaUrl, audioUrl: audioPublicUrl, requestedDurationSeconds });
+      
       if (!composed.success || !composed.videoUrl) {
+        // Video composition or validation failed
+        const detailedError = composed.validation
+          ? `Video validation failed:\n   Issues: ${composed.validation.issues.join('\n   ')}`
+          : composed.error || 'ffmpeg or upload failed';
+        
+        const msg = `🚫 CRITICAL: Video composition failed. ${detailedError}. Cannot post Instagram content without valid video.`;
+        console.error(msg);
+        
+        // Include validation details in failure response
+        await persistPublishFailure(msg, {
+          composer: composed,
+          validation: composed.validation || null,
+          metadata: composed.metadata || null
+        });
+        
         return res.status(500).json({
           success: false,
-          message: composed.error || 'Failed to compose Instagram video with audio'
+          message: msg,
+          videoValidationFailed: true,
+          validationDetails: composed.validation || null,
+          videoMetadata: composed.metadata || null
         });
       }
 
       instagramComposedVideoUrl = composed.videoUrl;
-      console.log('✅ Instagram composed video URL:', instagramComposedVideoUrl);
+      console.log(`✅ [AUDIO FLOW] Video successfully composed!`);
+      console.log(`   - Composed video URL: ${instagramComposedVideoUrl.substring(0, 80)}...`);
+      console.log(`   - Duration: ${composed.duration || 'unknown'}`);
+      console.log(`   - Size: ${composed.bytes || 'unknown'} bytes`);
+      if (composed.metadata) {
+        console.log('\n✅ [VIDEO VALIDATION] Video metadata confirm:');
+        console.log(`   - Format: ${composed.metadata.format}`);
+        console.log(`   - Video codec: ${composed.metadata.video?.codec || 'unknown'}`);
+        console.log(`   - Resolution: ${composed.metadata.video?.resolution || 'unknown'}`);
+        console.log(`   - Frame rate: ${composed.metadata.video?.fps || 'unknown'} fps`);
+        console.log(`   - Audio codec: ${composed.metadata.audio?.codec || 'unknown'}`);
+      }
+    } else {
+      console.log('ℹ️ No Instagram audio attached — Using standard image posting flow');
     }
 
     const analyzeAyrshareResult = (r, calledPlatforms = []) => {
@@ -925,6 +1377,13 @@ router.post('/:id/publish', protect, async (req, res) => {
         errorMessage = r.data?.message || 'Post failed';
       }
 
+      // Some Ayrshare responses include top-level errors even when status is not explicitly "error"
+      if (!hasAyrshareError && Array.isArray(r.data?.errors) && r.data.errors.length > 0) {
+        hasAyrshareError = true;
+        const first = r.data.errors[0];
+        errorMessage = first?.message || r.data?.message || 'Post failed';
+      }
+
       // Check individual platform posts for errors and capture IDs
       if (r.data?.posts && Array.isArray(r.data.posts)) {
         for (const post of r.data.posts) {
@@ -932,7 +1391,12 @@ router.post('/:id/publish', protect, async (req, res) => {
           const plat = post.platform ? String(post.platform).toLowerCase() : null;
           if (pid && plat) platformPostIds[plat] = pid;
 
-          if (typeof post.code === 'number' || post.status === 'error' || post.errors?.length > 0) {
+          const numericCode = (typeof post.code === 'number' && Number.isFinite(post.code))
+            ? post.code
+            : (post.code !== undefined && post.code !== null && Number.isFinite(Number(post.code)) ? Number(post.code) : null);
+          const hasCodeError = typeof numericCode === 'number' && numericCode >= 400;
+
+          if (hasCodeError || post.status === 'error' || post.errors?.length > 0) {
             hasAyrshareError = true;
 
             // Extract error message from various places
@@ -951,6 +1415,7 @@ router.post('/:id/publish', protect, async (req, res) => {
       }
 
       const extractedPostId = r.data?.posts?.[0]?.id || r.data?.id || r.id || r.data?.postIds?.[0] || null;
+      const retryAvailable = !!r.data?.retryAvailable;
       const hasSuccessId = !!extractedPostId;
 
       // If Ayrshare didn't return per-platform IDs but only one platform was requested, map it for convenience.
@@ -963,6 +1428,7 @@ router.post('/:id/publish', protect, async (req, res) => {
         success,
         errorMessage: success ? '' : (errorMessage || r.error || r.message || r.data?.message || 'Failed to publish to social media'),
         extractedPostId,
+        retryAvailable,
         platformPostIds
       };
     };
@@ -973,52 +1439,126 @@ router.post('/:id/publish', protect, async (req, res) => {
     let otherPlatformsResult = null;
 
     if (shouldAttachInstagramAudio) {
-      otherPlatforms = platforms.filter(p => p !== 'instagram');
+      otherPlatforms = platforms.filter(p => String(p).toLowerCase() !== 'instagram');
 
+      // ============================================
+      // INSTAGRAM POST: SEND COMPOSED VIDEO
+      // ============================================
+      // VALIDATION: Must have video URL (error would have been thrown earlier if composition failed)
+      if (!instagramComposedVideoUrl) {
+        const msg = '🚫 CRITICAL: Video composition succeeded but URL is missing. This should never happen.';
+        console.error(msg);
+        await persistPublishFailure(msg);
+        return res.status(500).json({ success: false, message: msg });
+      }
+      
+      console.log('📤 [AUDIO FLOW] Posting to Instagram with COMPOSED VIDEO (not image)...');
+      console.log(`   - Media to send: [VIDEO] ${instagramComposedVideoUrl.substring(0, 80)}...`);
+      console.log(`   - Media type flag: isVideo=true`);
+      console.log(`   - Platforms: ['instagram'] (audio excluded from other platforms)`);
+      
       // Post to Instagram with composed video + audio
-      instagramResult = await postToSocialMedia(
-        ['instagram'],
-        fullPost,
-        {
-          mediaUrls: instagramComposedVideoUrl ? [instagramComposedVideoUrl] : undefined,
+      instagramResult = await publishSocialPostWithSafetyWrapper({
+        user,
+        campaign,
+        platforms: ['instagram'],
+        content: fullPost,
+        options: {
+          mediaUrls: [instagramComposedVideoUrl],  // MUST send video URL (guaranteed by validation above)
           shortenLinks: true,
           profileKey: profileKey,
-          scheduleDate: scheduledFor
-        }
-      );
+          scheduleDate: scheduleDateIso || scheduledFor,
+          isVideo: true,  // Signal to Ayrshare that this is a video, not an image
+          mediaType: 'video',
+          instagramVideoPrepared: true
+          // Temporarily remove instagramOptions to test if that's causing issues
+          // instagramOptions: { postType: 'post' } // Use regular post instead of reel
+        },
+        context: 'campaign_publish_instagram_audio'
+      });
+      
+      console.log('✅ [AUDIO FLOW] Instagram video post sent to Ayrshare');
 
       // Post to all non-Instagram platforms with the original media (no audio)
       if (otherPlatforms.length > 0) {
-        otherPlatformsResult = await postToSocialMedia(
-          otherPlatforms,
-          fullPost,
-          {
+        console.log(`📤 [AUDIO FLOW] Posting to ${otherPlatforms.join(', ')} with ORIGINAL IMAGE (no audio)...`);
+        console.log(`   - Media to send: [IMAGE] ${mediaUrl ? mediaUrl.substring(0, 80) + '...' : 'none'}`);
+        console.log(`   - Platforms: [${otherPlatforms.join(', ')}]`);
+        console.log(`   - Note: Audio only attached to Instagram for compliance`);
+        
+        otherPlatformsResult = await publishSocialPostWithSafetyWrapper({
+          user,
+          campaign,
+          platforms: otherPlatforms,
+          content: fullPost,
+          options: {
             mediaUrls: mediaUrl ? [mediaUrl] : undefined,
             shortenLinks: true,
             profileKey: profileKey,
-            scheduleDate: scheduledFor
-          }
-        );
+            scheduleDate: scheduleDateIso || scheduledFor
+          },
+          context: 'campaign_publish_other_platforms'
+        });
+        
+        console.log('✅ [AUDIO FLOW] Other platforms posts sent to Ayrshare');
+      } else {
+        console.log('ℹ️ [AUDIO FLOW] No other platforms selected (Instagram only)');
       }
 
       allResults = { instagram: instagramResult, other: otherPlatformsResult };
+      console.log('✅ [AUDIO FLOW] Completed split posting (Instagram with video, others with image)');
     } else {
-      // Default behavior: a single Ayrshare call for all selected platforms
-      allResults = await postToSocialMedia(
+      // Default behavior: a single Ayrshare call for all selected platforms (NO audio processing)
+      console.log('📤 Standard posting (no audio): Sending to Ayrshare...');
+      console.log(`   - Platforms: [${platforms.join(', ')}]`);
+      console.log(`   - Media: [${mediaUrl ? 'IMAGE' : 'TEXT-ONLY'}] ${mediaUrl ? mediaUrl.substring(0, 80) + '...' : '(no media)'}`);
+
+      if (platforms.includes('instagram')) {
+        if (!mediaUrl) {
+          const msg = '🚫 Instagram publishing requires a public image/video URL when no audio is provided';
+          console.error(msg);
+          await persistPublishFailure(msg);
+          return res.status(400).json({ success: false, message: msg });
+        }
+
+        const mediaValidation = await validateMediaUrl(mediaUrl);
+        console.log('   - Instagram media validation:', mediaValidation);
+        if (!mediaValidation.valid) {
+          const msg = `🚫 Invalid Instagram media URL: ${mediaValidation.reason}`;
+          console.error(msg);
+          await persistPublishFailure(msg);
+          return res.status(400).json({ success: false, message: msg, mediaValidation });
+        }
+      }
+
+      allResults = await publishSocialPostWithSafetyWrapper({
+        user,
+        campaign,
         platforms,
-        fullPost,
-        {
+        content: fullPost,
+        options: {
           mediaUrls: mediaUrl ? [mediaUrl] : undefined,
           shortenLinks: true,
-          profileKey: profileKey,  // Include user's Ayrshare profile key
-          scheduleDate: scheduledFor  // Schedule for later if provided
-        }
-      );
+          profileKey: profileKey,
+          scheduleDate: scheduleDateIso || scheduledFor
+          // Temporarily remove instagramOptions to test if that's causing issues
+          // instagramOptions: platforms.includes('instagram') ? { postType: 'post' } : undefined
+        },
+        context: 'campaign_publish'
+      });
+
+      console.log('✅ Standard posting completed');
     }
 
-    console.log('Ayrshare publish result:', allResults);
-    if (!shouldAttachInstagramAudio) {
-      console.log('Ayrshare result.data:', JSON.stringify(allResults.data, null, 2));
+    console.log('📊 Ayrshare publish result summary:');
+    if (shouldAttachInstagramAudio) {
+      console.log('   [AUDIO FLOW] Instagram result:', instagramResult?.success ? '✅ Success' : '❌ Failed', instagramResult?.data?.message);
+      if (otherPlatforms.length > 0) {
+        console.log('   [AUDIO FLOW] Other platforms result:', otherPlatformsResult?.success ? '✅ Success' : '❌ Failed', otherPlatformsResult?.data?.message);
+      }
+    } else {
+      console.log('   Standard result:', allResults?.success ? '✅ Success' : '❌ Failed', allResults?.data?.message);
+      console.log('   Full response:', JSON.stringify(allResults.data, null, 2));
     }
 
     const analyzed = [];
@@ -1034,6 +1574,14 @@ router.post('/:id/publish', protect, async (req, res) => {
     const failures = analyzed.filter(a => !a.success);
 
     if (failures.length === 0) {
+      const effectiveScheduleDate =
+        instagramResult?.instagramFix?.adjustedScheduleDate ||
+        otherPlatformsResult?.instagramFix?.adjustedScheduleDate ||
+        allResults?.instagramFix?.adjustedScheduleDate ||
+        scheduleDateIso ||
+        scheduledFor ||
+        null;
+
       // Combine per-platform IDs across the (possibly split) publishes
       const socialPostIds = {};
       for (const a of analyzed) {
@@ -1049,37 +1597,211 @@ router.post('/:id/publish', protect, async (req, res) => {
         'socialPostId': extractedPostId,
         'socialPostIds': Object.keys(socialPostIds).length > 0 ? socialPostIds : null,
         'publishResult': allResults,
-        'platforms': platforms  // Update platforms to match what user actually selected
+        'lastPublishError': null,
+        'ayrshareStatus': isScheduled ? 'scheduled' : 'success',
+        'platforms': platforms,  // Update platforms to match what user actually selected
+        'instagramAccountKey': (platforms.includes('instagram')
+          ? (instagramResult?.instagramFix?.accountKey || allResults?.instagramFix?.accountKey || null)
+          : null)
       };
       
       if (isScheduled) {
-        updateData.scheduledFor = new Date(scheduledFor);
+        updateData.scheduledFor = effectiveScheduleDate ? new Date(effectiveScheduleDate) : (scheduleDateObj || new Date(scheduledFor));
       } else {
         updateData.publishedAt = new Date();
+        updateData.scheduledFor = null;
       }
       
-      await Campaign.findByIdAndUpdate(campaign._id, { $set: updateData });
+      const updatedCampaign = await Campaign.findByIdAndUpdate(campaign._id, { $set: updateData }, { new: true });
+      
+      // ============================================
+      // FINAL VALIDATION LOGGING
+      // ============================================
+      console.log('✅ Campaign published successfully!');
+      console.log(`   - Campaign ID: ${campaign._id}`);
+      console.log(`   - Campaign name: ${campaign.name}`);
+      console.log(`   - Status: ${updateData.status}`);
+      console.log(`   - Platforms posted: [${platforms.join(', ')}]`);
+      
+      if (shouldAttachInstagramAudio) {
+        console.log('\n🎵 [AUDIO VERIFICATION] Audio attachment details:');
+        console.log(`   ✓ Audio URL stored: ${instagramAudioUrl ? instagramAudioUrl.substring(0, 80) + '...' : 'N/A'}`);
+        console.log(`   ✓ Video composition: SUCCESS`);
+        console.log(`   ✓ Video URL sent to Instagram: ${instagramComposedVideoUrl.substring(0, 80)}...`);
+        console.log(`   ✓ isVideo flag set: true`);
+        console.log(`   ✓ Instagram media type: VIDEO (not image)`);
+        if (otherPlatforms.length > 0) {
+          console.log(`   ✓ Other platforms (${otherPlatforms.join(', ')}): Original image (audio excluded)`);
+        }
+        console.log('   ✓ FINAL VERIFICATION: Audio flow completed successfully!');
+      } else {
+        console.log('\n📸 Standard image posting completed (no audio)');
+      }
+
+      // Best-effort: delete any previously scheduled Ayrshare post(s) now that the new publish/schedule succeeded.
+      if (existingAyrsharePostIds.length > 0) {
+        const newIds = new Set(
+          [extractedPostId, ...Object.values(socialPostIds || {})]
+            .filter((v) => typeof v === 'string' && v)
+        );
+        const toDelete = existingAyrsharePostIds.filter((id) => !newIds.has(id));
+
+        if (toDelete.length > 0) {
+          void (async () => {
+            for (const postId of toDelete) {
+              try {
+                const del = await deleteAyrsharePost(postId, { profileKey });
+                if (del.success) {
+                  console.log(`🗑️ Deleted previous Ayrshare post ${postId}`);
+                } else {
+                  console.warn(`⚠️ Failed to delete previous Ayrshare post ${postId}:`, del.error);
+                }
+              } catch (e) {
+                console.warn(`⚠️ Error deleting previous Ayrshare post ${postId}:`, e?.message || e);
+              }
+            }
+          })();
+        }
+      }
       
       res.json({
         success: true,
         message: isScheduled 
-          ? `Campaign scheduled for ${new Date(scheduledFor).toLocaleString()}!` 
+          ? `Campaign scheduled for ${new Date(effectiveScheduleDate || scheduledFor).toLocaleString()}!` 
           : 'Campaign published to social media!',
         postId: extractedPostId,
         platforms,
         scheduled: isScheduled,
-        scheduledFor: scheduledFor,
-        result: allResults
+        scheduledFor: effectiveScheduleDate,
+        result: allResults,
+        normalized: {
+          scheduleAdjusted: requestedSchedule.adjusted || Boolean(effectiveScheduleDate && effectiveScheduleDate !== (scheduleDateIso || scheduledFor || null)),
+          scheduleDate: effectiveScheduleDate,
+          mediaUrl: mediaUrl || null,
+          mediaType: shouldAttachInstagramAudio ? 'video' : (mediaValidation?.mediaKind || null)
+        }
       });
     } else {
       const finalErrorMessage = failures[0]?.errorMessage || 'Failed to publish to social media';
+      const primaryFailureResult = instagramResult || allResults || otherPlatformsResult || null;
+      const requiresReconnect = Boolean(primaryFailureResult?.requiresReconnect);
+      const rateLimited = Boolean(primaryFailureResult?.rateLimited);
+      const failureCode = primaryFailureResult?.code || null;
+
+      const normalizedPlatforms = Array.isArray(platforms)
+        ? platforms.map((p) => String(p || '').toLowerCase()).filter(Boolean)
+        : [];
+      const isInstagramOnly = normalizedPlatforms.length === 1 && normalizedPlatforms[0] === 'instagram';
+
+      // Auto-retry transient Instagram failures when Ayrshare marks them retryable.
+      // Enabled for Instagram-only flows (including scheduled posts) to avoid duplicating other platforms.
+      if (isInstagramOnly) {
+        const igFailure = failures.find((f) => Array.isArray(f.platforms) && f.platforms.length === 1 && String(f.platforms[0]).toLowerCase() === 'instagram');
+        const failureId = igFailure?.extractedPostId || null;
+        const failureMsg = String(igFailure?.errorMessage || finalErrorMessage || '');
+        const looksTransient = /cannot process your post at this time/i.test(failureMsg) || /please try your post again/i.test(failureMsg);
+        const canRetry = !!igFailure?.retryAvailable || looksTransient;
+
+        if (failureId && canRetry) {
+          // Per Ayrshare docs, first verify the post hasn't already been published.
+          try {
+            const statusCheck = await getPostStatus(failureId, { profileKey });
+            const postStatus = statusCheck?.data?.status || statusCheck?.data?.posts?.[0]?.status || null;
+            if (postStatus === 'success' || postStatus === 'posted') {
+              await Campaign.findByIdAndUpdate(campaign._id, {
+                $set: {
+                  status: 'posted',
+                  socialPostId: failureId,
+                  socialPostIds: { instagram: failureId },
+                  publishResult: { initial: allResults || null, verified: statusCheck?.data || null },
+                  lastPublishError: null,
+                  platforms,
+                  publishedAt: new Date(),
+                  ayrshareStatus: 'success',
+                  instagramAccountKey: instagramResult?.instagramFix?.accountKey || allResults?.instagramFix?.accountKey || campaign.instagramAccountKey || null
+                }
+              });
+
+              return res.json({
+                success: true,
+                message: isScheduled
+                  ? 'Instagram reported a temporary error, but your scheduled post is already accepted.'
+                  : 'Instagram reported a temporary error, but the post is already published.',
+                postId: failureId,
+                platforms,
+                scheduled: !!isScheduled,
+                scheduledFor: isScheduled ? (scheduleDateIso || scheduledFor || null) : null,
+                result: { initial: allResults || null, verified: statusCheck?.data || null }
+              });
+            }
+          } catch (_) {}
+
+          try {
+            const retryRes = await retryAyrsharePost(failureId, { profileKey });
+            const pendingId = retryRes?.data?.id || failureId;
+
+            if (retryRes?.success) {
+              const retryRequestedAt = new Date().toISOString();
+              const retryScheduledFor = new Date(Date.now() + 5 * 60 * 1000);
+              await Campaign.findByIdAndUpdate(campaign._id, {
+                $set: {
+                  status: 'scheduled',
+                  scheduledFor: retryScheduledFor,
+                  socialPostId: pendingId,
+                  socialPostIds: { instagram: pendingId },
+                  publishResult: { initial: allResults || null, retry: retryRes?.data || retryRes, retryRequestedAt },
+                  lastPublishError: null,
+                  platforms,
+                  ayrshareStatus: 'pending',
+                  instagramAccountKey: instagramResult?.instagramFix?.accountKey || allResults?.instagramFix?.accountKey || campaign.instagramAccountKey || null
+                }
+              });
+
+              return res.json({
+                success: true,
+                message: isScheduled
+                  ? 'Instagram had a temporary issue. We retried your scheduled post and it is pending — check again in a few minutes.'
+                  : 'Instagram had a temporary issue. We retried your post and it is pending — check again in a few minutes.',
+                postId: pendingId,
+                platforms,
+                scheduled: true,
+                scheduledFor: retryScheduledFor.toISOString(),
+                result: { initial: allResults || null, retry: retryRes?.data || retryRes, retryRequestedAt }
+              });
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Persist the failure reason so the UI can show why it reverted to Draft.
+      await persistPublishFailure(finalErrorMessage, allResults || null);
       
       console.log('❌ Publish failed:', finalErrorMessage);
+      
+      // If audio flow failed, add diagnostic logging
+      if (shouldAttachInstagramAudio) {
+        console.log('\n🎵 [AUDIO FAILURE DIAGNOSIS]');
+        console.log(`   - Audio URL present at time of failure: ${instagramAudioUrl ? 'YES' : 'NO'}`);
+        console.log(`   - Image URL present: ${mediaUrl ? 'YES' : 'NO'}`);
+        console.log(`   - Video composition completed: ${instagramComposedVideoUrl ? 'YES' : 'NO'}`);
+        console.log(`   - Video URL: ${instagramComposedVideoUrl ? instagramComposedVideoUrl.substring(0, 80) + '...' : 'NONE'}`);
+        console.log(`   - Instagram result status: ${instagramResult?.success ? 'SUCCESS' : 'FAILED'}`);
+        console.log(`   - Instagram error: ${instagramResult?.error || instagramResult?.data?.message || 'N/A'}`);
+      }
       
       res.status(400).json({
         success: false,
         message: finalErrorMessage,
         error: finalErrorMessage,
+        requiresReconnect,
+        rateLimited,
+        code: failureCode,
+        audioFlowInfo: shouldAttachInstagramAudio ? {
+          audioUrlPresent: !!instagramAudioUrl,
+          imageUrlPresent: !!mediaUrl,
+          videoComposed: !!instagramComposedVideoUrl,
+          instagramResult: instagramResult?.data?.message || instagramResult?.error
+        } : null,
         details: shouldAttachInstagramAudio
           ? analyzed.map(a => ({ key: a.key, platforms: a.platforms, errorMessage: a.errorMessage || null }))
           : allResults?.data?.posts
@@ -1087,6 +1809,39 @@ router.post('/:id/publish', protect, async (req, res) => {
     }
   } catch (error) {
     console.error('Publish campaign error:', error);
+
+    // Best-effort: persist the failure on the campaign so the UI can show it.
+    try {
+      const userId = req.user?.userId || req.user?.id;
+      if (userId && req.params?.id) {
+        let shouldClearScheduling = !!req.body?.scheduledFor;
+        try {
+          const existing = await Campaign.findOne({ _id: req.params.id, userId }).select('status');
+          if (existing?.status === 'scheduled') shouldClearScheduling = true;
+        } catch (_) {}
+
+        const update = {
+          status: 'draft',
+          ayrshareStatus: 'error',
+          lastPublishError: error.message || 'Failed to publish',
+          publishResult: { error: error.message || String(error) }
+        };
+
+        if (shouldClearScheduling) {
+          update.scheduledFor = null;
+          update.socialPostId = null;
+          update.socialPostIds = null;
+        }
+
+        await Campaign.findOneAndUpdate(
+          { _id: req.params.id, userId },
+          {
+            $set: update
+          }
+        );
+      }
+    } catch (_) {}
+
     res.status(500).json({ 
       success: false, 
       message: 'Failed to publish campaign', 
@@ -1131,7 +1886,7 @@ router.post('/generate-campaign-posts', protect, checkTrial, async (req, res) =>
       return res.status(400).json({ success: false, message: 'Campaign name is required' });
     }
 
-    const platforms = content?.platforms || ['instagram'];
+    const platforms = normalizePlatformsList(content?.platforms || ['instagram']);
     const productLogo = content?.productLogo || null; // Base64 or URL of product logo
     const duration = scheduling?.duration || '2weeks';
     const postsPerWeek = scheduling?.postsPerWeek || 3;
@@ -1245,10 +2000,17 @@ Return ONLY valid JSON (no markdown, no code blocks):
 
     const response = await callGemini(prompt, { maxTokens: 4000, temperature: 0.8, skipCache: true });
     const parsed = parseGeminiJSON(response);
-
-    if (!parsed || !parsed.posts || !Array.isArray(parsed.posts)) {
-      throw new Error('Invalid response format from AI');
-    }
+    const fallbackPost = {
+      platform: platforms[0] || 'instagram',
+      caption: `${campaignName}\n\n${campaignDescription || `A focused ${objective || 'awareness'} campaign update for your audience.`}`,
+      hashtags: [`#${String((bp.companyName || campaignName || 'Campaign')).replace(/[^A-Za-z0-9]/g, '') || 'Campaign'}`],
+      contentTheme: 'promotional',
+      imageDescription: `${bp.industry || 'Business'} campaign creative for ${campaignName}`,
+      callToAction: content?.callToAction || 'Learn more'
+    };
+    const parsedPosts = Array.isArray(parsed?.posts) && parsed.posts.length > 0
+      ? parsed.posts
+      : [fallbackPost];
 
     // Use stock placeholder images — NO bulk AI image generation
     // Users can generate images individually per post if they want
@@ -1276,29 +2038,67 @@ Return ONLY valid JSON (no markdown, no code blocks):
     ];
 
     const postsWithImages = [];
-    const postsToProcess = parsed.posts.slice(0, totalPosts);
+    const postsToProcess = parsedPosts.slice(0, Math.max(totalPosts, 1));
     
     for (let index = 0; index < postsToProcess.length; index++) {
       const post = postsToProcess[index];
       const schedule = scheduleDates[index] || { date: startDate, time: '10:00' };
-      
+
+      const scheduleInput = `${schedule.date}T${schedule.time}:00`;
+      let validated;
+      try {
+        validated = await validateAndNormalizePost({
+          platform: post.platform?.toLowerCase() || platforms[index % platforms.length],
+          caption: post.caption,
+          hashtags: post.hashtags,
+          imageDescription: post.imageDescription,
+          scheduleDate: scheduleInput,
+          mediaUrl: stockImages[index % stockImages.length],
+          callToAction: post.callToAction || content?.callToAction || 'Learn more'
+        });
+      } catch (validationError) {
+        const fallbackSchedule = normalizeScheduleDateDetails(scheduleInput);
+        validated = {
+          post: {
+            platform: String(post.platform || platforms[index % platforms.length] || 'instagram').toLowerCase(),
+            caption: String(post.caption || fallbackPost.caption).trim(),
+            hashtags: sanitizeHashtags(
+              Array.isArray(post.hashtags) && post.hashtags.length > 0 ? post.hashtags : fallbackPost.hashtags,
+              { max: String(post.platform || '').toLowerCase() === 'instagram' ? 5 : 30 }
+            ),
+            imageDescription: String(post.imageDescription || fallbackPost.imageDescription).trim(),
+            scheduleDate: fallbackSchedule.scheduleDate
+          },
+          publishing: {
+            mediaUrl: stockImages[index % stockImages.length]
+          }
+        };
+      }
+      const normalizedSchedule = validated.post.scheduleDate ? new Date(validated.post.scheduleDate) : null;
+
       postsWithImages.push({
         id: `post-${index + 1}`,
-        platform: post.platform?.toLowerCase() || platforms[index % platforms.length],
-        caption: post.caption,
-        hashtags: Array.isArray(post.hashtags) 
-          ? post.hashtags.map(h => h.startsWith('#') ? h : `#${h}`)
-          : ['#marketing', '#brand'],
-        imageUrl: stockImages[index % stockImages.length],
-        imageDescription: post.imageDescription || '',
-        suggestedDate: schedule.date,
-        suggestedTime: schedule.time,
+        platform: validated.post.platform,
+        caption: validated.post.caption,
+        hashtags: validated.post.hashtags,
+        imageDescription: validated.post.imageDescription,
+        scheduleDate: validated.post.scheduleDate,
+        imageUrl: validated.publishing.mediaUrl,
+        suggestedDate: normalizedSchedule ? normalizedSchedule.toISOString().split('T')[0] : schedule.date,
+        suggestedTime: normalizedSchedule ? normalizedSchedule.toISOString().slice(11, 16) : schedule.time,
         contentTheme: post.contentTheme || 'promotional',
         callToAction: post.callToAction || content?.callToAction || 'Learn more'
       });
     }
 
     console.log(`✅ Generated ${postsWithImages.length} text-only posts for campaign: ${campaignName}`);
+
+    const normalizedCalendar = postsWithImages.map((post) => ({
+      date: post.suggestedDate,
+      time: post.suggestedTime,
+      platform: post.platform,
+      scheduleDate: post.scheduleDate
+    }));
 
     // Fetch latest credit balance for frontend update
     const updatedUser = await User.findById(userId).select('credits.balance');
@@ -1307,7 +2107,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
     res.json({
       success: true,
       posts: postsWithImages,
-      contentCalendar: scheduleDates,
+      contentCalendar: normalizedCalendar,
       creditsRemaining,
       campaignSummary: {
         name: campaignName,
@@ -1315,7 +2115,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
         platforms,
         totalPosts: postsWithImages.length,
         startDate,
-        endDate: scheduleDates[scheduleDates.length - 1]?.date || startDate
+        endDate: normalizedCalendar[normalizedCalendar.length - 1]?.date || startDate
       }
     });
 
