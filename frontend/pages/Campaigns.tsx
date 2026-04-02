@@ -4594,18 +4594,25 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
         for (let i = 0; i < postsToSave.length; i++) {
           const post = postsToSave[i];
           try {
+            const platformForPost = String(post.platform || '').toLowerCase().trim();
+            if (!platformForPost) {
+              errorMessages.push(`Post ${i + 1}: Missing platform (cannot schedule)`);
+              continue;
+            }
+
             // Create the campaign as DRAFT first — only set to 'scheduled' after Ayrshare confirms
             const createResult = await apiService.createCampaign({
-              name: `${campaignName} - ${platforms.join(', ')} ${post.suggestedDate}`,
+              name: `${campaignName} - ${platformForPost} ${post.suggestedDate}`,
               objective: objective as any,
-              platforms: platforms.map(p => p.toLowerCase()),
+              // IMPORTANT: each generated template is platform-specific; do NOT post it to all platforms
+              platforms: [platformForPost],
               status: 'draft',  // Start as draft, update after successful publish
               creative: {
                 type: contentType,
                 textContent: post.caption,
                 imageUrls: [post.imageUrl],
                 captions: post.hashtags.join(' '),
-                ...(platforms.map(p => p.toLowerCase()).includes('instagram') && instagramAudio?.url ? { instagramAudio } : {})
+                ...(platformForPost === 'instagram' && instagramAudio?.url ? { instagramAudio } : {})
               },
               scheduling: {
                 startDate: post.suggestedDate,
@@ -4655,9 +4662,13 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
               console.warn(`⚠️ Post ${i + 1} schedule time was too soon/past, adjusted to ${new Date(scheduledFor).toLocaleString()}`);
             }
             try {
+              console.log('Publishing:', {
+                platform: platformForPost,
+                template: post.id || null
+              });
               const publishResult = await apiService.publishCampaign(
                 campaign._id,
-                platforms.map(p => p.toLowerCase()),
+                [platformForPost],
                 scheduledFor
               );
               
