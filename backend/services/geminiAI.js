@@ -3155,6 +3155,11 @@ async function generateTemplatePoster(templateImageBase64, content, options = {}
   }
   
   const aspectRatio = options.aspectRatio || null;
+  const style = String(options.style || '').trim();
+  const tone = String(options.tone || '').trim();
+  const brandGuidelines = String(options.brandGuidelines || '').trim();
+  const brandPalette = Array.isArray(options.brandPalette) ? options.brandPalette.filter(Boolean) : [];
+  const fontType = String(options.fontType || '').trim();
 
   // PRIMARY: Use Nano Banana Pro Preview for image generation
   const prompt = `You are a professional graphic designer.
@@ -3169,8 +3174,13 @@ Instructions:
 2. Preserve all logos, images, and visual elements exactly as they appear
 3. Replace the existing text with the new content provided above
 4. Match the original fonts and text styling as closely as possible
-${aspectRatio && aspectRatio !== 'original' ? `5. Generate the output image in ${aspectRatio} aspect ratio — adjust the layout accordingly while keeping the design intact` : '5. Maintain the original aspect ratio'}
-6. Output a high-quality, print-ready poster image`;
+${style ? `5. Apply this brand visual style direction: ${style}` : '5. Keep visual style professional and clean'}
+${tone ? `6. Ensure the visual mood reflects this brand tone: ${tone}` : '6. Keep tone neutral-professional'}
+${brandPalette.length ? `7. Mandatory palette lock: prioritize these colors in design accents and text hierarchy -> ${brandPalette.join(', ')}` : '7. Use a cohesive, premium color system'}
+${fontType ? `8. Typography lock: prefer this font family/style when rendering text -> ${fontType}` : '8. Preserve template typography hierarchy'}
+${brandGuidelines ? `9. Mandatory brand rules:\n${brandGuidelines}` : '9. Keep output aligned with brand consistency'}
+${aspectRatio && aspectRatio !== 'original' ? `10. Generate the output image in ${aspectRatio} aspect ratio — adjust the layout accordingly while keeping the design intact` : '10. Maintain the original aspect ratio'}
+11. Output a high-quality, print-ready poster image`;
 
   try {
     console.log('🎨 Generating template poster with Nano Banana Pro...');
@@ -3574,6 +3584,11 @@ async function generatePosterFromReference(referenceImageBase64, content, option
   }
   
   const aspectRatio = options.aspectRatio || null;
+  const style = String(options.style || '').trim();
+  const tone = String(options.tone || '').trim();
+  const brandGuidelines = String(options.brandGuidelines || '').trim();
+  const brandPalette = Array.isArray(options.brandPalette) ? options.brandPalette.filter(Boolean) : [];
+  const fontType = String(options.fontType || '').trim();
 
   const prompt = `You are a professional graphic designer. I'm showing you a REFERENCE poster/design for STYLE INSPIRATION.
 
@@ -3594,6 +3609,11 @@ IMPORTANT GUIDELINES:
 - Keep similar spacing, margins, and visual hierarchy
 - If the reference has logos/emblems, create similar placeholder shapes in the same positions
 - Adapt the layout to fit the new content while maintaining the reference's style
+${style ? `- Brand style direction to apply: ${style}` : ''}
+${tone ? `- Brand tone to reflect visually: ${tone}` : ''}
+${brandPalette.length ? `- Mandatory brand palette: ${brandPalette.join(', ')}` : ''}
+${fontType ? `- Typography preference: ${fontType}` : ''}
+${brandGuidelines ? `- Mandatory brand rules:\n${brandGuidelines}` : ''}
 ${aspectRatio && aspectRatio !== 'original' ? `- Generate the output image in ${aspectRatio} aspect ratio — adjust the layout accordingly while keeping the design style intact` : ''}
 
 QUALITY REQUIREMENTS:
@@ -4000,7 +4020,13 @@ async function generateCampaignImageNanoBanana(imageDescription, options = {}) {
     totalPosts = 1,
     campaignTheme = '',
     keyMessages = '',
+    brandPalette = [],
+    fontType = '',
+    strictBrandLock = false,
   } = options;
+  const normalizedPalette = Array.isArray(brandPalette) ? brandPalette.filter(Boolean) : [];
+  const primaryColor = String(normalizedPalette[0] || '').trim();
+  const secondaryColor = String(normalizedPalette[1] || '').trim();
 
   const prompt = `ROLE: You are an elite creative director at a top-tier advertising agency. You create award-winning social media ad creatives that drive engagement and conversions for global brands.
 
@@ -4013,6 +4039,8 @@ ${options.linkedProduct ? `- Featured Product: ${options.linkedProduct.name}
 - Product description: ${options.linkedProduct.description || 'N/A'}` : ''}
 - Visual direction: ${imageDescription}
 - Tone & mood: ${tone || 'professional'}
+${normalizedPalette.length ? `- Locked brand palette: ${normalizedPalette.join(', ')}` : ''}
+${fontType ? `- Preferred typography style: ${fontType}` : ''}
 ${keyMessages ? `- Campaign messaging (for design inspiration, NOT to be written verbatim on the image): ${keyMessages}` : ''}
 
 INSTRUCTIONS:
@@ -4023,8 +4051,13 @@ INSTRUCTIONS:
 5. BRAND IDENTITY: ${brandName ? `Subtly incorporate "${brandName}" — a small, elegant brand name in a corner or a minimal brand bar at the bottom. It should feel native to the design, like a real brand's post.` : 'Make the design look professionally branded.'}
 6. NO METADATA: Do NOT include any of the following in the image: post numbers, aspect ratio labels, "Brand" labels, campaign names, watermark text, frame borders, or any UI-like elements. The image should look like a final published ad, not a draft with annotations.
 7. VISUAL STORYTELLING: Let the imagery communicate the message. Use evocative visuals, strong focal points, and emotional resonance rather than explaining everything with text.
-8. COLOR PALETTE: Use a cohesive, premium color palette. ${tone === 'luxurious' ? 'Think dark tones with gold/silver accents.' : tone === 'playful' ? 'Use vibrant, energetic colors.' : 'Use modern, clean colors that feel trustworthy and professional.'}
-${totalPosts > 1 ? `9. SERIES CONSISTENCY: This is part of a ${totalPosts}-post campaign series. Maintain a consistent visual style, color palette, and design language that ties all posts together as a cohesive campaign.` : ''}`;
+8. COLOR PALETTE: ${normalizedPalette.length ? `STRICT: Use this brand palette prominently and avoid off-brand colors: ${normalizedPalette.join(', ')}.` : `Use a cohesive, premium color palette. ${tone === 'luxurious' || tone === 'luxury' ? 'Think dark tones with gold/silver accents.' : tone === 'playful' || tone === 'fun' ? 'Use vibrant, energetic colors.' : 'Use modern, clean colors that feel trustworthy and professional.'}`}
+9. STRICT BRAND PRIORITY: ${strictBrandLock ? 'ENFORCED. Brand identity overrides product appearance and product colors must NOT control the theme.' : 'Keep brand consistency high.'}
+${strictBrandLock && primaryColor && secondaryColor ? `10. PRIMARY/SECONDARY USAGE: Use ${primaryColor} as dominant background or gradient, and ${secondaryColor} for text/highlights/contrast.` : ''}
+${strictBrandLock && brandLogo ? '11. LOGO RULE: Place logo clearly at top center or top corner, visible and properly integrated.' : ''}
+${strictBrandLock && options.linkedProduct ? '12. PRODUCT RULE: Keep product centered or slightly offset, but do not let product colors override brand colors.' : ''}
+${fontType ? `13. TYPOGRAPHY: Any text rendered in the image should align with a "${fontType}" style and remain minimal.` : '13. TYPOGRAPHY: Keep text overlays minimal and premium.'}
+${totalPosts > 1 ? `14. SERIES CONSISTENCY: This is part of a ${totalPosts}-post campaign series. Maintain a consistent visual style, color palette, and design language that ties all posts together as a cohesive campaign.` : ''}`;
 
   try {
     console.log(`🎨 [NanoBanana2] Generating post ${postIndex + 1}/${totalPosts} in ${aspectRatio}...`);

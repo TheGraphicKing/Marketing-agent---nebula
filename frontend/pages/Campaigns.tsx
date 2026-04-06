@@ -4090,6 +4090,7 @@ interface GeneratedPost {
 const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campaign) => void; isDarkMode: boolean; theme: ReturnType<typeof getThemeClasses>; connectedPlatforms: string[] }> = ({ onClose, onSuccess, isDarkMode, theme, connectedPlatforms }) => {
     const [step, setStep] = useState(1);
     const [isGenerating, setIsGenerating] = useState(false);
+    const generationRequestInFlightRef = useRef(false);
     const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
     const [editingPostId, setEditingPostId] = useState<string | null>(null);
     const [savingPosts, setSavingPosts] = useState(false);
@@ -4304,6 +4305,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [generationStatus, setGenerationStatus] = useState('');
 
     const handleGeneratePosts = async () => {
+      if (isGenerating || generationRequestInFlightRef.current) return;
+      generationRequestInFlightRef.current = true;
       const totalPosts = preferredDays.length * (campaignDuration === '2weeks' ? 2 : 1);
       const creditCost = totalPosts * 7; // 7 per post (5 image + 2 caption)
 
@@ -4312,6 +4315,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
         const balance = creditData?.credits?.balance ?? 0;
         if (balance < creditCost) {
           alert(`⚠️ Insufficient credits. You have ${balance} credits but need ${creditCost} (7 per post × ${totalPosts} posts).`);
+          generationRequestInFlightRef.current = false;
           return;
         }
       } catch (err) {
@@ -4412,6 +4416,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
       } finally {
         setIsGenerating(false);
         setGenerationStatus('');
+        generationRequestInFlightRef.current = false;
       }
     };
 
