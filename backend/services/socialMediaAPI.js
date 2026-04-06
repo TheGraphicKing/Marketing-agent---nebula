@@ -13,6 +13,49 @@ const APIFY_API_KEY = process.env.APIFY_API_KEY;
 // Cache for API responses
 const apiCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'm4v', 'webm']);
+
+function isRetriableNetworkError(error) {
+  const code = error?.code;
+  const msg = error?.message || '';
+  const retriableCodes = new Set([
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'ECONNREFUSED'
+  ]);
+
+  // Some errors are plain Error('Request timeout') without a .code
+  if (msg.toLowerCase().includes('request timeout')) return true;
+
+  return (code && retriableCodes.has(code)) || msg.toLowerCase().includes('socket hang up');
+}
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function detectInstagramVideoRequest(platforms = [], options = {}) {
+  const normalizedPlatforms = Array.isArray(platforms)
+    ? platforms.map((platform) => String(platform || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const includesInstagram = normalizedPlatforms.includes('instagram');
+  const mediaUrls = Array.isArray(options.mediaUrls)
+    ? options.mediaUrls.map((url) => String(url || '').trim()).filter(Boolean)
+    : [];
+  const declaredVideo = options.isVideo === true || String(options.mediaType || '').toLowerCase() === 'video';
+  const mediaUrlLooksLikeVideo = mediaUrls.some((url) => {
+    const match = url.match(/\.([^.?#]+)(\?|#|$)/i);
+    return match ? VIDEO_EXTENSIONS.has(String(match[1] || '').toLowerCase()) : false;
+  });
+
+  return {
+    includesInstagram,
+    mediaUrls,
+    hasVideo: includesInstagram && (declaredVideo || mediaUrlLooksLikeVideo)
+  };
+}
 
 /**
  * Generic HTTP request helper
@@ -93,45 +136,156 @@ async function postToSocialMedia(platforms, content, options = {}) {
     return { success: false, error: 'API not configured' };
   }
 
-  try {
-    // Build headers - include Profile-Key if provided for user-specific accounts
-    const headers = {
-      'Authorization': `Bearer ${AYRSHARE_API_KEY}`
+  // Ensure platforms is always an array of lower-case strings
+  platforms = Array.isArray(platforms)
+    ? platforms.map((p) => String(p || '').toLowerCase())
+    : [];
+
+  const instagramRequest = detectInstagramVideoRequest(platforms, options);
+  if (instagramRequest.hasVideo) {
+    const declaredType = String(options.type || '').trim().toLowerCase();
+    if (declaredType && declaredType !== 'reel') {
+      const errorMessage = `Instagram video posts must be sent as type "reel". Received "${options.type}".`;
+      console.error('[Ayrshare] Refusing invalid Instagram video payload:', errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+        status: 400,
+        data: {
+          message: errorMessage,
+          code: 'INSTAGRAM_VIDEO_REQUIRES_REEL'
+        }
+      };
+    }
+
+    options = {
+      ...options,
+      type: 'reel',
+      isVideo: true,
+      mediaType: 'video'
     };
-    
-    // If profileKey is provided, add it to headers for user-specific posting
+  }
+
+  const payload = {
+    post: content,
+    platforms: platforms,
+    mediaUrls: options.mediaUrls || [],
+    shortenLinks: options.shortenLinks || true,
+    ...(options.scheduleDate ? { scheduleDate: options.scheduleDate } : {}),
+    ...(options.type ? { type: options.type } : {}),
+    ...(options.isVideo ? { isVideo: true } : {}),
+    ...(options.mediaType ? { mediaType: options.mediaType } : {}),
+    ...(options.instagramOptions ? { instagramOptions: options.instagramOptions } : {})
+  };
+
+  try {
+    const headers = {
+      'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+      'Content-Type': 'application/json'
+    };
+
     if (options.profileKey) {
       headers['Profile-Key'] = options.profileKey;
       console.log('Using Profile-Key for posting:', options.profileKey.substring(0, 20) + '...');
     }
-    
+
+    console.log('📤 [Ayrshare] postToSocialMedia payload:', JSON.stringify(payload, null, 2));
+
+    // Add detailed Instagram debugging
+    if (payload.platforms && payload.platforms.includes('instagram')) {
+      console.log('📸 [INSTAGRAM DEBUG] Instagram post details:');
+      console.log('   - Post content length:', payload.post ? payload.post.length : 0);
+      console.log('   - Media URLs:', payload.mediaUrls);
+      console.log('   - Schedule date:', payload.scheduleDate);
+      console.log('   - Post type:', payload.type || 'feed');
+      console.log('   - Instagram options:', payload.instagramOptions);
+      console.log('   - Is video:', payload.isVideo);
+      console.log('   - Media type:', payload.mediaType || null);
+    }
+
     const response = await makeRequest('https://api.ayrshare.com/api/post', {
       method: 'POST',
       headers: headers,
-      timeout: 120000, // 2 minutes timeout for posts with media
-      body: {
-        post: content,
-        platforms: platforms, // ['instagram', 'twitter', 'facebook', 'linkedin']
-        mediaUrls: options.mediaUrls || [],
-        scheduleDate: options.scheduleDate || null, // ISO date string for scheduling
-        shortenLinks: options.shortenLinks || true
-      }
+      timeout: 120000,
+      body: payload
     });
 
-    console.log('Ayrshare post response:', response.status);
-    console.log('Ayrshare FULL response:', JSON.stringify(response.data, null, 2));
-    
-    // Log full error details if there's an error
-    if (response.data?.errors) {
-      console.log('Ayrshare errors (full):', JSON.stringify(response.data.errors, null, 2));
+    console.log('📥 [Ayrshare] status:', response.status);
+    console.log('📥 [Ayrshare] response data:', JSON.stringify(response.data, null, 2));
+
+    let effectiveError = null;
+    if (response.data?.errors && Array.isArray(response.data.errors) && response.data.errors.length) {
+      const errMessages = response.data.errors.map((e) => `${e.code || 'unknown'}: ${e.message || e}`);
+      effectiveError = errMessages.join(' | ');
+
+      // Special detection for known Ayrshare error codes
+      if (response.data.errors.some((e) => e.code === 138 || e.code === '138')) {
+        effectiveError = `Ayrshare error 138 (Instagram processing) - ${effectiveError}`;
+
+        // Add detailed Instagram error debugging
+        console.log('❌ [INSTAGRAM ERROR 138] Detailed error analysis:');
+        console.log('   - Full error response:', JSON.stringify(response.data, null, 2));
+        console.log('   - Error codes:', response.data.errors.map(e => e.code));
+        console.log('   - Error messages:', response.data.errors.map(e => e.message));
+        console.log('   - Post ID (if available):', response.data.id || 'none');
+        console.log('   - Retry available:', response.data.errors.some(e => e.retryAvailable));
+
+      } else if (response.data.errors.some((e) => e.code === 161 || e.code === '161')) {
+        effectiveError = `Ayrshare error 161 (Instagram authentication/account connection) - ${effectiveError}`;
+      }
     }
-    if (response.data?.posts) {
-      console.log('Ayrshare posts details:', JSON.stringify(response.data.posts, null, 2));
+
+    if (response.status !== 200 || (response.data && response.data.status === 'error') || effectiveError) {
+      const returnedError = effectiveError || response.data?.message || response.data?.error || 'Unknown Ayrshare error';
+      console.error('❌ Ayrshare publish error:', returnedError);
+      return {
+        success: false,
+        error: returnedError,
+        status: response.status,
+        data: response.data
+      };
     }
-    
-    return { success: response.status === 200, data: response.data };
+
+    return { success: true, data: response.data, status: response.status };
   } catch (error) {
     console.error('Ayrshare post error:', error);
+    return { success: false, error: error.message || 'Ayrshare request failed' };
+  }
+}
+
+/**
+ * Retry a failed post via Ayrshare.
+ * Ayrshare: PUT https://api.ayrshare.com/api/post/retry
+ */
+async function retryPost(postId, options = {}) {
+  if (!AYRSHARE_API_KEY) {
+    console.warn('Ayrshare API key not configured');
+    return { success: false, error: 'API not configured' };
+  }
+  if (!postId) {
+    return { success: false, error: 'No post ID provided' };
+  }
+
+  try {
+    const headers = {
+      'Authorization': `Bearer ${AYRSHARE_API_KEY}`
+    };
+
+    if (options.profileKey) {
+      headers['Profile-Key'] = options.profileKey;
+      headers['X-Profile-Key'] = options.profileKey;
+    }
+
+    const response = await makeRequest('https://api.ayrshare.com/api/post/retry', {
+      method: 'PUT',
+      headers,
+      timeout: 60000,
+      body: { id: postId }
+    });
+
+    return { success: response.status === 200, data: response.data };
+  } catch (error) {
+    console.error('Ayrshare retry post error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -176,34 +330,58 @@ async function getUserSocialAnalytics(profileKey, platforms = ['instagram', 'fac
     return { success: false, error: 'API not configured' };
   }
 
-  try {
-    const headers = {
-      'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
-      'Content-Type': 'application/json'
-    };
-    
-    if (profileKey) {
-      headers['Profile-Key'] = profileKey;
-    }
-    
-    // Ayrshare social analytics endpoint uses POST method - use longer timeout
-    const response = await makeRequest('https://api.ayrshare.com/api/analytics/social', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify({ platforms }),
-      timeout: 60000 // 60 second timeout for analytics
-    });
+  const cacheKey = `ayrshare_user_social_${profileKey}_${platforms.join(',')}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
 
-    console.log('Ayrshare social analytics response:', response.status, JSON.stringify(response.data).substring(0, 500));
-    
-    return { 
-      success: response.status === 200, 
-      data: response.data 
-    };
-  } catch (error) {
-    console.error('Ayrshare user social analytics error:', error);
-    return { success: false, error: error.message };
+  const maxRetries = 2;
+  const retryDelayBaseMs = 500;
+
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const headers = {
+        'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+        'Content-Type': 'application/json'
+      };
+
+      if (profileKey) {
+        headers['Profile-Key'] = profileKey;
+      }
+
+      // Ayrshare social analytics endpoint uses POST method - use longer timeout
+      const response = await makeRequest('https://api.ayrshare.com/api/analytics/social', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ platforms }),
+        timeout: 60000 // 60 second timeout for analytics
+      });
+
+      console.log('Ayrshare social analytics response:', response.status, JSON.stringify(response.data).substring(0, 500));
+
+      const result = { success: response.status === 200, data: response.data };
+      if (result.success) setCache(cacheKey, result);
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries && isRetriableNetworkError(error)) {
+        const waitMs = retryDelayBaseMs * (attempt + 1);
+        console.warn('[Ayrshare] social analytics retry due to network error:', {
+          attempt: attempt + 1,
+          maxRetries,
+          error: error?.message,
+          waitMs
+        });
+        await sleep(waitMs);
+        continue;
+      }
+
+      console.error('Ayrshare user social analytics error:', error);
+      return { success: false, error: error.message };
+    }
   }
+
+  return { success: false, error: lastError?.message || 'Failed to fetch social analytics' };
 }
 
 /**
@@ -216,10 +394,12 @@ async function getPostHistory(options = {}) {
 
   try {
     const headers = {
-      'Authorization': `Bearer ${AYRSHARE_API_KEY}`
+      'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+      'Content-Type': 'application/json'
     };
     if (options.profileKey) {
       headers['Profile-Key'] = options.profileKey;
+      headers['X-Profile-Key'] = options.profileKey;
     }
 
     const response = await makeRequest('https://api.ayrshare.com/api/history', {
@@ -248,10 +428,12 @@ async function getPostStatus(postId, options = {}) {
 
   try {
     const headers = {
-      'Authorization': `Bearer ${AYRSHARE_API_KEY}`
+      'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+      'Content-Type': 'application/json'
     };
     if (options.profileKey) {
       headers['Profile-Key'] = options.profileKey;
+      headers['X-Profile-Key'] = options.profileKey;
     }
 
     const response = await makeRequest(`https://api.ayrshare.com/api/post/${postId}`, {
@@ -280,21 +462,40 @@ async function deletePost(postId, options = {}) {
 
   try {
     const headers = {
-      'Authorization': `Bearer ${AYRSHARE_API_KEY}`
+      'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+      'Content-Type': 'application/json'
     };
     if (options.profileKey) {
       headers['Profile-Key'] = options.profileKey;
+      headers['X-Profile-Key'] = options.profileKey;
     }
 
-    const response = await makeRequest(`https://api.ayrshare.com/api/post/${postId}`, {
+    console.log(`[Ayrshare Delete] Attempting delete for post ${postId}`);
+
+    const response = await makeRequest('https://api.ayrshare.com/api/delete', {
       method: 'DELETE',
-      headers
+      headers,
+      body: { id: postId }
     });
 
     console.log(`🗑️ Ayrshare delete for ${postId}:`, JSON.stringify(response.data, null, 2));
-    return { success: response.status === 200, data: response.data };
+    const deleteSucceeded =
+      response.status === 200 &&
+      response.data?.status !== 'error' &&
+      !response.data?.error;
+
+    if (!deleteSucceeded) {
+      return {
+        success: false,
+        error: response.data?.message || response.data?.error || `Ayrshare delete failed with status ${response.status}`,
+        data: response.data,
+        status: response.status
+      };
+    }
+
+    return { success: true, data: response.data, status: response.status };
   } catch (error) {
-    console.error('Ayrshare delete error:', error);
+    console.error(`[Ayrshare Delete] Error for ${postId}:`, error);
     return { success: false, error: error.message };
   }
 }
@@ -476,32 +677,59 @@ async function getAyrshareUserProfile(profileKey) {
     return { success: false, error: 'API not configured' };
   }
 
-  try {
-    const response = await makeRequest('https://api.ayrshare.com/api/user', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
-        'Profile-Key': profileKey
-      }
-    });
+  const cacheKey = `ayrshare_user_profile_${profileKey}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
 
-    if (response.status === 200) {
-      console.log(`[Ayrshare API] Raw /api/user response for Profile-Key ${profileKey.substring(0,8)}...:`, JSON.stringify(response.data, null, 2));
-      return {
-        success: true,
-        data: response.data,
-        activeSocialAccounts: response.data?.activeSocialAccounts || response.data?.grants || response.data?.profiles || []
-      };
-    } else {
+  const maxRetries = 2;
+  const retryDelayBaseMs = 500;
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await makeRequest('https://api.ayrshare.com/api/user', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${AYRSHARE_API_KEY}`,
+          'Profile-Key': profileKey
+        }
+      });
+
+      if (response.status === 200) {
+        const result = {
+          success: true,
+          data: response.data,
+          activeSocialAccounts: response.data?.activeSocialAccounts || response.data?.grants || response.data?.profiles || []
+        };
+        setCache(cacheKey, result);
+        console.log(`[Ayrshare API] Raw /api/user response for Profile-Key ${profileKey.substring(0,8)}...:`, JSON.stringify(response.data, null, 2));
+        return result;
+      }
+
       return {
         success: false,
         error: response.data?.message || 'Failed to get user profile'
       };
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries && isRetriableNetworkError(error)) {
+        const waitMs = retryDelayBaseMs * (attempt + 1);
+        console.warn('[Ayrshare] user profile retry due to network error:', {
+          attempt: attempt + 1,
+          maxRetries,
+          error: error?.message,
+          waitMs
+        });
+        await sleep(waitMs);
+        continue;
+      }
+
+      console.error('Ayrshare get user profile error:', error);
+      return { success: false, error: error.message };
     }
-  } catch (error) {
-    console.error('Ayrshare get user profile error:', error);
-    return { success: false, error: error.message };
   }
+
+  return { success: false, error: lastError?.message || 'Failed to get user profile' };
 }
 
 /**
@@ -2061,6 +2289,7 @@ module.exports = {
   getUserSocialAnalytics,
   getPostHistory,
   getPostStatus,
+  retryPost,
   deletePost,
   getAyrshareProfile,
   getAyrshareConnectUrl,

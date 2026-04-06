@@ -108,7 +108,12 @@ const userSchema = new mongoose.Schema({
     profileKey: { type: String, default: '' },  // User's Ayrshare Profile Key for API calls
     refId: { type: String, default: '' },        // Ayrshare reference ID
     title: { type: String, default: '' },        // Profile title in Ayrshare
-    createdAt: { type: Date }                    // When Ayrshare profile was created
+    createdAt: { type: Date },                   // When Ayrshare profile was created
+    // Cache last-known connected accounts so transient Ayrshare errors don't "flip" the UI to disconnected
+    activeSocialAccounts: { type: [String], default: [] },
+    displayNames: { type: mongoose.Schema.Types.Mixed, default: [] },
+    lastCheckedAt: { type: Date, default: null },
+    lastError: { type: String, default: '' }
   },
   // ICP & Channel Strategy (AI-generated, stored per user)
   icpStrategy: {

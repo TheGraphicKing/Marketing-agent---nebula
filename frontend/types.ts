@@ -81,6 +81,7 @@ export interface Campaign {
   name: string;
   objective: 'awareness' | 'traffic' | 'sales' | 'engagement' | 'conversion' | 'conversions' | 'leads';
   platforms: string[];
+  tone?: string | null;
   status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'archived' | 'posted';
   priority?: 'low' | 'medium' | 'high';
   notes?: string;
@@ -94,6 +95,11 @@ export interface Campaign {
     textContent: string;
     imageUrls: string[];
     captions?: string;
+    instagramAudio?: {
+      url: string;
+      publicId?: string | null;
+      originalName?: string | null;
+    } | null;
     hashtags?: string[];
     callToAction?: string;
     aiGenerated?: boolean;
@@ -126,7 +132,9 @@ export interface Campaign {
   publishedAt?: string;
   scheduledFor?: string;
   socialPostId?: string;
+  socialPostIds?: Record<string, string> | null;
   ayrshareStatus?: string;
+  lastPublishError?: string | null;
   createdAt: string;
 }
 

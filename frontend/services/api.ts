@@ -1,5 +1,7 @@
 import { AuthResponse, BusinessProfile, Campaign, DashboardData, SocialConnection, User } from '../types';
 
+type CampaignInput = Partial<Campaign> & { tone?: string | null };
+
 // Use relative URL in production (when served from same origin), localhost in development
 declare const __PROD__: boolean;
 const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
@@ -119,6 +121,103 @@ async function apiCall<T>(
     }
     throw error;
   }
+}
+
+async function downloadBlobFromApi(
+  endpoint: string,
+  fileName: string,
+  requiresAuth: boolean = false
+): Promise<{ success: boolean; fileName: string; bytes: number }> {
+  const headers: HeadersInit = {};
+
+  if (requiresAuth) {
+    const token = getToken();
+    if (token) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    let message = 'Failed to download video';
+
+    try {
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        message = data?.error || data?.message || message;
+      } else {
+        const text = await response.text();
+        if (text) message = text;
+      }
+    } catch (_) {}
+
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  if (!blob.size) {
+    throw new Error('Downloaded video file is empty');
+  }
+
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+
+  return {
+    success: true,
+    fileName,
+    bytes: blob.size
+  };
+}
+
+function extractGeneratedInstagramVideoUrl(payload: any): string | null {
+  return payload?.generatedInstagramVideoUrl ||
+    payload?.result?.instagram?.instagramFix?.videoDebug?.preparedUrl ||
+    payload?.result?.instagram?.instagramFix?.mediaUrl ||
+    payload?.result?.instagramFix?.videoDebug?.preparedUrl ||
+    payload?.result?.instagramFix?.mediaUrl ||
+    null;
+}
+
+async function autoDownloadGeneratedInstagramVideo(
+  videoUrl: string,
+  fileName: string = 'instagram-video.mp4'
+): Promise<{ success: boolean; fileName: string; bytes: number }> {
+  if (!videoUrl || typeof videoUrl !== 'string') {
+    throw new Error('Generated video URL is missing');
+  }
+
+  console.log('[Video Download] Starting Instagram video download:', videoUrl);
+
+  const result = await downloadBlobFromApi(
+    `/content/download-video?url=${encodeURIComponent(videoUrl)}&fileName=${encodeURIComponent(fileName)}`,
+    fileName,
+    true
+  );
+
+  console.log('[Video Download] Video downloaded successfully');
+  window.dispatchEvent(new CustomEvent('video-download-success', {
+    detail: {
+      videoUrl,
+      fileName,
+      bytes: result.bytes,
+      message: 'Video downloaded successfully'
+    }
+  }));
+
+  return result;
 }
 
 // ============================================
@@ -702,9 +801,13 @@ export const apiService = {
       );
       return { connections: response.connections };
     } catch (error) {
-      // Fallback to mock data if not logged in or API fails
-      // Using mock social connections
-      return { connections: socialConnections };
+      // Only fall back to mock data when not authenticated.
+      // If the user is logged in, surface the error so the UI can keep last-known state.
+      const hasToken = typeof window !== "undefined" && !!localStorage.getItem("authToken");
+      if (!hasToken) {
+        return { connections: socialConnections };
+      }
+      throw error;
     }
   },
 
@@ -1015,7 +1118,7 @@ export const apiService = {
     return { campaign: response.campaign };
   },
 
-  createCampaign: async (data: Partial<Campaign>): Promise<{ campaign: Campaign }> => {
+  createCampaign: async (data: CampaignInput): Promise<{ campaign: Campaign }> => {
     const response = await apiCall<{ success: boolean; campaign: Campaign }>(
       '/campaigns',
       { method: 'POST', body: JSON.stringify(data) },
@@ -1024,13 +1127,33 @@ export const apiService = {
     return { campaign: response.campaign };
   },
 
-  updateCampaign: async (id: string, data: Partial<Campaign>): Promise<{ campaign: Campaign }> => {
+  updateCampaign: async (id: string, data: CampaignInput): Promise<{ campaign: Campaign }> => {
     const response = await apiCall<{ success: boolean; campaign: Campaign }>(
       `/campaigns/${id}`,
       { method: 'PUT', body: JSON.stringify(data) },
       true
     );
     return { campaign: response.campaign };
+  },
+
+  // Upload audio for Instagram campaign posts (stored on Cloudinary)
+  uploadCampaignAudio: async (audioData: string, originalName?: string): Promise<{
+    success: boolean;
+    url?: string;
+    publicId?: string | null;
+    originalName?: string | null;
+    bytes?: number | null;
+    format?: string | null;
+    duration?: number | null;
+    message?: string;
+    error?: string;
+  }> => {
+    const response = await apiCall<any>(
+      '/campaigns/upload-audio',
+      { method: 'POST', body: JSON.stringify({ audioData, originalName }) },
+      true
+    );
+    return response;
   },
 
   deleteCampaign: async (id: string): Promise<{ success: boolean }> => {
@@ -2018,7 +2141,12 @@ export const apiService = {
       { method: 'POST', body: JSON.stringify({ platforms, scheduledFor }) },
       true
     );
+
     return response;
+  },
+
+  downloadGeneratedVideo: async (videoUrl: string, fileName: string = 'instagram-video.mp4'): Promise<{ success: boolean; fileName: string; bytes: number }> => {
+    return autoDownloadGeneratedInstagramVideo(videoUrl, fileName);
   },
 
   // Get real analytics for a campaign
