@@ -4013,7 +4013,8 @@ async function generateCampaignImageNanoBanana(imageDescription, options = {}) {
   const {
     aspectRatio = '1:1',
     brandName = '',
-    brandLogo = null, // base64 logo
+    brandLogo = null,
+    productReferenceImage = null,
     industry = '',
     tone = 'professional',
     postIndex = 0,
@@ -4024,19 +4025,23 @@ async function generateCampaignImageNanoBanana(imageDescription, options = {}) {
     fontType = '',
     strictBrandLock = false,
   } = options;
+
+  const linkedProduct = options.linkedProduct && typeof options.linkedProduct === 'object' ? options.linkedProduct : null;
+  const hasProductReferenceImage = Boolean(String(productReferenceImage || linkedProduct?.imageUrl || '').trim());
   const normalizedPalette = Array.isArray(brandPalette) ? brandPalette.filter(Boolean) : [];
   const primaryColor = String(normalizedPalette[0] || '').trim();
   const secondaryColor = String(normalizedPalette[1] || '').trim();
 
   const prompt = `ROLE: You are an elite creative director at a top-tier advertising agency. You create award-winning social media ad creatives that drive engagement and conversions for global brands.
 
-OBJECTIVE: Generate a single, publication-ready social media ad image that looks like it was produced by a professional design team. The image must be visually stunning, immediately attention-grabbing in a social feed, and communicate the brand message through design — not through literal text dumps.
+OBJECTIVE: Generate a single, publication-ready social media ad image that looks like it was produced by a professional design team. The image must be visually stunning, immediately attention-grabbing in a social feed, and communicate the brand message through design, not through literal text dumps.
 
 CONTEXT:
 - Brand: ${brandName || 'The brand'}${industry ? ` (${industry} industry)` : ''}
 - Campaign theme: ${campaignTheme || 'Marketing campaign'}
-${options.linkedProduct ? `- Featured Product: ${options.linkedProduct.name}
-- Product description: ${options.linkedProduct.description || 'N/A'}` : ''}
+${linkedProduct ? `- Featured Product: ${linkedProduct.name}
+- Product description: ${linkedProduct.description || 'N/A'}
+- Product reference image: ${hasProductReferenceImage ? 'Provided' : 'Not provided'}` : ''}
 - Visual direction: ${imageDescription}
 - Tone & mood: ${tone || 'professional'}
 ${normalizedPalette.length ? `- Locked brand palette: ${normalizedPalette.join(', ')}` : ''}
@@ -4044,61 +4049,96 @@ ${fontType ? `- Preferred typography style: ${fontType}` : ''}
 ${keyMessages ? `- Campaign messaging (for design inspiration, NOT to be written verbatim on the image): ${keyMessages}` : ''}
 
 INSTRUCTIONS:
-1. DESIGN QUALITY: Create a polished, agency-grade ad creative. Think Canva Pro templates, not PowerPoint slides. Use professional color grading, balanced composition, and modern design trends (gradients, glassmorphism, bold typography, lifestyle photography style, etc.)
+1. DESIGN QUALITY: ${strictBrandLock
+      ? 'Create a polished, agency-grade ad creative with a clean luxury layout. Keep rendering photorealistic and minimal. Do NOT use cinematic color grading, auto color enhancement, random overlays, or multi-color effects.'
+      : 'Create a polished, agency-grade ad creative. Think Canva Pro templates, not PowerPoint slides. Use professional color grading, balanced composition, and modern design trends (gradients, glassmorphism, bold typography, lifestyle photography style, etc.)'}
 2. ASPECT RATIO: The image MUST be in exactly ${aspectRatio} aspect ratio. This is critical.
 3. RESOLUTION: Output at 1024px on the longest edge maximum. Do not exceed 1K resolution.
-4. TEXT ON IMAGE: If the design calls for text overlays, keep them SHORT (3-7 words max). Use professional typography — no more than 2 font styles. The text should be a punchy headline or tagline, NOT a paragraph. Never put placeholder text like [Date], [Name], [CTA], etc.
-5. BRAND IDENTITY: ${brandName ? `Subtly incorporate "${brandName}" — a small, elegant brand name in a corner or a minimal brand bar at the bottom. It should feel native to the design, like a real brand's post.` : 'Make the design look professionally branded.'}
-6. NO METADATA: Do NOT include any of the following in the image: post numbers, aspect ratio labels, "Brand" labels, campaign names, watermark text, frame borders, or any UI-like elements. The image should look like a final published ad, not a draft with annotations.
-7. VISUAL STORYTELLING: Let the imagery communicate the message. Use evocative visuals, strong focal points, and emotional resonance rather than explaining everything with text.
-8. COLOR PALETTE: ${normalizedPalette.length ? `STRICT: Use this brand palette prominently and avoid off-brand colors: ${normalizedPalette.join(', ')}.` : `Use a cohesive, premium color palette. ${tone === 'luxurious' || tone === 'luxury' ? 'Think dark tones with gold/silver accents.' : tone === 'playful' || tone === 'fun' ? 'Use vibrant, energetic colors.' : 'Use modern, clean colors that feel trustworthy and professional.'}`}
-9. STRICT BRAND PRIORITY: ${strictBrandLock ? 'ENFORCED. Brand identity overrides product appearance and product colors must NOT control the theme.' : 'Keep brand consistency high.'}
-${strictBrandLock && primaryColor && secondaryColor ? `10. PRIMARY/SECONDARY USAGE: Use ${primaryColor} as dominant background or gradient, and ${secondaryColor} for text/highlights/contrast.` : ''}
-${strictBrandLock && brandLogo ? '11. LOGO RULE: Place logo clearly at top center or top corner, visible and properly integrated.' : ''}
-${strictBrandLock && options.linkedProduct ? '12. PRODUCT RULE: Keep product centered or slightly offset, but do not let product colors override brand colors.' : ''}
-${fontType ? `13. TYPOGRAPHY: Any text rendered in the image should align with a "${fontType}" style and remain minimal.` : '13. TYPOGRAPHY: Keep text overlays minimal and premium.'}
-${totalPosts > 1 ? `14. SERIES CONSISTENCY: This is part of a ${totalPosts}-post campaign series. Maintain a consistent visual style, color palette, and design language that ties all posts together as a cohesive campaign.` : ''}`;
+4. TEXT ON IMAGE: If the design calls for text overlays, keep them SHORT (3-7 words max). Use professional typography and no more than 2 font styles. The text should be a punchy headline or tagline, NOT a paragraph. Never put placeholder text like [Date], [Name], [CTA], etc.
+5. BRAND IDENTITY: ${brandName ? `Subtly incorporate "${brandName}" as real brand craft.` : 'Make the design look professionally branded.'}
+6. NO METADATA: Do NOT include post numbers, aspect ratio labels, generic "Brand" labels, campaign names, watermark text, frame borders, or UI-like editor elements.
+7. VISUAL STORYTELLING: Let imagery communicate the message with strong focal points and emotional resonance.
+8. COLOR PALETTE: ${normalizedPalette.length
+      ? `STRICT: Use only this brand palette and avoid off-brand colors: ${normalizedPalette.join(', ')}.`
+      : `Use a cohesive, premium color palette. ${tone === 'luxurious' || tone === 'luxury' ? 'Think dark tones with gold/silver accents.' : tone === 'playful' || tone === 'fun' ? 'Use vibrant, energetic colors.' : 'Use modern, clean colors that feel trustworthy and professional.'}`}
+9. STRICT BRAND PRIORITY: ${strictBrandLock ? 'ENFORCED. Brand identity overrides product color influence.' : 'Keep brand consistency high.'}
+${strictBrandLock && primaryColor && secondaryColor ? `10. COLOR ENFORCEMENT (STRICT): Background MUST use EXACT brand primary color ${primaryColor}. Gradient allowed only within shades/tints of ${primaryColor}. Text MUST use EXACT brand secondary color ${secondaryColor}. Do NOT introduce any extra color family. Remove blue/pink/violet/neon looks. No mixed-tone gradients and no texture noise.` : ''}
+${strictBrandLock && brandLogo ? '11. LOGO RULE: Use the exact uploaded logo only. Do not recreate or alter it. Keep proportions and original colors.' : ''}
+${strictBrandLock && linkedProduct ? '12. PRODUCT RULE: Keep product centered or slightly offset. Any visible product UI/screen elements must use brand-primary shades only.' : ''}
+${linkedProduct ? `13. PRODUCT REALISM & COLOR CONTROL: ${strictBrandLock
+      ? (hasProductReferenceImage
+        ? `Use the provided product reference to preserve shape/materials. Keep composition color-locked to ${primaryColor} and ${secondaryColor}.`
+        : `No product reference image is available. Generate a premium smartwatch/fitness hero product and keep the full composition color-locked to ${primaryColor} and ${secondaryColor} only.`)
+      : (hasProductReferenceImage
+        ? 'Use the provided product reference to preserve realistic product form/materials. Keep product tones premium and believable (avoid neon or over-saturated rendering).'
+        : 'No product reference image is available. Generate a realistic premium hero product with tasteful tones and subtle brand-inspired accents.')} Keep brand colors primarily in background, lighting, and supporting design elements.` : '13. PRODUCT REALISM & COLOR CONTROL: If a hero product appears, keep it realistic and premium with restrained tones; avoid unrealistic bright colors.'}
+${fontType ? `14. TYPOGRAPHY: Any rendered text should align with a "${fontType}" style and remain minimal.` : '14. TYPOGRAPHY: Keep text overlays minimal and premium.'}
+${totalPosts > 1 ? `15. SERIES CONSISTENCY: This is part of a ${totalPosts}-post campaign series. Maintain a consistent visual style and design language across posts.` : ''}`;
 
   try {
-    console.log(`🎨 [NanoBanana2] Generating post ${postIndex + 1}/${totalPosts} in ${aspectRatio}...`);
+    console.log(`[NanoBanana2] Generating post ${postIndex + 1}/${totalPosts} in ${aspectRatio}...`);
 
     const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent';
 
     const parts = [];
 
-    // If brand logo provided, include it as inline image reference
-    if (brandLogo) {
-      let logoData = brandLogo;
-      let logoMime = 'image/png';
-      if (brandLogo.startsWith('data:')) {
-        // Already base64 data URI
-        const matches = brandLogo.match(/^data:([^;]+);base64,(.+)$/);
-        if (matches) {
-          logoMime = matches[1];
-          logoData = matches[2];
+    const prepareInlineImage = async (imageValue, label) => {
+      if (!imageValue) return null;
+      try {
+        if (String(imageValue).startsWith('data:')) {
+          const matches = String(imageValue).match(/^data:([^;]+);base64,(.+)$/);
+          if (matches) {
+            return { mimeType: matches[1], data: matches[2] };
+          }
+          return null;
         }
-      } else if (brandLogo.startsWith('http')) {
-        // URL — fetch and convert to base64
-        try {
-          console.log(`📥 Fetching brand logo from URL for Gemini...`);
-          const logoResponse = await fetch(brandLogo);
-          const logoBuffer = await logoResponse.arrayBuffer();
-          logoData = Buffer.from(logoBuffer).toString('base64');
-          const contentType = logoResponse.headers.get('content-type');
-          if (contentType) logoMime = contentType;
-        } catch (logoErr) {
-          console.error('Failed to fetch brand logo:', logoErr);
-          // Skip logo if fetch fails
-          parts.push({ text: prompt });
-          logoData = null;
+
+        if (String(imageValue).startsWith('http')) {
+          const response = await fetch(imageValue);
+          if (!response.ok) return null;
+          const buffer = await response.arrayBuffer();
+          const mimeType = response.headers.get('content-type') || 'image/png';
+          return {
+            mimeType,
+            data: Buffer.from(buffer).toString('base64')
+          };
         }
+      } catch (error) {
+        console.warn(`Could not prepare ${label} for generation:`, error.message);
       }
-      if (logoData) {
-        parts.push({
-          inlineData: { mimeType: logoMime, data: logoData }
-        });
-        parts.push({ text: `The image above is the brand logo. Integrate it elegantly into the ad design — place it naturally as part of the composition (corner placement, brand bar, or embedded in the layout). Do NOT just slap it as a watermark.\n\n${prompt}` });
-      }
+      return null;
+    };
+
+    const [logoInline, productInline] = await Promise.all([
+      prepareInlineImage(brandLogo, 'brand logo'),
+      prepareInlineImage(productReferenceImage, 'product reference image')
+    ]);
+
+    const referenceNotes = [];
+
+    if (logoInline?.data) {
+      parts.push({
+        inlineData: {
+          mimeType: logoInline.mimeType || 'image/png',
+          data: logoInline.data
+        }
+      });
+      referenceNotes.push('Image 1 is the exact uploaded brand logo. Use it exactly as-is. Do not recreate or recolor it.');
+    }
+
+    if (productInline?.data) {
+      parts.push({
+        inlineData: {
+          mimeType: productInline.mimeType || 'image/png',
+          data: productInline.data
+        }
+      });
+      const imageIndex = logoInline?.data ? 2 : 1;
+      referenceNotes.push(`Image ${imageIndex} is the exact product reference image. Preserve product form, materials, and key structure.`);
+    }
+
+    if (referenceNotes.length > 0) {
+      parts.push({ text: `${referenceNotes.join('\n')}\n\n${prompt}` });
     } else {
       parts.push({ text: prompt });
     }
@@ -4123,17 +4163,15 @@ ${totalPosts > 1 ? `14. SERIES CONSISTENCY: This is part of a ${totalPosts}-post
       throw new Error(data.error?.message || 'Nano Banana 2 failed');
     }
 
-    // Extract the generated image
     const candidates = data.candidates || [];
     for (const candidate of candidates) {
-      const parts = candidate.content?.parts || [];
-      for (const part of parts) {
+      const responseParts = candidate.content?.parts || [];
+      for (const part of responseParts) {
         const imgData = part.inlineData || part.inline_data;
         if (imgData?.data) {
           const mime = imgData.mimeType || imgData.mime_type || 'image/png';
-          console.log(`✅ [NanoBanana2] Post ${postIndex + 1} generated successfully`);
+          console.log(`[NanoBanana2] Post ${postIndex + 1} generated successfully`);
 
-          // Upload to Cloudinary
           const base64Image = `data:${mime};base64,${imgData.data}`;
           try {
             const uploadResult = await uploadBase64Image(base64Image, 'nebula-campaign-posts');
@@ -4141,8 +4179,9 @@ ${totalPosts > 1 ? `14. SERIES CONSISTENCY: This is part of a ${totalPosts}-post
               return { success: true, imageUrl: uploadResult.url, model: 'nano-banana-2' };
             }
           } catch (uploadErr) {
-            console.warn('⚠️ Cloudinary upload failed, returning base64:', uploadErr.message);
+            console.warn('Cloudinary upload failed, returning base64:', uploadErr.message);
           }
+
           return { success: true, imageUrl: base64Image, model: 'nano-banana-2' };
         }
       }
@@ -4151,11 +4190,10 @@ ${totalPosts > 1 ? `14. SERIES CONSISTENCY: This is part of a ${totalPosts}-post
     throw new Error('Nano Banana 2 returned no image');
 
   } catch (error) {
-    console.error(`❌ [NanoBanana2] Post ${postIndex + 1} failed:`, error.message);
+    console.error(`[NanoBanana2] Post ${postIndex + 1} failed:`, error.message);
 
-    // Fallback to gemini-2.5-flash-image
     try {
-      console.log(`🔄 [NanoBanana2] Trying fallback gemini-2.5-flash-image...`);
+      console.log('[NanoBanana2] Trying fallback gemini-2.5-flash-image...');
       const fallbackUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent';
       const fallbackBody = {
         contents: [{ parts: [{ text: prompt }] }],
@@ -4181,20 +4219,19 @@ ${totalPosts > 1 ? `14. SERIES CONSISTENCY: This is part of a ${totalPosts}-post
                 if (uploadResult.success && uploadResult.url) {
                   return { success: true, imageUrl: uploadResult.url, model: 'gemini-2.5-flash-image' };
                 }
-              } catch (e) { /* fallthrough */ }
+              } catch (_) { }
               return { success: true, imageUrl: base64Image, model: 'gemini-2.5-flash-image' };
             }
           }
         }
       }
     } catch (fbErr) {
-      console.error('❌ Fallback also failed:', fbErr.message);
+      console.error('Fallback also failed:', fbErr.message);
     }
 
     return { success: false, error: error.message };
   }
 }
-
 module.exports = {
   callGemini,
   parseGeminiJSON,
@@ -4233,3 +4270,4 @@ module.exports = {
   // Nano Banana 2 campaign image generation
   generateCampaignImageNanoBanana
 };
+

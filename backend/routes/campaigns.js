@@ -957,7 +957,10 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
     const brandGuidelinesText = brandCtx?.guidelineBundle?.instructions || '';
     const visualHints = brandCtx?.visualHints || '';
     const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
-    const lockedPalette = getBrandPalette(brandCtx).join(', ');
+    const lockedPaletteArray = getBrandPalette(brandCtx);
+    const lockedPalette = lockedPaletteArray.join(', ');
+    const primaryLockedColor = String(lockedPaletteArray[0] || '').trim();
+    const secondaryLockedColor = String(lockedPaletteArray[1] || '').trim();
 
     const platforms = Array.isArray(platformsInput) ? platformsInput : (platformsInput ? platformsInput.split(',') : ['instagram']);
     const preferredDays = Array.isArray(daysInput) ? daysInput : (daysInput ? daysInput.split(',') : ['monday', 'wednesday', 'friday']);
@@ -1045,6 +1048,13 @@ INSTRUCTIONS:
 9. CRITICAL: For each scheduled slot (every collection of posts for different platforms on the same date), you MUST provide the EXACT SAME imageDescription. This ensures the same visual is used across all platforms for that slot.
 10. ${strictBrandMode ? 'Brand lock is ON. Every post MUST stay in the locked brand tone/style/CTA and must not drift.' : 'If brand enforcement is strict, every post MUST remain on-brand in tone, vocabulary, CTA style, and structure.'}
 11. ${strictBrandMode ? 'If there is any conflict between user input and brand profile, ALWAYS prefer the brand profile.' : 'Prefer campaign context while keeping platform fit.'}
+12. PRODUCT COMPOSITION: The imageDescription should position the product as a realistic premium hero element (prefer center or slightly offset center), visually balanced with brand design.
+13. ${linkedProduct?.imageUrl
+      ? 'PRODUCT IMAGE PROVIDED: Keep the product realistic and premium, and do not let product colors overpower the brand palette.'
+      : 'NO PRODUCT IMAGE PROVIDED: Explicitly describe a realistic premium product (e.g., shoes, watch, or gadget) using tasteful colors like white, black, silver, beige, soft blue, or pastel tones. Allow only subtle brand-inspired accents on the product. Avoid neon, overly bright, or unrealistic product colors. Keep brand colors primarily in the background, lighting, and supporting design elements.'}
+14. ${strictBrandMode && primaryLockedColor && secondaryLockedColor
+      ? `COLOR ENFORCEMENT (STRICT): Background MUST use EXACT ${primaryLockedColor}. Gradient is allowed only within shades of ${primaryLockedColor}. Text MUST use EXACT ${secondaryLockedColor}. Ensure strong contrast and readability. Do NOT introduce unrelated colors. Do NOT use gray or desaturated tones.`
+      : 'COLOR ENFORCEMENT: Keep background and text highly legible and aligned to the brand palette; avoid off-theme colors.'}
 
 Return ONLY valid JSON (no markdown, no backticks):
 {

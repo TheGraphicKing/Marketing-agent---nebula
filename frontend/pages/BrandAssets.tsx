@@ -103,7 +103,14 @@ const TONE_OPTIONS = ['fun', 'professional', 'luxury', 'simple', 'normal'];
 const WRITING_STYLE_OPTIONS = ['short', 'storytelling', 'formal', 'casual'];
 const CTA_STYLE_OPTIONS = ['direct', 'soft', 'community', 'value_first', 'balanced'];
 const VISUAL_STYLE_OPTIONS = ['clean-minimal', 'premium-luxury', 'vibrant-playful'];
-const FONT_SUGGESTIONS = ['Inter', 'Montserrat', 'Poppins', 'Playfair Display', 'Lora', 'Roboto'];
+const FONT_OPTIONS = [
+  { value: 'Inter', label: 'Inter', css: "'Inter', sans-serif" },
+  { value: 'Montserrat', label: 'Montserrat', css: "'Montserrat', sans-serif" },
+  { value: 'Poppins', label: 'Poppins', css: "'Poppins', sans-serif" },
+  { value: 'Playfair Display', label: 'Playfair Display', css: "'Playfair Display', serif" },
+  { value: 'Lora', label: 'Lora', css: "'Lora', serif" },
+  { value: 'Roboto', label: 'Roboto', css: "'Roboto', sans-serif" }
+];
 const PLATFORM_OPTIONS = ['instagram', 'facebook', 'linkedin', 'twitter'];
 
 const fileToBase64 = (file: File): Promise<string> =>
@@ -115,6 +122,13 @@ const fileToBase64 = (file: File): Promise<string> =>
   });
 
 const toPercent = (value?: number) => Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 100)));
+
+const getFontFamilyForPreview = (value?: string) => {
+  const selected = FONT_OPTIONS.find((font) => font.value === String(value || '').trim());
+  if (selected) return selected.css;
+  const cleaned = String(value || '').trim();
+  return cleaned ? `'${cleaned}', serif` : "'Inter', sans-serif";
+};
 
 const BrandAssets: React.FC = () => {
   const [logos, setLogos] = useState<BrandAsset[]>([]);
@@ -646,20 +660,23 @@ const BrandAssets: React.FC = () => {
               </div>
               <div className="space-y-3">
                 <label className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Font Type</label>
-                <input
+                <select
                   value={fontType}
                   onChange={(e) => setFontType(e.target.value)}
-                  placeholder="Inter / Playfair Display"
-                  list="font-suggestions"
                   className={`w-full px-3 py-2 rounded-lg border ${
-                    isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                    isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
                   }`}
-                />
-                <datalist id="font-suggestions">
-                  {FONT_SUGGESTIONS.map((font) => (
-                    <option key={font} value={font} />
+                >
+                  <option value="">Select brand font</option>
+                  {FONT_OPTIONS.map((font) => (
+                    <option key={font.value} value={font.value}>
+                      {font.label}
+                    </option>
                   ))}
-                </datalist>
+                  {fontType && !FONT_OPTIONS.some((font) => font.value === fontType) && (
+                    <option value={fontType}>{fontType} (Custom)</option>
+                  )}
+                </select>
               </div>
               <div className="space-y-3">
                 <label className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Primary Color</label>

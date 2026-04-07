@@ -1,11 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
+const BrandAsset = require('../models/BrandAsset');
+const BrandIntelligenceProfile = require('../models/BrandIntelligenceProfile');
 const { protect } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
 
 // Multer: in-memory storage, allow csv & excel only (max 5 MB)
 const upload = multer({
@@ -26,6 +30,66 @@ const upload = multer({
     }
   }
 });
+
+const STRICT_AD_PROMPT_PATH = path.resolve(__dirname, '../data/strict-premium-product-ad-prompt.txt');
+let strictAdPromptTemplateCache = null;
+
+function getStrictAdPromptTemplate() {
+  if (strictAdPromptTemplateCache) return strictAdPromptTemplateCache;
+  try {
+    strictAdPromptTemplateCache = fs.readFileSync(STRICT_AD_PROMPT_PATH, 'utf8');
+  } catch (error) {
+    console.warn(`Could not load strict ad prompt template from ${STRICT_AD_PROMPT_PATH}:`, error.message);
+    strictAdPromptTemplateCache = [
+      'Create a premium advertisement for "{{brand_name}}".',
+      'Use ONLY {{primary_color}} and {{secondary_color}}.',
+      'Background must be solid/gradient of {{primary_color}} only.',
+      'Text must be {{secondary_color}} only.',
+      'Use exact logo {{logo_image_url}} without modification.',
+      'Use "{{font_type}}" style typography.',
+      'Use premium headline "{{headline}}".',
+      'If any extra color appears, output is invalid.'
+    ].join('\n');
+  }
+  return strictAdPromptTemplateCache;
+}
+
+function replaceTemplateTokens(template, variables = {}) {
+  return Object.entries(variables).reduce((acc, [key, value]) => {
+    const safeValue = String(value ?? '');
+    return acc.split(`{{${key}}}`).join(safeValue);
+  }, String(template || ''));
+}
+
+function normalizeHexColor(value, fallback) {
+  const hex = String(value || '').trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(hex)) return hex.toUpperCase();
+  if (/^#[0-9A-Fa-f]{3}$/.test(hex)) {
+    return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`.toUpperCase();
+  }
+  return String(fallback || '').toUpperCase();
+}
+
+async function toDataUriFromImage(imageSource, label = 'image') {
+  const source = String(imageSource || '').trim();
+  if (!source) return null;
+  if (source.startsWith('data:')) return source;
+  if (!source.startsWith('http')) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(source, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const buffer = await response.arrayBuffer();
+    const mime = response.headers.get('content-type') || 'image/png';
+    return `data:${mime};base64,${Buffer.from(buffer).toString('base64')}`;
+  } catch (error) {
+    console.warn(`Could not fetch ${label}:`, error.message);
+    return null;
+  }
+}
 
 // ============================================
 // SHARED: transform + validate a raw CSV/Excel row
@@ -323,89 +387,82 @@ router.delete('/:id', protect, async (req, res) => {
 // @access  Private
 router.post('/:id/generate-ad-image', protect, async (req, res) => {
   try {
+    const userId = req.user?._id || req.user?.id;
     const product = await Product.findOne({ _id: req.params.id, user: req.user._id });
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    const { platform = 'instagram', tone = 'professional', aspectRatio = '1:1' } = req.body;
-
-    // ── Build the detailed creative prompt ──────────────────────────────────
-    const productContext = [
-      `Product Name: ${product.name}`,
-      product.description ? `Description: ${product.description}` : null,
-      `Category: ${product.category || 'General'}`,
-      `Price: ${product.currency || 'INR'} ${product.price}`,
-      product.tags?.length ? `Keywords / Tags: ${product.tags.join(', ')}` : null,
-    ].filter(Boolean).join('\n');
-
-    const hasReferenceImage = product.imageUrl &&
-      (product.imageUrl.startsWith('http') || product.imageUrl.startsWith('data:'));
-
-    const imageDescription = `
-ROLE: Elite Commercial Product Photographer.
-TASK: Generate a high-quality marketing advertisement image using the provided product reference image.
-
-STRICT RULES:
-1. PRODUCT LOCK: You MUST use the reference image as the exact product. Preserve the exact product appearance, design, shape, color, and structure.
-2. NO ALTERATION: DO NOT change the product design or structure. DO NOT replace the product with a different object or scene.
-3. NO HUMAN ELEMENTS: DO NOT introduce people, faces, or hands. DO NOT generate lifestyle-only images without the product.
-4. VISIBILITY: The product must be clearly visible, centered, and the primary subject of the image.
-5. BACKGROUND: Place the product in a clean marketing background (high-end studio, minimal, or soft lifestyle). The background must support the product, not replace or distract from it.
-
-AESTHETIC GUIDELINES:
-- LIGHTING: Professional commercial lighting with realistic shadows and crisp highlights.
-- FOCUS: Sharp focus on the product, no hallucinated variations.
-- PLATFORM STYLE:
-  * Instagram -> vibrant, aesthetic, modern.
-  * LinkedIn/Ads -> clean, professional, high contrast, premium.
-
-GOAL: A photorealistic, agency-grade social media ad in ${aspectRatio} aspect ratio for ${platform}.
-`.trim();
+    const { platform = 'instagram', tone = 'professional', aspectRatio = '1:1' } = req.body || {};
 
     // Lazy-import to avoid circular deps
     const { generateCampaignImageNanoBanana } = require('../services/geminiAI');
 
-    // If a reference image URL exists, fetch it and pass as base64 so the model
-    // can see the real product and match its appearance exactly.
-    let brandLogo = null;
-    if (hasReferenceImage && product.imageUrl.startsWith('http')) {
-      try {
-        console.log(`📥 Fetching product reference image: ${product.imageUrl}`);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const imgResp = await fetch(product.imageUrl, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (imgResp.ok) {
-          const buf = await imgResp.arrayBuffer();
-          const mime = imgResp.headers.get('content-type') || 'image/jpeg';
-          brandLogo = `data:${mime};base64,${Buffer.from(buf).toString('base64')}`;
-          console.log('✅ Product reference image fetched and encoded');
-        }
-      } catch (fetchErr) {
-        console.warn('⚠️ Could not fetch product reference image:', fetchErr.message);
-      }
-    } else if (hasReferenceImage && product.imageUrl.startsWith('data:')) {
-      brandLogo = product.imageUrl; // already base64
+    const profile = await BrandIntelligenceProfile.findOne({ userId }).lean();
+    let primaryLogoUrl = String(profile?.assets?.primaryLogoUrl || '').trim();
+    if (!primaryLogoUrl) {
+      const primaryLogoAsset =
+        (await BrandAsset.findOne({ user: userId, type: 'logo', isPrimary: true }).sort({ createdAt: -1 }).lean()) ||
+        (await BrandAsset.findOne({ user: userId, type: 'logo' }).sort({ createdAt: -1 }).lean());
+      primaryLogoUrl = String(primaryLogoAsset?.url || '').trim();
     }
 
-    console.log(`🎨 Generating product ad image for "${product.name}" (${platform}, ${aspectRatio})`);
+    const brandName = String(profile?.brandName || req.user?.companyName || product.name || 'Your Brand').trim();
+    const primaryColor = normalizeHexColor(profile?.assets?.primaryColor, '#8965EC');
+    const secondaryColor = normalizeHexColor(profile?.assets?.secondaryColor, '#FFFFFF');
+    const fontType = String(profile?.assets?.fontType || 'Playfair Display').trim() || 'Playfair Display';
+    const headline = `${product.name} Premium Edition`;
+
+    const strictPromptTemplate = getStrictAdPromptTemplate();
+    const imageDescription = replaceTemplateTokens(strictPromptTemplate, {
+      brand_name: brandName,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      font_type: fontType,
+      logo_image_url: primaryLogoUrl || 'MISSING_PRIMARY_LOGO',
+      product_category: product.category || 'Smartwatch / Fitness',
+      headline
+    });
+
+    const hasProductReference = Boolean(
+      product.imageUrl &&
+      (String(product.imageUrl).startsWith('http') || String(product.imageUrl).startsWith('data:'))
+    );
+
+    const [brandLogo, productReferenceImage] = await Promise.all([
+      toDataUriFromImage(primaryLogoUrl, 'brand logo'),
+      hasProductReference ? toDataUriFromImage(product.imageUrl, 'product reference image') : Promise.resolve(null)
+    ]);
+
+    if (!brandLogo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Primary logo is required for strict premium ad generation. Upload/select a primary logo in Brand Assets first.'
+      });
+    }
+
+    console.log(`Generating strict premium ad image for "${product.name}" (${platform}, ${aspectRatio})`);
 
     const result = await generateCampaignImageNanoBanana(imageDescription, {
       aspectRatio,
-      brandName:     product.name,
-      brandLogo,          // product photo used as reference, not as logo overlay
-      industry:      product.category || 'Retail',
+      brandName,
+      brandLogo,
+      productReferenceImage,
+      industry: product.category || 'Retail',
       tone,
-      postIndex:     0,
-      totalPosts:    1,
-      campaignTheme: `${product.name} Product Ad`,
-      keyMessages:   product.description || '',
+      postIndex: 0,
+      totalPosts: 1,
+      campaignTheme: `${brandName} Premium Product Ad`,
+      keyMessages: product.description || '',
+      strictBrandLock: true,
+      brandPalette: [primaryColor, secondaryColor],
+      fontType,
       linkedProduct: {
-        name:        product.name,
+        name: product.name,
         description: product.description || '',
-        price:       product.price,
-        currency:    product.currency || 'INR',
+        price: product.price,
+        currency: product.currency || 'INR',
+        imageUrl: product.imageUrl || ''
       }
     });
 
@@ -419,12 +476,12 @@ GOAL: A photorealistic, agency-grade social media ad in ${aspectRatio} aspect ra
     return res.json({
       success: true,
       imageUrl: result.imageUrl,
-      model:    result.model,
+      model: result.model,
       product: {
-        _id:      product._id,
-        name:     product.name,
+        _id: product._id,
+        name: product.name,
         category: product.category,
-        price:    product.price,
+        price: product.price,
         currency: product.currency
       }
     });
@@ -437,5 +494,5 @@ GOAL: A photorealistic, agency-grade social media ad in ${aspectRatio} aspect ra
     });
   }
 });
-
 module.exports = router;
+
