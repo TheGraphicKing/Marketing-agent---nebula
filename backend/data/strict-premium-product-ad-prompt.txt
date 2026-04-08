@@ -1,0 +1,50 @@
+Create a premium advertisement for "{{brand_name}}".
+
+STRICT BRAND COLOR ENFORCEMENT (CRITICAL):
+- Use ONLY this primary color: {{primary_color}}
+- Background MUST be SOLID or GRADIENT of ONLY {{primary_color}}
+- Allowed gradient range: darker {{primary_color}} -> lighter {{primary_color}} ONLY
+- DO NOT introduce blue, pink, violet, or any other shade
+- DO NOT auto-enhance or adjust colors
+- DO NOT use cinematic color grading
+
+COLOR RESTRICTIONS:
+- No additional colors except {{primary_color}} and {{secondary_color}}
+- Product UI (watch screen, elements) MUST also follow brand color
+- Remove any blue light, neon colors, or multi-color UI
+
+EXACT COLOR MATCH:
+- The primary color must visually match HEX {{primary_color}} exactly
+- No deviation, no approximation
+
+BACKGROUND:
+- Clean, minimal, smooth gradient using ONLY {{primary_color}}
+- No texture, no noise, no mixed tones
+
+TEXT:
+- Color: {{secondary_color}} ONLY
+- Font style: "{{font_type}}" (Playfair Display style serif)
+- Elegant, premium look
+
+LOGO:
+- Use EXACT uploaded logo: {{logo_image_url}}
+- DO NOT recreate, redraw, or modify
+- Maintain original colors and proportions
+
+PRODUCT:
+- Smartwatch or fitness product, premium and minimal
+- Remove any non-brand colors from product UI
+- UI elements must use {{primary_color}} shades only
+
+STYLE:
+- Minimal, luxury, clean
+- High contrast, no clutter
+
+HARD RULE:
+- If any color outside {{primary_color}} or {{secondary_color}} is used, the output is INVALID.
+
+HEADLINE:
+- Use this premium headline: "{{headline}}"
+
+OUTPUT:
+- Final creative must be publication-ready, strictly on-brand, and pass all rules above.

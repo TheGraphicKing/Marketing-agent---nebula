@@ -270,10 +270,226 @@ const { overlayLogoAndUpload, replaceLogoAtBboxAndUpload } = require('../service
 
 // Import BrandAsset model for fetching user's logos
 const BrandAsset = require('../models/BrandAsset');
+const BrandIntelligenceProfile = require('../models/BrandIntelligenceProfile');
 
 // Import logo detection from Gemini
 const { detectLogoInImage } = require('../services/geminiAI');
 const { publishCampaignToSocial } = require('../services/campaignPublisher');
+const { buildGenerationGuidelines } = require('../services/brandIntelligenceService');
+
+async function resolveBrandIntelligenceContext(userId, businessProfile = {}) {
+  const profile = await BrandIntelligenceProfile.findOne({ userId }).lean();
+  const primaryLogoAsset =
+    (await BrandAsset.findOne({ user: userId, type: 'logo', isPrimary: true }).sort({ createdAt: -1 })) ||
+    (await BrandAsset.findOne({ user: userId, type: 'logo' }).sort({ createdAt: -1 }));
+
+  const profileAssets = profile?.assets || {};
+  const primaryLogoUrl = String(profileAssets.primaryLogoUrl || primaryLogoAsset?.url || '').trim();
+
+  const profileForRules = {
+    ...(profile || {}),
+    assets: {
+      ...profileAssets,
+      primaryLogoUrl
+    },
+    hasBrandAssets: Boolean(
+      profile?.hasBrandAssets ||
+        primaryLogoUrl ||
+        profileAssets?.primaryColor ||
+        profileAssets?.secondaryColor ||
+        profileAssets?.fontType ||
+        profile?.brandName ||
+        profile?.brandDescription
+    ),
+    hasPastPosts: Boolean(profile?.hasPastPosts || (profile?.pastPosts || []).length)
+  };
+
+  const guidelineBundle = buildGenerationGuidelines(profileForRules);
+
+  const fallbackTone = Array.isArray(businessProfile?.brandVoice)
+    ? String(businessProfile.brandVoice[0] || 'professional').toLowerCase()
+    : String(businessProfile?.brandVoice || 'professional').toLowerCase();
+
+  const effectiveTone = String(guidelineBundle?.effectiveProfile?.tone || fallbackTone || 'professional').toLowerCase();
+  const visualTokens = profileForRules?.assets || {};
+  const visualHints = [
+    visualTokens.primaryColor ? `Primary color ${visualTokens.primaryColor}` : null,
+    visualTokens.secondaryColor ? `Secondary color ${visualTokens.secondaryColor}` : null,
+    visualTokens.fontType ? `Font style ${visualTokens.fontType}` : null
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return {
+    profile: profileForRules,
+    guidelineBundle,
+    effectiveTone,
+    primaryLogoUrl,
+    visualHints
+  };
+}
+
+function isStrictBrandLockEnabled(brandCtx = {}) {
+  return Boolean(brandCtx?.guidelineBundle?.strictMode);
+}
+
+function getBrandPalette(brandCtx = {}) {
+  const primary = String(brandCtx?.profile?.assets?.primaryColor || '').trim();
+  const secondary = String(brandCtx?.profile?.assets?.secondaryColor || '').trim();
+  return [primary, secondary].filter(Boolean);
+}
+
+function buildStrictBrandLockText(brandCtx = {}) {
+  const effective = brandCtx?.guidelineBundle?.effectiveProfile || {};
+  const palette = getBrandPalette(brandCtx);
+  const primary = String(palette[0] || '').trim();
+  const secondary = String(palette[1] || '').trim();
+  const fontType = String(brandCtx?.profile?.assets?.fontType || '').trim();
+  const visualStyle = String(effective.visualStyle || '').trim();
+  const writingStyle = String(effective.writingStyle || '').trim();
+  const ctaStyle = String(effective.ctaStyle || '').trim();
+  const tone = String(brandCtx?.effectiveTone || effective.tone || 'professional').trim();
+
+  let strictText = 'BRAND LOCK (MANDATORY): ';
+  strictText += `Use tone "${tone}" exactly and do not drift to other tones.`;
+  if (writingStyle) strictText += ` Writing style must remain "${writingStyle}".`;
+  if (ctaStyle) strictText += ` CTA style must remain "${ctaStyle}".`;
+  if (visualStyle) strictText += ` Visual style must remain "${visualStyle}".`;
+  if (palette.length) strictText += ` Use this color palette only: ${palette.join(' + ')}.`;
+  if (primary && secondary) {
+    strictText += ` Use ${primary} as the dominant background/gradient and ${secondary} for text, highlights, and contrast.`;
+  } else if (primary) {
+    strictText += ` Use ${primary} as the dominant color across the design.`;
+  }
+  strictText += ' Brand identity must override product appearance, and product colors must never become the main theme.';
+  if (brandCtx?.primaryLogoUrl) {
+    strictText += ' Keep the logo clearly visible (top center or top corner), properly integrated, and never hidden.';
+  }
+  if (fontType) strictText += ` Typography must follow "${fontType}".`;
+  strictText += ' Do not use placeholders or generic styling that conflicts with this profile.';
+  return strictText;
+}
+
+function buildBrandContextForImages(brandCtx = {}, fallback = {}) {
+  const palette = getBrandPalette(brandCtx);
+  return {
+    companyName: String(brandCtx?.profile?.brandName || fallback.companyName || 'Brand').trim() || 'Brand',
+    industry: String(fallback.industry || '').trim(),
+    description: String(brandCtx?.profile?.brandDescription || fallback.description || '').trim(),
+    targetAudience: String(fallback.targetAudience || '').trim(),
+    brandVoice: String(brandCtx?.effectiveTone || fallback.brandVoice || 'professional').trim(),
+    brandColors: palette,
+    hasLogo: Boolean(brandCtx?.primaryLogoUrl),
+    productLogo: brandCtx?.primaryLogoUrl || null
+  };
+}
+
+const generationLocks = new Map();
+const recentGenerationRequests = new Map();
+const GENERATION_LOCK_TTL_MS = 8 * 60 * 1000;
+const DUPLICATE_REQUEST_WINDOW_MS = 15000;
+
+function buildGenerationSignature(payload = {}) {
+  try {
+    return crypto.createHash('sha1').update(JSON.stringify(payload)).digest('hex');
+  } catch (_) {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
+function tryAcquireGenerationLock(userId, signature) {
+  const now = Date.now();
+  const existingLock = generationLocks.get(String(userId));
+
+  if (existingLock && now - existingLock.startedAt > GENERATION_LOCK_TTL_MS) {
+    generationLocks.delete(String(userId));
+  }
+
+  const activeLock = generationLocks.get(String(userId));
+  if (activeLock) {
+    return { ok: false, reason: 'in_progress', lock: activeLock };
+  }
+
+  const recent = recentGenerationRequests.get(String(userId));
+  if (recent && recent.signature === signature && now - recent.at < DUPLICATE_REQUEST_WINDOW_MS) {
+    return { ok: false, reason: 'duplicate_recent' };
+  }
+
+  generationLocks.set(String(userId), { signature, startedAt: now });
+  return { ok: true };
+}
+
+function releaseGenerationLock(userId, signature) {
+  const key = String(userId);
+  const lock = generationLocks.get(key);
+  if (!lock) return;
+  if (signature && lock.signature !== signature) return;
+  generationLocks.delete(key);
+  recentGenerationRequests.set(key, { signature: lock.signature, at: Date.now() });
+}
+
+async function enforceBrandProfileOnGeneratedPosts(
+  posts,
+  { brandCtx = {}, campaignName = '', objective = '', platforms = [] } = {}
+) {
+  if (!Array.isArray(posts) || posts.length === 0) return posts;
+  if (!isStrictBrandLockEnabled(brandCtx)) return posts;
+
+  const strictBrandText = buildStrictBrandLockText(brandCtx);
+  const brandRules = brandCtx?.guidelineBundle?.instructions || '';
+
+  const prompt = `You are a brand-governance editor.
+Your task is to refine generated social posts so they are 100% aligned to the locked brand profile.
+
+MANDATORY BRAND RULES:
+${strictBrandText}
+${brandRules}
+
+CAMPAIGN CONTEXT:
+- Campaign: ${campaignName || 'Campaign'}
+- Objective: ${objective || 'awareness'}
+- Platforms: ${(Array.isArray(platforms) ? platforms : []).join(', ') || 'instagram'}
+
+OUTPUT REQUIREMENTS:
+1. Keep the same number of posts and the same post order.
+2. Keep each post's platform unchanged.
+3. Keep each post's structure intact (caption + hashtags + contentTheme + imageDescription).
+4. Improve wording only to match the locked brand tone/style/CTA.
+5. Ensure imageDescription reflects the brand palette/tokens when relevant.
+6. Return ONLY valid JSON:
+{
+  "posts": [
+    {
+      "platform": "instagram|linkedin|twitter|facebook",
+      "caption": "refined caption",
+      "hashtags": ["#tag1", "#tag2"],
+      "contentTheme": "educational|promotional|engagement|storytelling|social_proof|problem_solution|behindthescenes",
+      "imageDescription": "refined visual prompt"
+    }
+  ]
+}
+
+POSTS TO ALIGN:
+${JSON.stringify(posts)}`;
+
+  try {
+    const refinedRaw = await callGemini(prompt, { temperature: 0.3, maxTokens: 8000, skipCache: true });
+    const refined = parseGeminiJSON(refinedRaw);
+    if (!Array.isArray(refined?.posts) || refined.posts.length !== posts.length) {
+      return posts;
+    }
+    return refined.posts.map((p, idx) => ({
+      platform: String(p?.platform || posts[idx]?.platform || '').toLowerCase(),
+      caption: String(p?.caption || posts[idx]?.caption || ''),
+      hashtags: Array.isArray(p?.hashtags) ? p.hashtags : posts[idx]?.hashtags || [],
+      contentTheme: String(p?.contentTheme || posts[idx]?.contentTheme || 'promotional'),
+      imageDescription: String(p?.imageDescription || posts[idx]?.imageDescription || '')
+    }));
+  } catch (error) {
+    console.warn('Brand post enforcement pass failed, using original posts:', error.message || error);
+    return posts;
+  }
+}
 
 /**
  * GET /api/campaigns
@@ -580,11 +796,21 @@ router.get('/icp-strategy', protect, async (req, res) => {
  */
 router.post('/smart-populate-template', protect, async (req, res) => {
   try {
+    const userId = req.user.userId || req.user.id || req.user._id;
     const { template, campaignName, campaignDescription, objective } = req.body;
     
     if (!template) {
       return res.status(400).json({ success: false, message: 'Template is required' });
     }
+
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(brandCtx?.effectiveTone || bp?.brandVoice || 'professional').toLowerCase();
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
 
     const prompt = `You are a professional social media content editor. 
 Your task is to fill in the bracketed placeholders in a post template with high-quality, meaningful content.
@@ -593,6 +819,9 @@ CAMPAIGN DETAILS:
 - Name: ${campaignName || 'General'}
 - Description: ${campaignDescription || 'N/A'}
 - Objective: ${objective || 'awareness'}
+- Tone to follow: ${enforcedTone || 'professional'}
+${strictBrandMode ? `- ${strictBrandText}` : ''}
+${brandCtx?.guidelineBundle?.instructions || ''}
 
 TEMPLATE TO FILL:
 ${template}
@@ -661,6 +890,8 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
   };
 
   let aborted = false;
+  let generationLockSignature = null;
+  let hasGenerationLock = false;
   req.on('close', () => { aborted = true; });
 
   try {
@@ -677,6 +908,59 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
       targetLocation, targetInterests, productLogo,
       linkedProduct
     } = req.body;
+
+    generationLockSignature = buildGenerationSignature({
+      route: 'generate-campaign-stream',
+      campaignName,
+      campaignDescription,
+      objective,
+      platformsInput,
+      tone,
+      aspectRatio,
+      keyMessages,
+      duration,
+      startDateParam,
+      daysInput,
+      targetAge,
+      targetGender,
+      targetLocation,
+      targetInterests,
+      linkedProduct: linkedProduct
+        ? {
+            id: linkedProduct.id || null,
+            name: linkedProduct.name || null,
+            price: linkedProduct.price || null,
+            currency: linkedProduct.currency || null
+          }
+        : null,
+      hasLogo: Boolean(productLogo)
+    });
+    const lockAttempt = tryAcquireGenerationLock(userId, generationLockSignature);
+    if (!lockAttempt.ok) {
+      const duplicateMessage =
+        lockAttempt.reason === 'duplicate_recent'
+          ? 'Duplicate generate request detected. Please wait a few seconds before retrying.'
+          : 'Campaign generation is already in progress. Please wait until it finishes.';
+      sendEvent('error', { message: duplicateMessage, duplicateRequest: true });
+      return res.end();
+    }
+    hasGenerationLock = true;
+
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const brandDisplayName =
+      String(brandCtx?.profile?.brandName || bp.companyName || bp.name || 'Brand').trim() || 'Brand';
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(tone || brandCtx.effectiveTone || 'professional').toLowerCase();
+    const effectiveLogo = productLogo || brandCtx.primaryLogoUrl || null;
+    const brandGuidelinesText = brandCtx?.guidelineBundle?.instructions || '';
+    const visualHints = brandCtx?.visualHints || '';
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const lockedPaletteArray = getBrandPalette(brandCtx);
+    const lockedPalette = lockedPaletteArray.join(', ');
+    const primaryLockedColor = String(lockedPaletteArray[0] || '').trim();
+    const secondaryLockedColor = String(lockedPaletteArray[1] || '').trim();
 
     const platforms = Array.isArray(platformsInput) ? platformsInput : (platformsInput ? platformsInput.split(',') : ['instagram']);
     const preferredDays = Array.isArray(daysInput) ? daysInput : (daysInput ? daysInput.split(',') : ['monday', 'wednesday', 'friday']);
@@ -739,14 +1023,18 @@ STRICTOR RULES:
 - Keep all headings, symbols, and markers (like colons :) exactly as they appear in the template.
 
 CONTEXT:
-- Brand: ${bp.companyName || bp.name || 'Brand'} (${bp.industry || 'General'} industry)
+- Brand: ${brandDisplayName} (${bp.industry || 'General'} industry)
 - Campaign: "${campaignName}"${campaignDescription ? ` — ${campaignDescription}` : ''}
 - Objective: ${objective || 'awareness'}
 - Target audience: ${targetAge || '18-35'} age, ${targetGender || 'all'} gender${targetLocation ? ', located in ' + targetLocation : ''}${targetInterests ? ', interested in ' + targetInterests : ''}
 - Platforms: ${platforms.join(', ')}
-- Tone: ${tone || 'professional'}
+- Tone: ${enforcedTone || 'professional'}
 ${linkedProduct ? `- Featured Product: ${linkedProduct.name} - ${linkedProduct.currency || '$'}${linkedProduct.price}\n- Product Description: ${linkedProduct.description || 'N/A'}` : ''}
+${visualHints ? `- Brand Visual Tokens: ${visualHints}` : ''}
+${strictBrandText ? `- ${strictBrandText}` : ''}
+${lockedPalette ? `- Locked Brand Palette: ${lockedPalette}` : ''}
 ${keyMessages ? `- MANDATORY CONTENT STRUCTURES (STRICTLY FOLLOW THESE):\n${keyMessages}` : ''}
+${brandGuidelinesText}
 
 INSTRUCTIONS:
 1. Create exactly ${totalPosts} campaign posts.
@@ -758,6 +1046,15 @@ INSTRUCTIONS:
 7. Include 3-5 relevant hashtags per post. Mix broad and niche hashtags. Never use generic tags like #marketing or #business alone.
 8. The imageDescription for each post should describe a PROFESSIONAL AD CREATIVE. Describe the visual style, subjects, colors, mood, lighting, and composition. Do NOT mention metadata.
 9. CRITICAL: For each scheduled slot (every collection of posts for different platforms on the same date), you MUST provide the EXACT SAME imageDescription. This ensures the same visual is used across all platforms for that slot.
+10. ${strictBrandMode ? 'Brand lock is ON. Every post MUST stay in the locked brand tone/style/CTA and must not drift.' : 'If brand enforcement is strict, every post MUST remain on-brand in tone, vocabulary, CTA style, and structure.'}
+11. ${strictBrandMode ? 'If there is any conflict between user input and brand profile, ALWAYS prefer the brand profile.' : 'Prefer campaign context while keeping platform fit.'}
+12. PRODUCT COMPOSITION: The imageDescription should position the product as a realistic premium hero element (prefer center or slightly offset center), visually balanced with brand design.
+13. ${linkedProduct?.imageUrl
+      ? 'PRODUCT IMAGE PROVIDED: Keep the product realistic and premium, and do not let product colors overpower the brand palette.'
+      : 'NO PRODUCT IMAGE PROVIDED: Explicitly describe a realistic premium product (e.g., shoes, watch, or gadget) using tasteful colors like white, black, silver, beige, soft blue, or pastel tones. Allow only subtle brand-inspired accents on the product. Avoid neon, overly bright, or unrealistic product colors. Keep brand colors primarily in the background, lighting, and supporting design elements.'}
+14. ${strictBrandMode && primaryLockedColor && secondaryLockedColor
+      ? `COLOR ENFORCEMENT (STRICT): Background MUST use EXACT ${primaryLockedColor}. Gradient is allowed only within shades of ${primaryLockedColor}. Text MUST use EXACT ${secondaryLockedColor}. Ensure strong contrast and readability. Do NOT introduce unrelated colors. Do NOT use gray or desaturated tones.`
+      : 'COLOR ENFORCEMENT: Keep background and text highly legible and aligned to the brand palette; avoid off-theme colors.'}
 
 Return ONLY valid JSON (no markdown, no backticks):
 {
@@ -864,6 +1161,21 @@ Return ONLY valid JSON (no markdown, no backticks):
       return res.end();
     }
 
+    if (strictBrandMode) {
+      const refinedPosts = await enforceBrandProfileOnGeneratedPosts(parsed.posts, {
+        brandCtx,
+        campaignName,
+        objective,
+        platforms
+      });
+      const refinedValidation = validateCaptionsSchema(refinedPosts, keyMessages);
+      if (refinedValidation.isValid) {
+        parsed.posts = refinedPosts;
+      } else {
+        console.warn('Skipping refined posts due to schema drift after brand lock pass:', refinedValidation.errorDetails);
+      }
+    }
+
     if (aborted) return res.end();
 
     sendEvent('status', { message: 'Content generated! Now creating images...', totalPosts });
@@ -890,14 +1202,17 @@ Return ONLY valid JSON (no markdown, no backticks):
         
         imageResult = await generateCampaignImageNanoBanana(post.imageDescription, {
           aspectRatio: aspectRatio || '1:1',
-          brandName: bp.companyName || bp.name || '',
-          brandLogo: productLogo || null,
+          brandName: brandDisplayName,
+          brandLogo: effectiveLogo || null,
           industry: bp.industry || '',
-          tone: tone || 'professional',
+          tone: enforcedTone || 'professional',
+          strictBrandLock: strictBrandMode,
+          brandPalette: getBrandPalette(brandCtx),
+          fontType: brandCtx?.profile?.assets?.fontType || '',
           postIndex: slotIndex, // Use slot index for image context
           totalPosts: numSlots,
           campaignTheme: campaignName,
-          keyMessages: keyMessages || '',
+          keyMessages: [keyMessages || '', visualHints || '', strictBrandText || '', brandGuidelinesText || ''].filter(Boolean).join('\n'),
           linkedProduct
         });
         
@@ -938,6 +1253,11 @@ Return ONLY valid JSON (no markdown, no backticks):
     console.error('SSE campaign generation error:', error);
     sendEvent('error', { message: error.message || 'Failed to generate campaign' });
     res.end();
+  } finally {
+    const userId = req.user?.userId || req.user?.id;
+    if (hasGenerationLock && userId && generationLockSignature) {
+      releaseGenerationLock(userId, generationLockSignature);
+    }
   }
 });
 
@@ -2214,8 +2534,53 @@ router.post('/:id/publish', protect, async (req, res) => {
  * Generate AI-powered posts for a campaign based on detailed inputs
  */
 router.post('/generate-campaign-posts', protect, checkTrial, async (req, res) => {
+  let generationLockSignature = null;
+  let hasGenerationLock = false;
   try {
     const userId = req.user.userId || req.user.id;
+    
+    const {
+      campaignName,
+      campaignDescription,
+      objective,
+      targetAudience,
+      content,
+      scheduling,
+      budget,
+      kpis
+    } = req.body;
+    generationLockSignature = buildGenerationSignature({
+      route: 'generate-campaign-posts',
+      campaignName,
+      campaignDescription,
+      objective,
+      targetAudience,
+      content: {
+        platforms: content?.platforms || [],
+        tone: content?.tone || '',
+        type: content?.type || '',
+        keyMessages: content?.keyMessages || '',
+        callToAction: content?.callToAction || ''
+      },
+      scheduling,
+      budget,
+      kpis,
+      hasLogo: Boolean(content?.productLogo)
+    });
+    const lockAttempt = tryAcquireGenerationLock(userId, generationLockSignature);
+    if (!lockAttempt.ok) {
+      const duplicateMessage =
+        lockAttempt.reason === 'duplicate_recent'
+          ? 'Duplicate generate request detected. Please wait a few seconds before retrying.'
+          : 'Campaign generation is already in progress. Please wait until it finishes.';
+      return res.status(429).json({
+        success: false,
+        message: duplicateMessage,
+        duplicateRequest: true
+      });
+    }
+    hasGenerationLock = true;
+
     const user = await User.findById(userId);
     const bp = user?.businessProfile || {};
 
@@ -2229,17 +2594,18 @@ router.post('/generate-campaign-posts', protect, checkTrial, async (req, res) =>
         creditsRemaining: textCreditResult.creditsRemaining
       });
     }
-    
-    const {
-      campaignName,
-      campaignDescription,
-      objective,
-      targetAudience,
-      content,
-      scheduling,
-      budget,
-      kpis
-    } = req.body;
+
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const brandDisplayName =
+      String(brandCtx?.profile?.brandName || bp.companyName || bp.name || 'Brand').trim() || 'Brand';
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(content?.tone || brandCtx.effectiveTone || 'professional').toLowerCase();
+    const brandGuidelinesText = brandCtx?.guidelineBundle?.instructions || '';
+    const visualHints = brandCtx?.visualHints || '';
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const lockedPalette = getBrandPalette(brandCtx).join(', ');
 
     if (!campaignName) {
       return res.status(400).json({ success: false, message: 'Campaign name is required' });
@@ -2316,16 +2682,20 @@ TARGET AUDIENCE:
 
 CONTENT PREFERENCES:
 - Platforms: ${platforms.join(', ')}
-- Tone: ${content?.tone || 'professional'}
+- Tone: ${enforcedTone || 'professional'}
 - Content Type: ${content?.type || 'image'}
 - Key Messages: ${content?.keyMessages || 'Not specified'}
 - Call to Action: ${content?.callToAction || 'Learn more'}
 
 BRAND CONTEXT:
-- Company Name: ${bp.companyName || bp.name || 'Brand'}
+- Company Name: ${brandDisplayName}
 - Industry: ${bp.industry || 'General'}
-- Brand Voice: ${bp.brandVoice || content?.tone || 'Professional'}
+- Brand Voice: ${bp.brandVoice || enforcedTone || 'Professional'}
 - Niche: ${bp.niche || 'Not specified'}
+${visualHints ? `- Visual Tokens: ${visualHints}` : ''}
+${strictBrandText ? `- ${strictBrandText}` : ''}
+${lockedPalette ? `- Locked Brand Palette: ${lockedPalette}` : ''}
+${brandGuidelinesText}
 
 REQUIREMENTS:
 1. Create exactly ${totalPosts} unique, engaging posts
@@ -2336,6 +2706,7 @@ REQUIREMENTS:
 6. Hashtags should be platform-appropriate (more for Instagram, fewer for LinkedIn/Twitter)
 7. Content must be relevant to the campaign objective: ${objective}
 8. Posts should build upon each other to tell a cohesive brand story
+9. ${strictBrandMode ? 'Brand lock is ON. Do not deviate from the saved tone/style/CTA/format profile under any circumstance.' : 'If brand enforcement is strict, do not deviate from the saved tone/style/CTA/format profile.'}
 
 For each post, provide a detailed "imageDescription" that describes exactly what visual should accompany the post - be specific about:
 - Subject matter (people, products, scenes)
@@ -2367,9 +2738,18 @@ Return ONLY valid JSON (no markdown, no code blocks):
       imageDescription: `${bp.industry || 'Business'} campaign creative for ${campaignName}`,
       callToAction: content?.callToAction || 'Learn more'
     };
-    const parsedPosts = Array.isArray(parsed?.posts) && parsed.posts.length > 0
+    let parsedPosts = Array.isArray(parsed?.posts) && parsed.posts.length > 0
       ? parsed.posts
       : [fallbackPost];
+
+    if (strictBrandMode && parsedPosts.length > 0) {
+      parsedPosts = await enforceBrandProfileOnGeneratedPosts(parsedPosts, {
+        brandCtx,
+        campaignName,
+        objective,
+        platforms
+      });
+    }
 
     // Use stock placeholder images — NO bulk AI image generation
     // Users can generate images individually per post if they want
@@ -2481,6 +2861,11 @@ Return ONLY valid JSON (no markdown, no code blocks):
   } catch (error) {
     console.error('Generate campaign posts error:', error);
     res.status(500).json({ success: false, message: 'Failed to generate posts', error: error.message });
+  } finally {
+    const userId = req.user?.userId || req.user?.id;
+    if (hasGenerationLock && userId && generationLockSignature) {
+      releaseGenerationLock(userId, generationLockSignature);
+    }
   }
 });
 
@@ -2491,6 +2876,8 @@ Return ONLY valid JSON (no markdown, no code blocks):
 router.post('/regenerate-post-image', protect, checkTrial, requireCredits('image_edit'), async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id || req.user._id;
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
     const { 
       postId,
       platform,
@@ -2501,6 +2888,18 @@ router.post('/regenerate-post-image', protect, checkTrial, requireCredits('image
       brandContext
     } = req.body;
 
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const autoBrandContext = buildBrandContextForImages(brandCtx, {
+      companyName: bp?.companyName || user?.companyName || '',
+      industry: bp?.industry || '',
+      description: bp?.description || '',
+      targetAudience: bp?.targetAudience || '',
+      brandVoice: strictBrandMode ? brandCtx.effectiveTone : bp?.brandVoice || 'professional'
+    });
+    const mergedBrandContext = { ...(brandContext || {}), ...(autoBrandContext || {}) };
+
     console.log(`🎨 Regenerating image for post ${postId || 'new'}...`);
 
     const { getRelevantImage } = require('../services/geminiAI');
@@ -2508,9 +2907,9 @@ router.post('/regenerate-post-image', protect, checkTrial, requireCredits('image
 
     // Build image description
     let imageDescription = customPrompt || caption?.substring(0, 200) || 'Professional marketing image';
-    
-    if (brandContext) {
-      imageDescription += `. Brand: ${brandContext.companyName || 'Brand'}, Industry: ${brandContext.industry || 'business'}.`;
+    imageDescription += `. Brand: ${mergedBrandContext.companyName || 'Brand'}, Industry: ${mergedBrandContext.industry || 'business'}.`;
+    if (strictBrandText) {
+      imageDescription += ` ${strictBrandText}`;
     }
 
     console.log('🖼️ Image prompt:', imageDescription.substring(0, 100) + '...');
@@ -2518,11 +2917,11 @@ router.post('/regenerate-post-image', protect, checkTrial, requireCredits('image
     // Generate the image
     let imageUrl = await getRelevantImage(
       imageDescription,
-      brandContext?.industry || 'business',
+      mergedBrandContext.industry || 'business',
       'awareness',
       'Campaign',
       platform || 'instagram',
-      brandContext
+      mergedBrandContext
     );
 
     // If logo is provided, overlay it
@@ -2589,27 +2988,24 @@ router.post('/generate-caption', protect, checkTrial, requireCredits('campaign_t
     
     console.log('🤖 Generating caption from image for platform:', platform || 'instagram');
     
-    // Get user's brand profile for context
+    // Get brand intelligence context for strict tone/style enforcement
     const userId = req.user.userId || req.user.id;
-    const User = require('../models/User');
-    const BrandProfile = require('../models/BrandProfile');
-    
-    const user = await User.findById(userId);
-    let brandContext = '';
-    
-    if (user?.brandProfileId) {
-      const brandProfile = await BrandProfile.findById(user.brandProfileId);
-      if (brandProfile) {
-        brandContext = `
-Business: ${brandProfile.name || 'Unknown'}
-Industry: ${brandProfile.industry || 'General'}
-Target Audience: ${brandProfile.targetAudience || 'General consumers'}
-Brand Voice: ${brandProfile.brandVoice || 'Professional'}`;
-      }
-    }
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(brandCtx?.effectiveTone || bp?.brandVoice || 'professional').toLowerCase();
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const brandContext = `
+Business: ${brandCtx?.profile?.brandName || bp?.companyName || user?.companyName || 'Unknown'}
+Industry: ${bp?.industry || 'General'}
+Tone: ${enforcedTone || 'professional'}
+Visual tokens: ${brandCtx?.visualHints || 'Not set'}
+${strictBrandText ? strictBrandText : ''}`;
     
     // Use Gemini to analyze image and generate caption
-    const { callGemini } = require('../services/geminiAI');
     
     // Extract base64 data — handle URLs, data URIs, and raw base64
     let imageData = image;
@@ -2644,6 +3040,8 @@ Requirements:
 4. Include exactly 4 relevant hashtags at the end
 5. Keep it concise but impactful (2-4 sentences + hashtags)
 6. Match the tone appropriate for ${platform || 'Instagram'}
+7. ${strictBrandMode ? `STRICT BRAND LOCK: The caption MUST follow "${enforcedTone}" tone exactly and must not drift.` : 'Keep tone aligned to the brand context above.'}
+8. ${strictBrandMode ? 'If there is conflict between platform defaults and brand profile, prioritize brand profile.' : 'Balance platform-native style with brand voice.'}
 
 Return ONLY the caption text with hashtags. No JSON, no explanations.`;
 
@@ -2874,6 +3272,22 @@ router.post('/process-aspect-ratio', protect, async (req, res) => {
 router.post('/template-poster', protect, checkTrial, requireCredits('image_generated'), async (req, res) => {
   try {
     const { templateImage, content, platform, style, useAI, logoOverlay, aspectRatio } = req.body;
+    const userId = req.user.userId || req.user.id || req.user._id;
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(style || brandCtx?.effectiveTone || 'professional').toLowerCase();
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const effectiveStyle = strictBrandMode
+      ? [brandCtx?.guidelineBundle?.effectiveProfile?.visualStyle || '', enforcedTone].filter(Boolean).join(', ')
+      : style;
+    const autoLogoOverlay =
+      strictBrandMode && !logoOverlay?.enabled && brandCtx?.primaryLogoUrl
+        ? { enabled: true, logoUrl: brandCtx.primaryLogoUrl }
+        : logoOverlay;
     
     if (!templateImage) {
       return res.status(400).json({ 
@@ -2896,7 +3310,11 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
     // Always use AI (Gemini) for poster generation - it produces better results
     const result = await generateTemplatePoster(templateImage, content, {
       platform: platform || 'instagram',
-      style: style,
+      style: effectiveStyle,
+      tone: enforcedTone,
+      brandGuidelines: [strictBrandText, brandCtx?.guidelineBundle?.instructions || ''].filter(Boolean).join('\n'),
+      brandPalette: getBrandPalette(brandCtx),
+      fontType: brandCtx?.profile?.assets?.fontType || '',
       aspectRatio: aspectRatio || null
     });
 
@@ -2988,7 +3406,7 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
       }
       
       // Auto-detect and replace logo if user has a logo and enabled the feature
-      if (logoOverlay?.enabled && logoOverlay?.logoUrl) {
+      if (autoLogoOverlay?.enabled && autoLogoOverlay?.logoUrl) {
         try {
           console.log('🔍 Detecting logo in generated poster...');
           
@@ -3001,7 +3419,7 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
             // Replace the detected logo with user's brand logo
             const replaceResult = await replaceLogoAtBboxAndUpload(
               finalImageBase64,
-              logoOverlay.logoUrl,
+              autoLogoOverlay.logoUrl,
               detection.bbox
             );
             
@@ -3018,7 +3436,7 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
             // Fallback: overlay at bottom-right if no logo detected
             const overlayResult = await overlayLogoAndUpload(
               finalImageBase64,
-              logoOverlay.logoUrl,
+              autoLogoOverlay.logoUrl,
               {
                 position: 'bottom-right',
                 size: 'medium',
@@ -3052,7 +3470,6 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
       }
       
       // Deduct credits for image generation
-      const userId = req.user.userId || req.user.id || req.user._id;
       const posterCreditResult = await deductCredits(userId, 'image_generated', 1, 'Generated template poster');
 
       res.json({
@@ -3088,6 +3505,11 @@ router.post('/template-poster', protect, checkTrial, requireCredits('image_gener
 router.post('/template-poster/edit', protect, checkTrial, requireCredits('image_edit'), async (req, res) => {
   try {
     const { currentImage, originalContent, editInstructions, templateImage } = req.body;
+    const userId = req.user.userId || req.user.id || req.user._id;
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandText = isStrictBrandLockEnabled(brandCtx) ? buildStrictBrandLockText(brandCtx) : '';
     
     if (!currentImage) {
       return res.status(400).json({ 
@@ -3106,11 +3528,15 @@ router.post('/template-poster/edit', protect, checkTrial, requireCredits('image_
     console.log('✏️ Editing template poster...');
     console.log('📝 Edit instructions:', editInstructions.substring(0, 100));
     
+    const effectiveEditInstructions = strictBrandText
+      ? `${editInstructions}\n\n${strictBrandText}`
+      : editInstructions;
+
     // Always use AI (Gemini) for editing - it produces better results
     const result = await editTemplatePoster(
       currentImage, 
       originalContent || '', 
-      editInstructions,
+      effectiveEditInstructions,
       templateImage
     );
     
@@ -3118,7 +3544,6 @@ router.post('/template-poster/edit', protect, checkTrial, requireCredits('image_
       console.log('✅ Poster edited successfully');
 
       // Deduct credits for image edit
-      const userId = req.user.userId || req.user.id || req.user._id;
       const editCreditResult = await deductCredits(userId, 'image_edit', 1, 'Edited template poster');
 
       // Upload to Cloudinary
@@ -3173,6 +3598,18 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
     }
 
     const userId = req.user.userId || req.user.id || req.user._id;
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(brandCtx?.effectiveTone || 'professional').toLowerCase();
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const effectiveLogoUrl = logoUrl || brandCtx?.primaryLogoUrl || null;
+    const effectiveBrandName =
+      String(brandCtx?.profile?.brandName || bp?.companyName || user?.companyName || req.user.companyName || 'Brand').trim() || 'Brand';
+    const effectiveIndustry = bp?.industry || req.user.industry || '';
 
     // AI Generate from scratch (no reference image)
     if (!referenceImage) {
@@ -3181,10 +3618,14 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
 
       const imageResult = await generateCampaignImageNanoBanana(content, {
         aspectRatio: aspectRatio || '1:1',
-        brandName: req.user.companyName || '',
-        brandLogo: logoUrl || null,
-        industry: req.user.industry || '',
-        tone: 'professional'
+        brandName: effectiveBrandName,
+        brandLogo: effectiveLogoUrl,
+        industry: effectiveIndustry,
+        tone: enforcedTone || 'professional',
+        strictBrandLock: strictBrandMode,
+        brandPalette: getBrandPalette(brandCtx),
+        fontType: brandCtx?.profile?.assets?.fontType || '',
+        keyMessages: [strictBrandText, brandCtx?.guidelineBundle?.instructions || ''].filter(Boolean).join('\n')
       });
 
       // imageResult can be a string (URL) or object { success, imageUrl }
@@ -3214,6 +3655,11 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
 
     const result = await generatePosterFromReference(referenceImage, content, {
       platform: platform || 'instagram',
+      style: brandCtx?.guidelineBundle?.effectiveProfile?.visualStyle || '',
+      tone: enforcedTone || 'professional',
+      brandGuidelines: [strictBrandText, brandCtx?.guidelineBundle?.instructions || ''].filter(Boolean).join('\n'),
+      brandPalette: getBrandPalette(brandCtx),
+      fontType: brandCtx?.profile?.assets?.fontType || '',
       aspectRatio: aspectRatio || null
     });
 
@@ -3266,6 +3712,15 @@ router.post('/template-poster/from-reference', protect, checkTrial, requireCredi
 router.post('/template-poster/batch', protect, checkTrial, requireCredits('image_generated', (req) => (req.body.posters?.length || 1)), async (req, res) => {
   try {
     const { posters, platform, useAI } = req.body;
+    const userId = req.user.userId || req.user.id || req.user._id;
+    const user = await User.findById(userId).select('businessProfile companyName');
+    const bp = user?.businessProfile || {};
+    const brandCtx = await resolveBrandIntelligenceContext(userId, bp);
+    const strictBrandMode = isStrictBrandLockEnabled(brandCtx);
+    const enforcedTone = strictBrandMode
+      ? brandCtx.effectiveTone
+      : String(brandCtx?.effectiveTone || 'professional').toLowerCase();
+    const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
     
     if (!posters || !Array.isArray(posters) || posters.length === 0) {
       return res.status(400).json({ 
@@ -3302,7 +3757,13 @@ router.post('/template-poster/batch', protect, checkTrial, requireCredits('image
       // Always use AI (Gemini) for poster generation
       const result = await generateTemplatePoster(templateImage, content, {
         platform: platform || 'instagram',
-        style: style
+        style: strictBrandMode
+          ? [brandCtx?.guidelineBundle?.effectiveProfile?.visualStyle || '', enforcedTone].filter(Boolean).join(', ')
+          : style,
+        tone: enforcedTone,
+        brandGuidelines: [strictBrandText, brandCtx?.guidelineBundle?.instructions || ''].filter(Boolean).join('\n'),
+        brandPalette: getBrandPalette(brandCtx),
+        fontType: brandCtx?.profile?.assets?.fontType || ''
       });
       
       if (result.success) {
@@ -3325,7 +3786,6 @@ router.post('/template-poster/batch', protect, checkTrial, requireCredits('image
         console.log(`✅ Poster ${i + 1} generated`);
 
         // Deduct credits per image generated in batch
-        const userId = req.user.userId || req.user.id || req.user._id;
         await deductCredits(userId, 'image_generated', 1, `Batch poster ${i + 1}`);
       } else {
         results.push({

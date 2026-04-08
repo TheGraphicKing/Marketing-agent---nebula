@@ -47,7 +47,7 @@ export const getWebsiteAnalysisContext = (): {
 export const getBusinessContextForAI = (): string => {
   const context = getWebsiteAnalysisContext();
   if (!context) return '';
-  
+
   return `
 Business Context:
 - Company: ${context.companyName || 'Unknown'}
@@ -64,7 +64,7 @@ Business Context:
 
 // Generic API call function with real backend integration
 async function apiCall<T>(
-  endpoint: string, 
+  endpoint: string,
   options: RequestInit = {},
   requiresAuth: boolean = false
 ): Promise<T> {
@@ -91,12 +91,12 @@ async function apiCall<T>(
     // Handle trial/credit expiry responses
     if (response.status === 403 && (data.trialExpired || data.creditsExhausted)) {
       // Dispatch custom event so App.tsx can catch it
-      window.dispatchEvent(new CustomEvent('trial-expired', { 
-        detail: { 
+      window.dispatchEvent(new CustomEvent('trial-expired', {
+        detail: {
           reason: data.trialExpired ? 'time' : 'credits',
           message: data.message,
           creditsRemaining: data.creditsRemaining
-        } 
+        }
       }));
       throw new Error(data.message || 'Trial expired or credits exhausted');
     }
@@ -107,8 +107,8 @@ async function apiCall<T>(
 
     // Dispatch credit update if response contains credit balance info
     if (data.creditsRemaining !== undefined) {
-      window.dispatchEvent(new CustomEvent('credits-updated', { 
-        detail: { creditsRemaining: data.creditsRemaining } 
+      window.dispatchEvent(new CustomEvent('credits-updated', {
+        detail: { creditsRemaining: data.creditsRemaining }
       }));
     }
 
@@ -154,7 +154,7 @@ async function downloadBlobFromApi(
         const text = await response.text();
         if (text) message = text;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     throw new Error(message);
   }
@@ -260,18 +260,18 @@ export const apiService = {
   // ============================================
   // REAL AUTHENTICATION ENDPOINTS
   // ============================================
-  
+
   register: async (data: { email: string; password: string; firstName: string; companyName?: string }): Promise<AuthResponse & { requiresVerification?: boolean }> => {
     const response = await apiCall<{ success: boolean; message: string; token: string; user: User; requiresVerification?: boolean }>(
       '/auth/signup',
       { method: 'POST', body: JSON.stringify(data) }
     );
-    
+
     // SECURITY: Do NOT save token until OTP is verified
     if (response.token && !response.requiresVerification) {
       setToken(response.token);
     }
-    
+
     return {
       success: response.success,
       token: response.token,
@@ -285,12 +285,12 @@ export const apiService = {
       '/auth/login',
       { method: 'POST', body: JSON.stringify(data) }
     );
-    
+
     // SECURITY: Do NOT save token until OTP is verified
     if (response.token && !response.requiresVerification) {
       setToken(response.token);
     }
-    
+
     return {
       success: response.success,
       token: response.token,
@@ -312,11 +312,11 @@ export const apiService = {
       '/auth/verify-otp',
       { method: 'POST', body: JSON.stringify({ email, otp }) }
     );
-    
+
     if (response.token) {
       setToken(response.token);
     }
-    
+
     return {
       success: response.success,
       token: response.token,
@@ -352,13 +352,13 @@ export const apiService = {
       if (!token) {
         return { user: null };
       }
-      
+
       const response = await apiCall<{ success: boolean; user: User }>(
         '/auth/me',
         { method: 'GET' },
         true
       );
-      
+
       return { user: response.user };
     } catch (error) {
       removeToken();
@@ -420,7 +420,7 @@ export const apiService = {
         { method: 'GET' },
         true
       );
-      
+
       return {
         success: true,
         businessLocation: response.context?.geography?.businessLocation || '',
@@ -454,7 +454,7 @@ export const apiService = {
     return apiCall('/auth/check-duplicate', { method: 'POST', body: JSON.stringify({ businessName, website, gstNumber }) }, true);
   },
 
-  completeOnboarding: async (data: BusinessProfile, connectedSocials?: {platform: string; username?: string}[]): Promise<{ success: boolean; user: User }> => {
+  completeOnboarding: async (data: BusinessProfile, connectedSocials?: { platform: string; username?: string }[]): Promise<{ success: boolean; user: User }> => {
     const response = await apiCall<{ success: boolean; user: User }>(
       '/auth/complete-onboarding',
       { method: 'PUT', body: JSON.stringify({ businessProfile: data, connectedSocials }) },
@@ -478,11 +478,11 @@ export const apiService = {
       { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) },
       true
     );
-    
+
     if (response.token) {
       setToken(response.token);
     }
-    
+
     return response;
   },
 
@@ -497,7 +497,7 @@ export const apiService = {
         { method: 'GET' },
         true
       );
-      
+
       if (response.success && response.data) {
         return {
           overview: response.data.overview || {
@@ -521,13 +521,13 @@ export const apiService = {
           generatedAt: response.data.generatedAt
         } as DashboardData;
       }
-      
+
       throw new Error('Invalid response');
     } catch (error) {
       // Using fallback dashboard data
       // Fallback to mock data if API fails or user not logged in
       const activeCount = campaigns.filter(c => c.status === 'active' || c.status === 'posted').length;
-      
+
       return {
         overview: {
           totalCampaigns: campaigns.length,
@@ -615,15 +615,15 @@ export const apiService = {
     if (platforms && platforms.length > 0) {
       url += `&platforms=${encodeURIComponent(platforms.join(','))}`;
     }
-    
+
     const eventSource = new EventSource(url + `&token=${token}`);
-    
+
     // Fallback: If EventSource doesn't support headers, use fetch with SSE parsing
     // Actually EventSource doesn't support custom headers, so we need fetch
     eventSource.close();
-    
+
     const controller = new AbortController();
-    
+
     fetch(url, {
       method: 'GET',
       headers: {
@@ -632,61 +632,61 @@ export const apiService = {
       },
       signal: controller.signal
     })
-    .then(response => {
-      if (!response.ok) throw new Error('Stream request failed');
-      
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      
-      if (!reader) throw new Error('No response body');
-      
-      function pump(): Promise<void> {
-        return reader!.read().then(({ done, value }) => {
-          if (done) return;
-          
-          const text = decoder.decode(value, { stream: true });
-          const lines = text.split('\n');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                
-                if (data.type === 'campaign') {
-                  onCampaign(data.campaign, data.index, data.total, data.cached || false);
-                } else if (data.type === 'complete') {
-                  onComplete(data.total);
-                } else if (data.type === 'credits_update') {
-                  // Real-time credit balance update from server
-                  window.dispatchEvent(new CustomEvent('credits-updated', { 
-                    detail: { creditsRemaining: data.creditsRemaining } 
-                  }));
-                } else if (data.type === 'error') {
-                  if (data.trialExpired || data.creditsExhausted) {
-                    window.dispatchEvent(new CustomEvent('trial-expired', { 
-                      detail: { reason: data.trialExpired ? 'time' : 'credits', message: data.message } 
+      .then(response => {
+        if (!response.ok) throw new Error('Stream request failed');
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) throw new Error('No response body');
+
+        function pump(): Promise<void> {
+          return reader!.read().then(({ done, value }) => {
+            if (done) return;
+
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+
+                  if (data.type === 'campaign') {
+                    onCampaign(data.campaign, data.index, data.total, data.cached || false);
+                  } else if (data.type === 'complete') {
+                    onComplete(data.total);
+                  } else if (data.type === 'credits_update') {
+                    // Real-time credit balance update from server
+                    window.dispatchEvent(new CustomEvent('credits-updated', {
+                      detail: { creditsRemaining: data.creditsRemaining }
                     }));
+                  } else if (data.type === 'error') {
+                    if (data.trialExpired || data.creditsExhausted) {
+                      window.dispatchEvent(new CustomEvent('trial-expired', {
+                        detail: { reason: data.trialExpired ? 'time' : 'credits', message: data.message }
+                      }));
+                    }
+                    onError(data.message);
                   }
-                  onError(data.message);
+                } catch (e) {
+                  // SSE parse error
                 }
-              } catch (e) {
-                // SSE parse error
               }
             }
-          }
-          
-          return pump();
-        });
-      }
-      
-      return pump();
-    })
-    .catch(error => {
-      if (error.name !== 'AbortError') {
-        onError(error.message);
-      }
-    });
-    
+
+            return pump();
+          });
+        }
+
+        return pump();
+      })
+      .catch(error => {
+        if (error.name !== 'AbortError') {
+          onError(error.message);
+        }
+      });
+
     // Return cleanup function
     return () => controller.abort();
   },
@@ -734,10 +734,10 @@ export const apiService = {
       };
     } catch (error) {
       // Synopsis error
-      return { 
-        synopsis: 'Unable to generate synopsis at this time. Please try again.', 
-        insights: [], 
-        trend: 'stable' 
+      return {
+        synopsis: 'Unable to generate synopsis at this time. Please try again.',
+        insights: [],
+        trend: 'stable'
       };
     }
   },
@@ -754,12 +754,12 @@ export const apiService = {
     aspectRatio?: string;
   }): Promise<{ caption: string; hashtags: string[]; imageUrl: string; imagePrompt?: string }> => {
     try {
-      const response = await apiCall<{ 
-        success: boolean; 
-        caption: string; 
-        hashtags: string[]; 
+      const response = await apiCall<{
+        success: boolean;
+        caption: string;
+        hashtags: string[];
         imageUrl: string;
-        imagePrompt?: string 
+        imagePrompt?: string
       }>(
         '/dashboard/generate-rival-post',
         { method: 'POST', body: JSON.stringify(data) },
@@ -822,19 +822,19 @@ export const apiService = {
   },
 
   // Universal OAuth - Get auth URL for any platform
-  getPlatformAuthUrl: async (platform: string): Promise<{ 
-    success: boolean; 
-    configured: boolean; 
-    authUrl?: string; 
+  getPlatformAuthUrl: async (platform: string): Promise<{
+    success: boolean;
+    configured: boolean;
+    authUrl?: string;
     message?: string;
     method?: 'direct_oauth' | 'ayrshare_jwt' | 'ayrshare';
     setupInstructions?: { url: string; steps: string[] };
   }> => {
     try {
-      const response = await apiCall<{ 
-        success: boolean; 
-        configured: boolean; 
-        authUrl?: string; 
+      const response = await apiCall<{
+        success: boolean;
+        configured: boolean;
+        authUrl?: string;
         message?: string;
         method?: 'direct_oauth' | 'ayrshare_jwt' | 'ayrshare';
         setupInstructions?: { url: string; steps: string[] };
@@ -846,10 +846,10 @@ export const apiService = {
       return response;
     } catch (error: any) {
       console.error(`Failed to get ${platform} auth URL:`, error);
-      return { 
-        success: false, 
-        configured: false, 
-        message: error.message || `Failed to initiate ${platform} connection` 
+      return {
+        success: false,
+        configured: false,
+        message: error.message || `Failed to initiate ${platform} connection`
       };
     }
   },
@@ -909,21 +909,21 @@ export const apiService = {
     if (!connected) {
       return await apiService.disconnectPlatform(platform);
     }
-    
+
     // For other platforms, use mock
     await new Promise(resolve => setTimeout(resolve, 300));
-    
+
     socialConnections = socialConnections.map(s =>
       s.platform === platform
         ? {
-            ...s,
-            connected,
-            username: connected ? username : undefined,
-            status: connected ? 'active' : 'disconnected'
-          }
+          ...s,
+          connected,
+          username: connected ? username : undefined,
+          status: connected ? 'active' : 'disconnected'
+        }
         : s
     );
-    
+
     return { success: true };
   },
 
@@ -1055,10 +1055,10 @@ export const apiService = {
       return response;
     } catch (error: any) {
       console.error('Influencer discovery failed:', error);
-      return { 
-        success: false, 
-        influencers: [], 
-        message: error.message || 'Discovery failed' 
+      return {
+        success: false,
+        influencers: [],
+        message: error.message || 'Discovery failed'
       };
     }
   },
@@ -1200,11 +1200,11 @@ export const apiService = {
    * Generate a poster from a template image and content
    */
   generateTemplatePoster: async (
-    templateImage: string, 
-    content: string, 
-    options?: { 
-      platform?: string; 
-      style?: string; 
+    templateImage: string,
+    content: string,
+    options?: {
+      platform?: string;
+      style?: string;
       useAI?: boolean;
       aspectRatio?: string;
       logoOverlay?: {
@@ -1216,28 +1216,28 @@ export const apiService = {
         padding?: number;
       };
     }
-  ): Promise<{ 
-    success: boolean; 
-    imageBase64?: string; 
-    imageUrl?: string; 
-    model?: string; 
+  ): Promise<{
+    success: boolean;
+    imageBase64?: string;
+    imageUrl?: string;
+    model?: string;
     logoApplied?: boolean;
     message?: string;
     error?: string;
   }> => {
     const response = await apiCall<any>(
       '/campaigns/template-poster',
-      { 
-        method: 'POST', 
-        body: JSON.stringify({ 
-          templateImage, 
-          content, 
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          templateImage,
+          content,
           platform: options?.platform || 'instagram',
           style: options?.style,
           useAI: options?.useAI || false,
           aspectRatio: options?.aspectRatio,
           logoOverlay: options?.logoOverlay
-        }) 
+        })
       },
       true
     );
@@ -1307,25 +1307,25 @@ export const apiService = {
     editInstructions: string,
     templateImage?: string,
     useAI?: boolean
-  ): Promise<{ 
-    success: boolean; 
-    imageBase64?: string; 
-    imageUrl?: string; 
-    model?: string; 
+  ): Promise<{
+    success: boolean;
+    imageBase64?: string;
+    imageUrl?: string;
+    model?: string;
     message?: string;
     error?: string;
   }> => {
     const response = await apiCall<any>(
       '/campaigns/template-poster/edit',
-      { 
-        method: 'POST', 
-        body: JSON.stringify({ 
-          currentImage, 
-          originalContent, 
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          currentImage,
+          originalContent,
           editInstructions,
           templateImage,
           useAI: useAI || false
-        }) 
+        })
       },
       true
     );
@@ -1355,9 +1355,9 @@ export const apiService = {
   }> => {
     const response = await apiCall<any>(
       '/campaigns/template-poster/batch',
-      { 
-        method: 'POST', 
-        body: JSON.stringify({ posters, platform }) 
+      {
+        method: 'POST',
+        body: JSON.stringify({ posters, platform })
       },
       true
     );
@@ -1409,7 +1409,7 @@ export const apiService = {
         if (endDate) params.append('endDate', endDate);
         queryString = `?${params.toString()}`;
       }
-      
+
       const response = await apiCall<{ success: boolean; analytics: any }>(
         `/campaigns/analytics/overview${queryString}`,
         { method: 'GET' },
@@ -1440,7 +1440,7 @@ export const apiService = {
         if (endDate) params.append('endDate', endDate);
         queryString = `?${params.toString()}`;
       }
-      
+
       const response = await apiCall<{ success: boolean; reminders: any[] }>(
         `/reminders${queryString}`,
         { method: 'GET' },
@@ -1547,7 +1547,7 @@ export const apiService = {
   // ============================================
   // STRATEGIC ADVISOR API
   // ============================================
-  
+
   getStrategicSuggestions: async (refresh = false): Promise<{
     success: boolean;
     suggestions: any[];
@@ -1603,8 +1603,8 @@ export const apiService = {
     try {
       const response = await apiCall<any>(
         '/dashboard/strategic-advisor/generate-post',
-        { 
-          method: 'POST', 
+        {
+          method: 'POST',
           body: JSON.stringify({ suggestion, logoUrl: logoUrl || null, aspectRatio: aspectRatio || '1:1' })
         },
         true
@@ -1642,9 +1642,9 @@ export const apiService = {
     try {
       const response = await apiCall<any>(
         '/dashboard/strategic-advisor/refine-image',
-        { 
-          method: 'POST', 
-          body: JSON.stringify({ originalPrompt, refinementPrompt, style, currentImageUrl }) 
+        {
+          method: 'POST',
+          body: JSON.stringify({ originalPrompt, refinementPrompt, style, currentImageUrl })
         },
         true
       );
@@ -1678,8 +1678,8 @@ export const apiService = {
     try {
       const response = await apiCall<any>(
         '/dashboard/generate-event-post',
-        { 
-          method: 'POST', 
+        {
+          method: 'POST',
           body: JSON.stringify({ event, logoUrl: logoUrl || null, aspectRatio: aspectRatio || '1:1' })
         },
         true
@@ -1718,7 +1718,7 @@ export const apiService = {
       const params = new URLSearchParams();
       if (options?.unreadOnly) params.append('unreadOnly', 'true');
       if (options?.limit) params.append('limit', options.limit.toString());
-      
+
       const response = await apiCall<{ success: boolean; notifications: any[]; unreadCount: number }>(
         `/notifications${params.toString() ? '?' + params.toString() : ''}`,
         { method: 'GET' },
@@ -2367,8 +2367,8 @@ export const apiService = {
         }
       });
     }
-    const queryString = Object.keys(cleanParams).length > 0 
-      ? '?' + new URLSearchParams(cleanParams).toString() 
+    const queryString = Object.keys(cleanParams).length > 0
+      ? '?' + new URLSearchParams(cleanParams).toString()
       : '';
     const response = await apiCall<any>(
       `/reachouts/leads${queryString}`,
@@ -2500,7 +2500,7 @@ export const apiService = {
   uploadLeadsFile: async (file: File): Promise<any> => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const token = localStorage.getItem('authToken');
     const response = await fetch(`${API_BASE_URL}/reachouts/leads/upload`, {
       method: 'POST',
@@ -2509,7 +2509,7 @@ export const apiService = {
       },
       body: formData
     });
-    
+
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || 'Failed to upload file');
@@ -2520,7 +2520,7 @@ export const apiService = {
   previewLeadsFile: async (file: File): Promise<any> => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const token = localStorage.getItem('authToken');
     const response = await fetch(`${API_BASE_URL}/reachouts/leads/upload/preview`, {
       method: 'POST',
@@ -2529,7 +2529,7 @@ export const apiService = {
       },
       body: formData
     });
-    
+
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || 'Failed to preview file');
@@ -2593,9 +2593,9 @@ export const apiService = {
   },
 
   // Email Campaigns
-  generateEmailSequence: async (data: { 
-    leadIds: string[]; 
-    campaignType?: string; 
+  generateEmailSequence: async (data: {
+    leadIds: string[];
+    campaignType?: string;
     numFollowUps?: number;
     customInstructions?: string;
   }): Promise<any> => {
@@ -2767,6 +2767,97 @@ export const brandAssetsAPI = {
       true
     );
   },
+
+  // Get the computed brand intelligence profile
+  getIntelligenceProfile: async (): Promise<any> => {
+    return await apiCall<any>('/brand-assets/intelligence-profile', {}, true);
+  },
+
+  // Update custom brand profile fields
+  updateIntelligenceProfile: async (data: {
+    brandName?: string;
+    brandDescription?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    fontType?: string;
+    enforcementMode?: 'strict' | 'adaptive' | 'off';
+    customProfile?: {
+      tone?: string;
+      writingStyle?: string;
+      ctaStyle?: string;
+      visualStyle?: string;
+    };
+  }): Promise<any> => {
+    return await apiCall<any>(
+      '/brand-assets/intelligence-profile',
+      { method: 'PUT', body: JSON.stringify(data) },
+      true
+    );
+  },
+
+  // Run analysis to detect tone/style/cta/visual profile with confidence scores
+  analyzeIntelligenceProfile: async (data: {
+    brandName?: string;
+    brandDescription?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    fontType?: string;
+    pastPosts?: Array<{ caption?: string; imageUrl?: string; platform?: string }>;
+  } = {}): Promise<any> => {
+    return await apiCall<any>(
+      '/brand-assets/intelligence-profile/analyze',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+  },
+
+  // Resolve brand colors from website (preferred) or manual input
+  detectBrandColors: async (data: {
+    websiteUrl?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+  }): Promise<{
+    primary_color: string;
+    secondary_color: string;
+    source: 'website' | 'manual';
+    confidence: number;
+    reason: string;
+  }> => {
+    return await apiCall<any>(
+      '/brand-assets/intelligence-profile/colors',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          website_url: data.websiteUrl || '',
+          primary_color: data.primaryColor || '',
+          secondary_color: data.secondaryColor || ''
+        })
+      },
+      true
+    );
+  },
+
+  // Add one past-post sample (caption/image) to improve mimic quality
+  addPastPostSample: async (data: {
+    caption?: string;
+    imageData?: string;
+    platform?: string;
+  }): Promise<any> => {
+    return await apiCall<any>(
+      '/brand-assets/intelligence-profile/past-posts',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+  },
+
+  // Remove one past-post sample
+  deletePastPostSample: async (postId: string): Promise<any> => {
+    return await apiCall<any>(
+      `/brand-assets/intelligence-profile/past-posts/${postId}`,
+      { method: 'DELETE' },
+      true
+    );
+  },
 };
 
 // ================================
@@ -2846,8 +2937,8 @@ export const inventoryAPI = {
     return apiCall(`/products/${productId}/generate-ad-image`, {
       method: 'POST',
       body: JSON.stringify({
-        platform:    options.platform    || 'instagram',
-        tone:        options.tone        || 'professional',
+        platform: options.platform || 'instagram',
+        tone: options.tone || 'professional',
         aspectRatio: options.aspectRatio || '1:1',
       }),
     }, true);
