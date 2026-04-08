@@ -138,6 +138,51 @@ export interface Campaign {
   createdAt: string;
 }
 
+export interface AdCampaignPlatformStatus {
+  status: 'pending' | 'success' | 'failed' | 'skipped';
+  message: string;
+  externalAdId?: string;
+  errorCode?: string;
+  currency?: string;
+}
+
+export interface AdCampaign {
+  _id: string;
+  userId: string;
+  campaignId:
+    | string
+    | {
+        _id: string;
+        name?: string;
+        status?: string;
+      };
+  adTitle: string;
+  adDescription: string;
+  adCreativeUrl: string;
+  platformSelection: 'meta' | 'google' | 'both';
+  budget: {
+    amount: number;
+    currency: string;
+  };
+  schedule: {
+    startDate: string;
+    endDate: string;
+  };
+  status: 'active' | 'paused' | 'failed' | 'partial' | 'scheduled';
+  platformStatus: {
+    meta: AdCampaignPlatformStatus;
+    google: AdCampaignPlatformStatus;
+  };
+  performance?: {
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    spend: number;
+  };
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface CompetitorPost {
   id: string;
   _id?: string;

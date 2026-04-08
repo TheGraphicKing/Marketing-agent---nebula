@@ -2860,6 +2860,55 @@ export const brandAssetsAPI = {
   },
 };
 
+export const adCampaignsAPI = {
+  getAll: async (): Promise<any> => {
+    return await apiCall<any>('/ad-campaigns', { method: 'GET' }, true);
+  },
+
+  getSummary: async (): Promise<any> => {
+    return await apiCall<any>('/ad-campaigns/summary', { method: 'GET' }, true);
+  },
+
+  create: async (data: {
+    campaignId: string;
+    platformSelection: 'meta' | 'google' | 'both';
+    budget: number;
+    currency: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<any> => {
+    return await apiCall<any>(
+      '/ad-campaigns',
+      { method: 'POST', body: JSON.stringify(data) },
+      true
+    );
+  },
+
+  updateStatus: async (id: string, status: 'active' | 'paused'): Promise<any> => {
+    return await apiCall<any>(
+      `/ad-campaigns/${id}/status`,
+      { method: 'PUT', body: JSON.stringify({ status }) },
+      true
+    );
+  },
+
+  retry: async (id: string): Promise<any> => {
+    return await apiCall<any>(
+      `/ad-campaigns/${id}/retry`,
+      { method: 'POST' },
+      true
+    );
+  },
+
+  remove: async (id: string): Promise<any> => {
+    return await apiCall<any>(
+      `/ad-campaigns/${id}`,
+      { method: 'DELETE' },
+      true
+    );
+  }
+};
+
 // ================================
 // Inventory API
 // ================================
