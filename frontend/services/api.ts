@@ -2811,6 +2811,32 @@ export const brandAssetsAPI = {
     );
   },
 
+  // Resolve brand colors from website (preferred) or manual input
+  detectBrandColors: async (data: {
+    websiteUrl?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+  }): Promise<{
+    primary_color: string;
+    secondary_color: string;
+    source: 'website' | 'manual';
+    confidence: number;
+    reason: string;
+  }> => {
+    return await apiCall<any>(
+      '/brand-assets/intelligence-profile/colors',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          website_url: data.websiteUrl || '',
+          primary_color: data.primaryColor || '',
+          secondary_color: data.secondaryColor || ''
+        })
+      },
+      true
+    );
+  },
+
   // Add one past-post sample (caption/image) to improve mimic quality
   addPastPostSample: async (data: {
     caption?: string;

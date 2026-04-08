@@ -524,9 +524,8 @@ const BrandAssets: React.FC = () => {
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleLogoDrop}
-              className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
-                isDarkMode ? 'border-slate-600 bg-slate-800/40 hover:border-[#FFCC29]/60' : 'border-gray-300 bg-gray-50 hover:border-[#FFCC29]'
-              }`}
+              className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${isDarkMode ? 'border-slate-600 bg-slate-800/40 hover:border-[#FFCC29]/60' : 'border-gray-300 bg-gray-50 hover:border-[#FFCC29]'
+                }`}
             >
               {logoPreview ? (
                 <div className="space-y-3">
@@ -557,9 +556,8 @@ const BrandAssets: React.FC = () => {
                   value={logoName}
                   onChange={(e) => setLogoName(e.target.value)}
                   placeholder="Logo name"
-                  className={`w-full px-3 py-2 rounded-lg border ${
-                    isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
-                  }`}
+                  className={`w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                    }`}
                 />
                 <label className={`text-sm flex items-center gap-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   <input type="checkbox" checked={isPrimaryLogo} onChange={(e) => setIsPrimaryLogo(e.target.checked)} />
@@ -585,9 +583,8 @@ const BrandAssets: React.FC = () => {
                   {logos.map((logo) => (
                     <div
                       key={logo._id}
-                      className={`group border rounded-lg overflow-hidden ${
-                        isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-gray-200 bg-gray-50'
-                      } ${logo.isPrimary ? 'ring-2 ring-[#FFCC29]' : ''}`}
+                      className={`group border rounded-lg overflow-hidden ${isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-gray-200 bg-gray-50'
+                        } ${logo.isPrimary ? 'ring-2 ring-[#FFCC29]' : ''}`}
                     >
                       <div className="aspect-square p-3 flex items-center justify-center">
                         <img src={logo.url} alt={logo.name} className="max-w-full max-h-full object-contain" />
@@ -628,9 +625,8 @@ const BrandAssets: React.FC = () => {
                 <button
                   onClick={analyzeProfile}
                   disabled={analyzingProfile}
-                  className={`px-3 py-2 rounded-lg border font-medium flex items-center gap-2 ${
-                    isDarkMode ? 'border-slate-600 text-gray-200 hover:bg-slate-800' : 'border-gray-300 text-gray-800 hover:bg-gray-100'
-                  } disabled:opacity-60`}
+                  className={`px-3 py-2 rounded-lg border font-medium flex items-center gap-2 ${isDarkMode ? 'border-slate-600 text-gray-200 hover:bg-slate-800' : 'border-gray-300 text-gray-800 hover:bg-gray-100'
+                    } disabled:opacity-60`}
                 >
                   {analyzingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                   Analyze
@@ -653,9 +649,8 @@ const BrandAssets: React.FC = () => {
                   value={brandName}
                   onChange={(e) => setBrandName(e.target.value)}
                   placeholder="Nebulaa"
-                  className={`w-full px-3 py-2 rounded-lg border ${
-                    isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
-                  }`}
+                  className={`w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                    }`}
                 />
               </div>
               <div className="space-y-3">
@@ -663,9 +658,8 @@ const BrandAssets: React.FC = () => {
                 <select
                   value={fontType}
                   onChange={(e) => setFontType(e.target.value)}
-                  className={`w-full px-3 py-2 rounded-lg border ${
-                    isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                  }`}
+                  className={`w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                    }`}
                 >
                   <option value="">Select brand font</option>
                   {FONT_OPTIONS.map((font) => (
@@ -686,9 +680,8 @@ const BrandAssets: React.FC = () => {
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     placeholder="#111111"
-                    className={`flex-1 px-3 py-2 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className={`flex-1 px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
                   />
                 </div>
               </div>
@@ -700,9 +693,8 @@ const BrandAssets: React.FC = () => {
                     value={secondaryColor}
                     onChange={(e) => setSecondaryColor(e.target.value)}
                     placeholder="#FFCC29"
-                    className={`flex-1 px-3 py-2 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className={`flex-1 px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
                   />
                 </div>
               </div>
@@ -715,9 +707,8 @@ const BrandAssets: React.FC = () => {
                 onChange={(e) => setBrandDescription(e.target.value)}
                 rows={4}
                 placeholder="Describe your brand values, audience, and positioning..."
-                className={`mt-2 w-full px-3 py-2 rounded-lg border ${
-                  isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
-                }`}
+                className={`mt-2 w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                  }`}
               />
             </div>
 
@@ -727,9 +718,8 @@ const BrandAssets: React.FC = () => {
                 <select
                   value={enforcementMode}
                   onChange={(e) => setEnforcementMode(e.target.value as 'strict' | 'adaptive' | 'off')}
-                  className={`mt-2 w-full px-3 py-2 rounded-lg border ${
-                    isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                  }`}
+                  className={`mt-2 w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                    }`}
                 >
                   <option value="strict">Strict (always follow brand)</option>
                   <option value="adaptive">Adaptive (follow, but flexible)</option>
@@ -756,9 +746,8 @@ const BrandAssets: React.FC = () => {
                   <select
                     value={customTone}
                     onChange={(e) => setCustomTone(e.target.value)}
-                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
                   >
                     <option value="">Auto detect</option>
                     {TONE_OPTIONS.map((tone) => (
@@ -773,9 +762,8 @@ const BrandAssets: React.FC = () => {
                   <select
                     value={customWritingStyle}
                     onChange={(e) => setCustomWritingStyle(e.target.value)}
-                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
                   >
                     <option value="">Auto detect</option>
                     {WRITING_STYLE_OPTIONS.map((value) => (
@@ -790,9 +778,8 @@ const BrandAssets: React.FC = () => {
                   <select
                     value={customCtaStyle}
                     onChange={(e) => setCustomCtaStyle(e.target.value)}
-                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
                   >
                     <option value="">Auto detect</option>
                     {CTA_STYLE_OPTIONS.map((value) => (
@@ -807,9 +794,8 @@ const BrandAssets: React.FC = () => {
                   <select
                     value={customVisualStyle}
                     onChange={(e) => setCustomVisualStyle(e.target.value)}
-                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${
-                      isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                    }`}
+                    className={`mt-1 w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
                   >
                     <option value="">Auto detect</option>
                     {VISUAL_STYLE_OPTIONS.map((value) => (
@@ -822,24 +808,6 @@ const BrandAssets: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-6">
-              <h3 className={`text-sm font-semibold uppercase tracking-wide mb-3 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Confidence Score
-              </h3>
-              <div className="space-y-3">
-                {confidenceRows.map((row) => (
-                  <div key={row.key}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{row.label}</span>
-                      <span className="font-semibold text-[#FFCC29]">{row.value}%</span>
-                    </div>
-                    <div className={`h-2 rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-gray-200'}`}>
-                      <div className="h-full bg-gradient-to-r from-[#FFCC29] to-[#F59E0B] transition-all" style={{ width: `${row.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </section>
         </div>
 
@@ -860,9 +828,8 @@ const BrandAssets: React.FC = () => {
               <select
                 value={pastPlatform}
                 onChange={(e) => setPastPlatform(e.target.value)}
-                className={`w-full px-3 py-2 rounded-lg border ${
-                  isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                }`}
+                className={`w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                  }`}
               >
                 {PLATFORM_OPTIONS.map((platform) => (
                   <option key={platform} value={platform}>
@@ -877,9 +844,8 @@ const BrandAssets: React.FC = () => {
                 onChange={(e) => setPastCaption(e.target.value)}
                 rows={6}
                 placeholder="Paste a past post caption to teach structure and tone..."
-                className={`w-full px-3 py-2 rounded-lg border ${
-                  isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
-                }`}
+                className={`w-full px-3 py-2 rounded-lg border ${isDarkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+                  }`}
               />
 
               <label className="block">

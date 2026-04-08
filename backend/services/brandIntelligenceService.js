@@ -18,6 +18,470 @@ function normalizeHexColor(color) {
   return `#${full[1].toUpperCase()}`;
 }
 
+const DEFAULT_PRIMARY_COLOR = '#111111';
+const DEFAULT_SECONDARY_COLOR = '#FFCC29';
+
+const NAMED_COLORS = Object.freeze({
+  black: '#000000',
+  white: '#FFFFFF',
+  red: '#FF0000',
+  green: '#008000',
+  blue: '#0000FF',
+  yellow: '#FFFF00',
+  orange: '#FFA500',
+  purple: '#800080',
+  pink: '#FFC0CB',
+  gray: '#808080',
+  grey: '#808080',
+  silver: '#C0C0C0',
+  navy: '#000080',
+  teal: '#008080',
+  cyan: '#00FFFF',
+  magenta: '#FF00FF',
+  brown: '#A52A2A',
+  maroon: '#800000',
+  olive: '#808000',
+  gold: '#FFD700'
+});
+
+const NAMED_COLOR_PATTERN = Object.keys(NAMED_COLORS).join('|');
+const COLOR_TOKEN_REGEX = new RegExp(
+  `#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\\b|rgba?\\([^)]*\\)|hsla?\\([^)]*\\)|\\b(?:${NAMED_COLOR_PATTERN})\\b`,
+  'gi'
+);
+
+function clampByte(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function parseHexToRgb(color) {
+  const hex = normalizeHexColor(color);
+  if (!hex) return null;
+  const v = hex.slice(1);
+  return {
+    r: parseInt(v.slice(0, 2), 16),
+    g: parseInt(v.slice(2, 4), 16),
+    b: parseInt(v.slice(4, 6), 16)
+  };
+}
+
+function rgbToHex(r, g, b) {
+  return (
+    '#' +
+    [clampByte(r), clampByte(g), clampByte(b)]
+      .map((value) => value.toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase()
+  );
+}
+
+function hslToRgb(h, s, l) {
+  const hue = ((Number(h) % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(1, Number(s)));
+  const light = Math.max(0, Math.min(1, Number(l)));
+
+  const c = (1 - Math.abs(2 * light - 1)) * sat;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = light - c / 2;
+  let r1 = 0;
+  let g1 = 0;
+  let b1 = 0;
+
+  if (hue < 60) {
+    r1 = c;
+    g1 = x;
+  } else if (hue < 120) {
+    r1 = x;
+    g1 = c;
+  } else if (hue < 180) {
+    g1 = c;
+    b1 = x;
+  } else if (hue < 240) {
+    g1 = x;
+    b1 = c;
+  } else if (hue < 300) {
+    r1 = x;
+    b1 = c;
+  } else {
+    r1 = c;
+    b1 = x;
+  }
+
+  return {
+    r: Math.round((r1 + m) * 255),
+    g: Math.round((g1 + m) * 255),
+    b: Math.round((b1 + m) * 255)
+  };
+}
+
+function rgbToHsl(r, g, b) {
+  const rn = clampByte(r) / 255;
+  const gn = clampByte(g) / 255;
+  const bn = clampByte(b) / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+
+  let h = 0;
+  if (delta !== 0) {
+    if (max === rn) h = ((gn - bn) / delta) % 6;
+    else if (max === gn) h = (bn - rn) / delta + 2;
+    else h = (rn - gn) / delta + 4;
+    h *= 60;
+  }
+  if (h < 0) h += 360;
+
+  const l = (max + min) / 2;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+  return { h, s, l };
+}
+
+function normalizeCssColor(color) {
+  const raw = String(color || '').trim().toLowerCase();
+  if (!raw) return '';
+
+  const direct = normalizeHexColor(raw);
+  if (direct) return direct;
+
+  const hexWithAlpha = /^#([0-9a-f]{8})$/i.exec(raw);
+  if (hexWithAlpha) return normalizeHexColor(`#${hexWithAlpha[1].slice(0, 6)}`);
+
+  const named = NAMED_COLORS[raw];
+  if (named) return named;
+
+  const rgbMatch = /^rgba?\(([^)]+)\)$/.exec(raw);
+  if (rgbMatch) {
+    const parts = rgbMatch[1].split(',').map((p) => p.trim());
+    if (parts.length < 3) return '';
+    const parsePart = (part) => {
+      if (part.endsWith('%')) {
+        const pct = Number(part.slice(0, -1));
+        if (!Number.isFinite(pct)) return null;
+        return clampByte((pct / 100) * 255);
+      }
+      const n = Number(part);
+      if (!Number.isFinite(n)) return null;
+      return clampByte(n);
+    };
+    const r = parsePart(parts[0]);
+    const g = parsePart(parts[1]);
+    const b = parsePart(parts[2]);
+    if (r === null || g === null || b === null) return '';
+
+    if (parts.length >= 4) {
+      const alpha = Number(parts[3]);
+      if (Number.isFinite(alpha) && alpha <= 0.03) return '';
+    }
+    return rgbToHex(r, g, b);
+  }
+
+  const hslMatch = /^hsla?\(([^)]+)\)$/.exec(raw);
+  if (hslMatch) {
+    const parts = hslMatch[1].split(',').map((p) => p.trim());
+    if (parts.length < 3) return '';
+    const h = Number(parts[0].replace('deg', ''));
+    const sRaw = parts[1].endsWith('%') ? Number(parts[1].slice(0, -1)) / 100 : Number(parts[1]);
+    const lRaw = parts[2].endsWith('%') ? Number(parts[2].slice(0, -1)) / 100 : Number(parts[2]);
+    if (!Number.isFinite(h) || !Number.isFinite(sRaw) || !Number.isFinite(lRaw)) return '';
+
+    if (parts.length >= 4) {
+      const alpha = Number(parts[3]);
+      if (Number.isFinite(alpha) && alpha <= 0.03) return '';
+    }
+    const rgb = hslToRgb(h, sRaw, lRaw);
+    return rgbToHex(rgb.r, rgb.g, rgb.b);
+  }
+
+  return '';
+}
+
+function extractColorTokens(text = '') {
+  const raw = String(text || '');
+  const found = raw.match(COLOR_TOKEN_REGEX);
+  return Array.isArray(found) ? found : [];
+}
+
+function getColorStats(hexColor) {
+  const rgb = parseHexToRgb(hexColor);
+  if (!rgb) return { saturation: 0, luminance: 0 };
+  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  const rn = rgb.r / 255;
+  const gn = rgb.g / 255;
+  const bn = rgb.b / 255;
+  const luminance = 0.2126 * rn + 0.7152 * gn + 0.0722 * bn;
+  return { saturation: hsl.s, luminance };
+}
+
+function isNeutralColor(hexColor) {
+  const { saturation, luminance } = getColorStats(hexColor);
+  return saturation < 0.13 || luminance > 0.97 || luminance < 0.04;
+}
+
+function colorDistance(hexA, hexB) {
+  const a = parseHexToRgb(hexA);
+  const b = parseHexToRgb(hexB);
+  if (!a || !b) return 0;
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+function addColorWeight(buckets, color, weight) {
+  const hex = normalizeCssColor(color);
+  if (!hex) return;
+  const w = Number(weight);
+  if (!Number.isFinite(w) || w <= 0) return;
+  buckets[hex] = (buckets[hex] || 0) + w;
+}
+
+function extractColorsFromDeclarations(declarations = '', baseWeight = 0, buckets = {}) {
+  const declarationRegex = /(background(?:-color)?|color|border(?:-color)?|fill|stroke)\s*:\s*([^;}{]+)\s*;?/gi;
+  let match;
+  while ((match = declarationRegex.exec(String(declarations || ''))) !== null) {
+    const property = String(match[1] || '').toLowerCase();
+    const value = String(match[2] || '');
+    const propWeight =
+      property.startsWith('background') ? 7 :
+      property.startsWith('color') ? 4 :
+      property.startsWith('border') ? 2 :
+      property === 'fill' ? 3 : 1;
+
+    extractColorTokens(value).forEach((token) => {
+      addColorWeight(buckets, token, baseWeight + propWeight);
+    });
+  }
+}
+
+function deriveSecondaryColor(primaryColor) {
+  const rgb = parseHexToRgb(primaryColor);
+  if (!rgb) return DEFAULT_SECONDARY_COLOR;
+  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  const shiftedHue = (hsl.h + 34) % 360;
+  const sat = Math.max(0.45, Math.min(0.85, hsl.s || 0.55));
+  const light = hsl.l > 0.6 ? Math.max(0.34, hsl.l - 0.26) : Math.min(0.68, hsl.l + 0.24);
+  const derivedRgb = hslToRgb(shiftedHue, sat, light);
+  return rgbToHex(derivedRgb.r, derivedRgb.g, derivedRgb.b);
+}
+
+function ensureDistinctSecondary(primaryColor, secondaryColor) {
+  const normalizedPrimary = normalizeHexColor(primaryColor) || DEFAULT_PRIMARY_COLOR;
+  const normalizedSecondary = normalizeHexColor(secondaryColor);
+  if (!normalizedSecondary) return deriveSecondaryColor(normalizedPrimary);
+  if (normalizedSecondary === normalizedPrimary || colorDistance(normalizedPrimary, normalizedSecondary) < 26) {
+    return deriveSecondaryColor(normalizedPrimary);
+  }
+  return normalizedSecondary;
+}
+
+function rankWebsiteColors({ html = '', parsed = {} } = {}) {
+  const buckets = {};
+  const rawHtml = String(html || '');
+
+  const parsedBrandColors = Array.isArray(parsed?.brandColors) ? parsed.brandColors : [];
+  parsedBrandColors.forEach((color) => addColorWeight(buckets, color, 4));
+
+  const themeMatches = rawHtml.match(
+    /<meta[^>]*name=["'](?:theme-color|msapplication-tilecolor)["'][^>]*content=["']([^"']+)["']/gi
+  ) || [];
+  themeMatches.forEach((tag) => {
+    const contentMatch = tag.match(/content=["']([^"']+)["']/i);
+    if (contentMatch?.[1]) addColorWeight(buckets, contentMatch[1], 24);
+  });
+
+  const variableRegex = /--([a-z0-9_-]+)\s*:\s*([^;}{]+)\s*;?/gi;
+  let variableMatch;
+  while ((variableMatch = variableRegex.exec(rawHtml)) !== null) {
+    const varName = String(variableMatch[1] || '').toLowerCase();
+    const value = String(variableMatch[2] || '');
+    const baseWeight =
+      /(primary|brand|main)/.test(varName) ? 17 :
+      /(secondary|accent)/.test(varName) ? 14 :
+      /(link|cta|button)/.test(varName) ? 12 : 6;
+    extractColorTokens(value).forEach((token) => addColorWeight(buckets, token, baseWeight));
+  }
+
+  const styleBlocks = rawHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+  for (const block of styleBlocks) {
+    const cssText = String(block[1] || '');
+    const cssRuleRegex = /([^{}]+)\{([^{}]+)\}/g;
+    let rule;
+    while ((rule = cssRuleRegex.exec(cssText)) !== null) {
+      const selector = String(rule[1] || '').toLowerCase();
+      const declarations = String(rule[2] || '');
+      let contextWeight = 4;
+      if (/(button|\.btn|cta|submit|primary-btn)/.test(selector)) contextWeight += 12;
+      if (/(header|nav|menu|hero)/.test(selector)) contextWeight += 10;
+      if (/(\ba\b|link)/.test(selector)) contextWeight += 8;
+      if (/(primary|brand|main)/.test(selector)) contextWeight += 7;
+      if (/(secondary|accent)/.test(selector)) contextWeight += 5;
+      extractColorsFromDeclarations(declarations, contextWeight, buckets);
+    }
+  }
+
+  const inlineStyleRegex = /<([a-z0-9]+)([^>]*)style=["']([^"']+)["'][^>]*>/gi;
+  let inlineMatch;
+  while ((inlineMatch = inlineStyleRegex.exec(rawHtml)) !== null) {
+    const tagName = String(inlineMatch[1] || '').toLowerCase();
+    const attrs = String(inlineMatch[2] || '').toLowerCase();
+    const declaration = String(inlineMatch[3] || '');
+    let contextWeight = 5;
+    if (tagName === 'button' || /\bbtn\b|\bcta\b/.test(attrs)) contextWeight += 13;
+    if (tagName === 'a') contextWeight += 9;
+    if (tagName === 'header' || tagName === 'nav') contextWeight += 10;
+    if (/\bprimary\b|\bbrand\b/.test(attrs)) contextWeight += 6;
+    if (/\bsecondary\b|\baccent\b/.test(attrs)) contextWeight += 4;
+    extractColorsFromDeclarations(declaration, contextWeight, buckets);
+  }
+
+  return Object.entries(buckets)
+    .map(([color, score]) => ({
+      color,
+      score: Number(score) || 0,
+      neutral: isNeutralColor(color)
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+function computeWebsiteConfidence({
+  ranked = [],
+  primaryFromWebsite = false,
+  secondaryFromWebsite = false
+} = {}) {
+  if (!ranked.length) return 0;
+  const top = ranked.slice(0, 8);
+  const totalScore = top.reduce((sum, entry) => sum + entry.score, 0);
+  const diversity = top.length;
+  let confidence = 56 + Math.min(26, Math.round(totalScore / 18)) + Math.min(9, diversity);
+  if (!primaryFromWebsite) confidence -= 8;
+  if (!secondaryFromWebsite) confidence -= 6;
+  return Math.max(0, Math.min(100, Math.round(confidence)));
+}
+
+function buildManualColorResponse(primaryColor = '', secondaryColor = '', reason = '') {
+  const manualPrimary = normalizeHexColor(primaryColor);
+  const manualSecondary = normalizeHexColor(secondaryColor);
+  const primary = manualPrimary || DEFAULT_PRIMARY_COLOR;
+  const secondary = ensureDistinctSecondary(primary, manualSecondary || DEFAULT_SECONDARY_COLOR);
+  const confidence =
+    manualPrimary && manualSecondary ? 96 :
+    manualPrimary || manualSecondary ? 84 : 68;
+
+  return {
+    primary_color: primary,
+    secondary_color: secondary,
+    source: 'manual',
+    confidence,
+    reason: reason || 'Used manually provided colors because website color signals were unavailable.'
+  };
+}
+
+async function determineBrandColors({
+  websiteUrl = '',
+  primaryColor = '',
+  secondaryColor = '',
+  scrapeWebsite = null
+} = {}) {
+  const websiteInput = String(websiteUrl || '').trim();
+  const manualPrimary = normalizeHexColor(primaryColor);
+  const manualSecondary = normalizeHexColor(secondaryColor);
+
+  if (!websiteInput) {
+    return buildManualColorResponse(
+      manualPrimary,
+      manualSecondary,
+      'No website URL was provided, so manual colors were used.'
+    );
+  }
+
+  if (typeof scrapeWebsite !== 'function') {
+    return buildManualColorResponse(
+      manualPrimary,
+      manualSecondary,
+      'Website analysis is unavailable, so manual colors were used.'
+    );
+  }
+
+  let normalizedUrl = websiteInput;
+  if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(normalizedUrl);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+  } catch (error) {
+    return buildManualColorResponse(
+      manualPrimary,
+      manualSecondary,
+      'Website URL was invalid, so manual colors were used.'
+    );
+  }
+
+  try {
+    const scrapeResult = await scrapeWebsite(parsedUrl.origin);
+    if (!scrapeResult?.success) {
+      return buildManualColorResponse(
+        manualPrimary,
+        manualSecondary,
+        'Website could not be analyzed, so manual colors were used.'
+      );
+    }
+
+    const ranked = rankWebsiteColors({
+      html: scrapeResult?.data || scrapeResult?.raw || '',
+      parsed: scrapeResult?.parsed || {}
+    });
+
+    const nonNeutral = ranked.filter((entry) => !entry.neutral);
+    const primaryCandidate = nonNeutral[0]?.color || ranked[0]?.color || '';
+    const secondaryPool = ranked.filter((entry) => entry.color !== primaryCandidate);
+    const contrastingSecondary =
+      secondaryPool.find((entry) => colorDistance(primaryCandidate, entry.color) >= 60)?.color ||
+      secondaryPool[0]?.color ||
+      '';
+
+    if (!primaryCandidate) {
+      return buildManualColorResponse(
+        manualPrimary,
+        manualSecondary,
+        'No reliable website colors were detected, so manual colors were used.'
+      );
+    }
+
+    const primary = primaryCandidate;
+    const secondary = ensureDistinctSecondary(
+      primary,
+      contrastingSecondary || manualSecondary || DEFAULT_SECONDARY_COLOR
+    );
+    const primaryFromWebsite = Boolean(primaryCandidate);
+    const secondaryFromWebsite = Boolean(contrastingSecondary);
+    const confidence = computeWebsiteConfidence({
+      ranked,
+      primaryFromWebsite,
+      secondaryFromWebsite
+    });
+
+    return {
+      primary_color: primary,
+      secondary_color: secondary,
+      source: 'website',
+      confidence: confidence || 72,
+      reason: 'Colors were extracted from website UI signals (theme, buttons, headers, links, and CSS).'
+    };
+  } catch (error) {
+    return buildManualColorResponse(
+      manualPrimary,
+      manualSecondary,
+      'Website analysis failed, so manual colors were used.'
+    );
+  }
+}
+
 function normalizeToneValue(value) {
   const t = String(value || '').trim().toLowerCase();
   if (!t) return '';
@@ -403,6 +867,7 @@ module.exports = {
   normalizeToneValue,
   normalizePastPost,
   analyzeBrandInputs,
+  determineBrandColors,
   getEffectiveProfile,
   buildGenerationGuidelines
 };

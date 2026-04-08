@@ -6,8 +6,10 @@ const Campaign = require('../models/Campaign');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { uploadBase64Image, deleteImage } = require('../services/imageUploader');
+const { deepScrapeWebsite } = require('../services/scraper');
 const {
   analyzeBrandInputs,
+  determineBrandColors,
   normalizeHexColor,
   normalizePastPost
 } = require('../services/brandIntelligenceService');
@@ -498,6 +500,37 @@ router.post('/intelligence-profile/analyze', protect, async (req, res) => {
   } catch (error) {
     console.error('Error analyzing brand profile:', error);
     res.status(500).json({ success: false, message: 'Failed to analyze brand profile' });
+  }
+});
+
+/**
+ * @route   POST /api/brand-assets/intelligence-profile/colors
+ * @desc    Resolve brand primary/secondary colors from website or manual input
+ * @access  Private
+ */
+router.post('/intelligence-profile/colors', protect, async (req, res) => {
+  try {
+    const websiteUrl = String(req.body?.website_url || req.body?.websiteUrl || '').trim();
+    const primaryColor = String(req.body?.primary_color || req.body?.primaryColor || '').trim();
+    const secondaryColor = String(req.body?.secondary_color || req.body?.secondaryColor || '').trim();
+
+    const result = await determineBrandColors({
+      websiteUrl,
+      primaryColor,
+      secondaryColor,
+      scrapeWebsite: async (url) => deepScrapeWebsite(url, { forceRefresh: true })
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error resolving brand colors:', error);
+    res.status(500).json({
+      primary_color: '#111111',
+      secondary_color: '#FFCC29',
+      source: 'manual',
+      confidence: 50,
+      reason: 'Brand color detection failed, so default manual colors were used.'
+    });
   }
 });
 
