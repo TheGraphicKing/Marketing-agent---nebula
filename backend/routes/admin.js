@@ -173,7 +173,7 @@ router.get('/users', adminAuth, async (req, res) => {
       {},
       {
         email: 1, firstName: 1, lastName: 1, companyName: 1, isActive: 1,
-        createdAt: 1, lastLoginAt: 1,
+        createdAt: 1, lastLoginAt: 1, mobileNumber: 1, isHidden: 1,
         'credits.balance': 1, 'credits.totalUsed': 1,
         'trial.expiresAt': 1, 'trial.isExpired': 1, 'trial.migratedToProd': 1,
         connectedSocials: 1, onboardingCompleted: 1
@@ -333,6 +333,19 @@ router.delete('/coupons/:code', adminAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete coupon' });
+  }
+});
+
+// POST /api/admin/users/:id/toggle-hidden
+router.post('/users/:id/toggle-hidden', adminAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.isHidden = !user.isHidden;
+    await user.save({ validateBeforeSave: false });
+    res.json({ success: true, isHidden: user.isHidden });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to toggle hidden' });
   }
 });
 
