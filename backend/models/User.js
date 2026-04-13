@@ -42,6 +42,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  isHidden: {
+    type: Boolean,
+    default: false
+  },
   onboardingCompleted: {
     type: Boolean,
     default: false

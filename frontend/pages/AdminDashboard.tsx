@@ -24,6 +24,7 @@ interface UserRow {
   credits?: { balance: number; totalUsed: number };
   trial?: { expiresAt?: string; isExpired?: boolean; migratedToProd?: boolean };
   mobileNumber?: string;
+  isHidden?: boolean;
 }
 
 interface FeatureUsage {
@@ -109,6 +110,8 @@ const AdminDashboard: React.FC = () => {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponForm, setCouponForm] = useState({ code: '', discountedAmount: '5000', maxUses: '1', note: '' });
   const [couponCreating, setCouponCreating] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [hidingUser, setHidingUser] = useState<string | null>(null);
   const [resettingTrial, setResettingTrial] = useState(false);
   const [addingCredits, setAddingCredits] = useState(false);
   const [creditsToAdd, setCreditsToAdd] = useState('100');
@@ -129,6 +132,20 @@ const AdminDashboard: React.FC = () => {
     } catch {}
     setLoading(false);
   }, []);
+
+  const handleToggleHidden = async (userId: string, currentlyHidden: boolean) => {
+    setHidingUser(userId);
+    try {
+      const res = await adminFetch(`/users/${userId}/toggle-hidden`, { method: 'POST' });
+      if (res.success) {
+        setUsers(prev => prev.map(u => u._id === userId ? { ...u, isHidden: res.isHidden } : u));
+        if (selected?.user._id === userId) {
+          setSelected(prev => prev ? { ...prev, user: { ...prev.user, isHidden: res.isHidden } } : prev);
+        }
+      }
+    } catch {}
+    setHidingUser(null);
+  };
 
   const handleResetTrial = async (userId: string) => {
     setResettingTrial(true);
@@ -216,10 +233,13 @@ const AdminDashboard: React.FC = () => {
     setToggling(null);
   };
 
-  const filtered = users.filter(u =>
-    u.email.toLowerCase().includes(search.toLowerCase()) ||
-    (u.companyName || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = users.filter(u => {
+    if (!showHidden && u.isHidden) return false;
+    return (
+      u.email.toLowerCase().includes(search.toLowerCase()) ||
+      (u.companyName || '').toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   return (
     <div className="min-h-screen bg-[#060810] text-white flex flex-col">
@@ -373,12 +393,24 @@ const AdminDashboard: React.FC = () => {
                 {activeTab === 'users' && (
                   <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
                     <div className="px-5 py-4 border-b border-white/[0.06]">
-                      <div className="relative">
-                        <Search className="w-4 h-4 text-white/20 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input type="text" placeholder="Search by email or company..."
-                          value={search} onChange={e => setSearch(e.target.value)}
-                          className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-[#ffcc29]/40 transition-colors"
-                        />
+                      <div className="flex items-center gap-3">
+                        <div className="relative flex-1">
+                          <Search className="w-4 h-4 text-white/20 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input type="text" placeholder="Search by email or company..."
+                            value={search} onChange={e => setSearch(e.target.value)}
+                            className="w-full bg-white/[0.04] border border-white/[0.06] rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-[#ffcc29]/40 transition-colors"
+                          />
+                        </div>
+                        <button
+                          onClick={() => setShowHidden(p => !p)}
+                          className={`flex-shrink-0 px-3 py-2.5 rounded-xl text-xs font-medium border transition-colors ${
+                            showHidden
+                              ? 'bg-[#ffcc29]/10 text-[#ffcc29] border-[#ffcc29]/20'
+                              : 'bg-white/[0.04] text-white/40 border-white/[0.06] hover:text-white/60'
+                          }`}
+                        >
+                          {showHidden ? 'Hide hidden' : `Show hidden (${users.filter(u => u.isHidden).length})`}
+                        </button>
                       </div>
                     </div>
 
@@ -429,7 +461,21 @@ const AdminDashboard: React.FC = () => {
                                   </span>
                                 </td>
                                 <td className="px-5 py-3.5">
-                                  <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-white/50 transition-colors" />
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); handleToggleHidden(u._id, !!u.isHidden); }}
+                                      disabled={hidingUser === u._id}
+                                      title={u.isHidden ? 'Unhide user' : 'Hide user'}
+                                      className={`opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded-lg text-xs font-medium border ${
+                                        u.isHidden
+                                          ? 'text-[#ffcc29] bg-[#ffcc29]/10 border-[#ffcc29]/20'
+                                          : 'text-white/40 bg-white/[0.04] border-white/[0.06] hover:text-white/70'
+                                      }`}
+                                    >
+                                      {hidingUser === u._id ? '...' : u.isHidden ? 'Unhide' : 'Hide'}
+                                    </button>
+                                    <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-white/50 transition-colors" />
+                                  </div>
                                 </td>
                               </tr>
                             );
