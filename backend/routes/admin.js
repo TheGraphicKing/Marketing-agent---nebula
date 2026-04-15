@@ -360,7 +360,7 @@ router.post('/users/:id/reset-trial', adminAuth, async (req, res) => {
     };
     await user.save({ validateBeforeSave: false });
 
-    res.json({ success: true, message: 'Trial re-enabled for 30 days' });
+    res.json({ success: true, message: 'Trial re-enabled' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to reset trial' });
   }
