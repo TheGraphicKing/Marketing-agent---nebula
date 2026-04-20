@@ -1888,6 +1888,43 @@ export const apiService = {
     return response;
   },
 
+  localizeCampaignContent: async (params: {
+    brandName?: string;
+    brand_name?: string;
+    brandDescription?: string;
+    brand_description?: string;
+    industry?: string;
+    tone?: string;
+    brandTone?: string;
+    brand_tone?: string;
+    writingStyle?: string;
+    writing_style?: string;
+    ctaStyle?: string;
+    cta_style?: string;
+    visualStyle?: string;
+    visual_style?: string;
+    audience?: string;
+    targetAudience?: string;
+    target_audience?: string;
+    keyMessage?: string;
+    key_message?: string;
+    platform: 'Instagram' | 'Facebook' | 'LinkedIn' | 'instagram' | 'facebook' | 'linkedin';
+    region?: string;
+    language?: string;
+    regions?: string[];
+    languages?: Array<string | null> | null;
+    localizations?: Array<{ region: string; language: string }> | string;
+    baseCaption?: string;
+    base_caption?: string;
+  }): Promise<any> => {
+    const response = await apiCall<any>(
+      '/content/localize-campaign',
+      { method: 'POST', body: JSON.stringify(params) },
+      true
+    );
+    return response;
+  },
+
   modifyContent: async (draftId: string, modifications: { tone?: string; length?: string; style?: string }): Promise<any> => {
     const response = await apiCall<any>(
       '/content/modify',
@@ -3015,7 +3052,7 @@ export const inventoryAPI = {
   // Generate a premium social-media ad image for a product using AI
   generateProductAdImage: async (
     productId: string,
-    options: { platform?: string; tone?: string; aspectRatio?: string } = {}
+    options: { platform?: string; tone?: string; aspectRatio?: string; language?: string; imageText?: string } = {}
   ): Promise<{ success: boolean; imageUrl?: string; model?: string; message?: string }> => {
     return apiCall(`/products/${productId}/generate-ad-image`, {
       method: 'POST',
@@ -3023,6 +3060,8 @@ export const inventoryAPI = {
         platform: options.platform || 'instagram',
         tone: options.tone || 'professional',
         aspectRatio: options.aspectRatio || '1:1',
+        language: options.language || 'English',
+        imageText: options.imageText || '',
       }),
     }, true);
   },

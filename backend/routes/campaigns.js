@@ -1056,7 +1056,7 @@ router.get('/icp-strategy', protect, async (req, res) => {
 router.post('/smart-populate-template', protect, async (req, res) => {
   try {
     const userId = req.user.userId || req.user.id || req.user._id;
-    const { template, campaignName, campaignDescription, objective } = req.body;
+    const { template, campaignName, campaignDescription, objective, language: languageInput } = req.body;
     
     if (!template) {
       return res.status(400).json({ success: false, message: 'Template is required' });
@@ -1070,6 +1070,25 @@ router.post('/smart-populate-template', protect, async (req, res) => {
       ? brandCtx.effectiveTone
       : String(brandCtx?.effectiveTone || bp?.brandVoice || 'professional').toLowerCase();
     const strictBrandText = strictBrandMode ? buildStrictBrandLockText(brandCtx) : '';
+    const normalizeCampaignLanguage = (value = '') => {
+      const normalized = String(value || '').trim().toLowerCase();
+      const languageMap = {
+        english: 'English',
+        en: 'English',
+        hindi: 'Hindi',
+        hi: 'Hindi',
+        tamil: 'Tamil',
+        ta: 'Tamil',
+        telugu: 'Telugu',
+        te: 'Telugu',
+        malayalam: 'Malayalam',
+        ml: 'Malayalam',
+        kannada: 'Kannada',
+        kn: 'Kannada'
+      };
+      return languageMap[normalized] || 'English';
+    };
+    const selectedLanguage = normalizeCampaignLanguage(languageInput);
 
     const prompt = `You are a professional social media content editor. 
 Your task is to fill in the bracketed placeholders in a post template with high-quality, meaningful content.
@@ -1079,6 +1098,7 @@ CAMPAIGN DETAILS:
 - Description: ${campaignDescription || 'N/A'}
 - Objective: ${objective || 'awareness'}
 - Tone to follow: ${enforcedTone || 'professional'}
+- Output language: ${selectedLanguage}
 ${strictBrandMode ? `- ${strictBrandText}` : ''}
 ${brandCtx?.guidelineBundle?.instructions || ''}
 
@@ -1091,7 +1111,10 @@ RULES:
 3. DO NOT change the structure, symbols (like 🎯, •, 📸), or headings.
 4. Keep the output EXACTLY the same format as the input template, just with placeholders filled.
 5. ONLY leave "[Link]" or "[Your CTA Link]" as is.
-6. Return ONLY the filled content. No introduction or extra text.`;
+6. Translate/adapt all generated and existing template text to ${selectedLanguage} while preserving structure and marketing intent.
+7. If the template is already filled (few/no placeholders), still rewrite it fully into ${selectedLanguage}.
+8. ${selectedLanguage === 'English' ? 'English is allowed.' : 'Do NOT output English words unless they are brand names, product names, or hashtags.'}
+9. Return ONLY the filled content. No introduction or extra text.`;
 
     const filledContent = await callGemini(prompt, { temperature: 0.7, maxTokens: 1000, skipCache: true });
     
@@ -1165,8 +1188,29 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
       keyMessages, duration, startDate: startDateParam,
       preferredDays: daysInput, targetAge, targetGender,
       targetLocation, targetInterests, productLogo,
-      linkedProduct
+      linkedProduct,
+      language: languageInput
     } = req.body;
+
+    const normalizeCampaignLanguage = (value = '') => {
+      const normalized = String(value || '').trim().toLowerCase();
+      const languageMap = {
+        english: 'English',
+        en: 'English',
+        hindi: 'Hindi',
+        hi: 'Hindi',
+        tamil: 'Tamil',
+        ta: 'Tamil',
+        telugu: 'Telugu',
+        te: 'Telugu',
+        malayalam: 'Malayalam',
+        ml: 'Malayalam',
+        kannada: 'Kannada',
+        kn: 'Kannada'
+      };
+      return languageMap[normalized] || 'English';
+    };
+    const selectedLanguage = normalizeCampaignLanguage(languageInput);
 
     generationLockSignature = buildGenerationSignature({
       route: 'generate-campaign-stream',
@@ -1184,6 +1228,7 @@ router.post('/generate-campaign-stream', protect, checkTrial, async (req, res) =
       targetGender,
       targetLocation,
       targetInterests,
+      selectedLanguage,
       linkedProduct: linkedProduct
         ? {
             id: linkedProduct.id || null,
@@ -1288,6 +1333,7 @@ CONTEXT:
 - Target audience: ${targetAge || '18-35'} age, ${targetGender || 'all'} gender${targetLocation ? ', located in ' + targetLocation : ''}${targetInterests ? ', interested in ' + targetInterests : ''}
 - Platforms: ${platforms.join(', ')}
 - Tone: ${enforcedTone || 'professional'}
+- Language: ${selectedLanguage}
 ${linkedProduct ? `- Featured Product: ${linkedProduct.name} - ${linkedProduct.currency || '$'}${linkedProduct.price}\n- Product Description: ${linkedProduct.description || 'N/A'}` : ''}
 ${visualHints ? `- Brand Visual Tokens: ${visualHints}` : ''}
 ${strictBrandText ? `- ${strictBrandText}` : ''}
@@ -1314,6 +1360,10 @@ INSTRUCTIONS:
 14. ${strictBrandMode && primaryLockedColor && secondaryLockedColor
       ? `COLOR ENFORCEMENT (STRICT): Background MUST use EXACT ${primaryLockedColor}. Gradient is allowed only within shades of ${primaryLockedColor}. Text MUST use EXACT ${secondaryLockedColor}. Ensure strong contrast and readability. Do NOT introduce unrelated colors. Do NOT use gray or desaturated tones.`
       : 'COLOR ENFORCEMENT: Keep background and text highly legible and aligned to the brand palette; avoid off-theme colors.'}
+15. LANGUAGE ENFORCEMENT: Write caption and CTA strictly in ${selectedLanguage}. Do not mix languages.
+16. ${selectedLanguage === 'English' ? 'English is allowed.' : 'Do NOT use English words unless they are brand names, product names, or hashtags.'}
+17. IMAGE TEXT ENFORCEMENT: Also provide "imageText" for each post (2-5 words max). imageText MUST be strictly in ${selectedLanguage}. Do NOT use English for imageText unless selectedLanguage is English.
+18. imageText must be short, punchy, and suitable for text overlay on the image.
 
 Return ONLY valid JSON (no markdown, no backticks):
 {
@@ -1323,7 +1373,8 @@ Return ONLY valid JSON (no markdown, no backticks):
       "caption": "The full caption text with emojis and line breaks",
       "hashtags": ["#tag1", "#tag2", "#tag3"],
       "contentTheme": "educational|promotional|engagement|storytelling|social_proof|problem_solution",
-      "imageDescription": "Detailed visual description for AI image generation"
+      "imageDescription": "Detailed visual description for AI image generation",
+      "imageText": "Short overlay text (2-5 words) strictly in selected language"
     }
   ]
 }`;
@@ -1442,6 +1493,18 @@ Return ONLY valid JSON (no markdown, no backticks):
     // Step 2: Generate images one by one and stream each
     const postsToProcess = parsed.posts.slice(0, totalPosts);
     const slotImageCache = new Map();
+    const fallbackImageTextByLanguage = {
+      tamil: 'இப்போதே தொடங்குங்கள்',
+      telugu: 'ఇప్పుడే ప్రారంభించండి',
+      malayalam: 'ഇപ്പോള്‍ തുടങ്ങൂ',
+      kannada: 'ಈಗಲೇ ಪ್ರಾರಂಭಿಸಿ',
+      hindi: 'अभी शुरू करें',
+      english: 'Start Now'
+    };
+    const selectedLanguageKey = String(selectedLanguage || '').trim().toLowerCase();
+    const defaultImageText =
+      fallbackImageTextByLanguage[selectedLanguageKey] ||
+      fallbackImageTextByLanguage.english;
 
     for (let i = 0; i < postsToProcess.length; i++) {
       if (aborted) break;
@@ -1458,6 +1521,7 @@ Return ONLY valid JSON (no markdown, no backticks):
         imageResult = slotImageCache.get(slotIndex);
       } else {
         sendEvent('generating', { index: i, total: postsToProcess.length, message: `Generating image for slot ${slotIndex + 1}...` });
+        const resolvedImageText = String(post?.imageText || '').trim() || defaultImageText;
         
         imageResult = await generateCampaignImageNanoBanana(post.imageDescription, {
           aspectRatio: aspectRatio || '1:1',
@@ -1472,7 +1536,9 @@ Return ONLY valid JSON (no markdown, no backticks):
           totalPosts: numSlots,
           campaignTheme: campaignName,
           keyMessages: [keyMessages || '', visualHints || '', strictBrandText || '', brandGuidelinesText || ''].filter(Boolean).join('\n'),
-          linkedProduct
+          linkedProduct,
+          targetLanguage: selectedLanguage,
+          imageText: resolvedImageText
         });
         
         slotImageCache.set(slotIndex, imageResult);
@@ -1489,6 +1555,7 @@ Return ONLY valid JSON (no markdown, no backticks):
           : ['#marketing'],
         imageUrl: imageResult.success ? imageResult.imageUrl : '',
         imageDescription: post.imageDescription || '',
+        imageText: String(post.imageText || '').trim() || defaultImageText,
         suggestedDate: schedule.date,
         suggestedTime: schedule.time,
         contentTheme: post.contentTheme || 'promotional',
@@ -3494,7 +3561,27 @@ const { generatePosterFromTemplate, editPosterFromTemplate } = require('../servi
  */
 router.post('/generate-caption', protect, checkTrial, requireCredits('campaign_text'), async (req, res) => {
   try {
-    const { image, platform } = req.body;
+    const { image, platform, language: languageInput } = req.body;
+
+    const normalizeCaptionLanguage = (value = '') => {
+      const normalized = String(value || '').trim().toLowerCase();
+      const languageMap = {
+        english: 'English',
+        en: 'English',
+        hindi: 'Hindi',
+        hi: 'Hindi',
+        tamil: 'Tamil',
+        ta: 'Tamil',
+        telugu: 'Telugu',
+        te: 'Telugu',
+        malayalam: 'Malayalam',
+        ml: 'Malayalam',
+        kannada: 'Kannada',
+        kn: 'Kannada'
+      };
+      return languageMap[normalized] || 'English';
+    };
+    const selectedLanguage = normalizeCaptionLanguage(languageInput);
     
     if (!image) {
       return res.status(400).json({ 
@@ -3559,6 +3646,8 @@ Requirements:
 6. Match the tone appropriate for ${platform || 'Instagram'}
 7. ${strictBrandMode ? `STRICT BRAND LOCK: The caption MUST follow "${enforcedTone}" tone exactly and must not drift.` : 'Keep tone aligned to the brand context above.'}
 8. ${strictBrandMode ? 'If there is conflict between platform defaults and brand profile, prioritize brand profile.' : 'Balance platform-native style with brand voice.'}
+9. Caption and CTA must be strictly in ${selectedLanguage}. Do not mix languages.
+10. ${selectedLanguage === 'English' ? 'English is allowed.' : 'Do NOT use English words unless they are brand names or hashtags.'}
 
 Return ONLY the caption text with hashtags. No JSON, no explanations.`;
 

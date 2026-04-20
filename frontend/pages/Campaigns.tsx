@@ -4208,6 +4208,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [isGenerating, setIsGenerating] = useState(false);
     const generationRequestInFlightRef = useRef(false);
     const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
+    const englishBasePostsRef = useRef<Record<string, { caption: string; hashtags: string[] }>>({});
+    const localizedPostsCacheRef = useRef<Record<string, { caption: string; hashtags: string[] }>>({});
     const [editingPostId, setEditingPostId] = useState<string | null>(null);
     const [savingPosts, setSavingPosts] = useState(false);
     const [previewPost, setPreviewPost] = useState<{ platform: string, caption: string, imageUrl: string } | null>(null);
@@ -4227,6 +4229,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     // Step 3: Content Preferences
     const [platforms, setPlatforms] = useState<string[]>(connectedPlatforms.length > 0 ? [connectedPlatforms[0]] : []);
     const [contentTone, setContentTone] = useState<'professional' | 'casual' | 'humorous' | 'inspirational' | 'educational'>('professional');
+    const [contentLanguage, setContentLanguage] = useState<string>('English');
     const [contentType, setContentType] = useState<'image' | 'video' | 'carousel' | 'story'>('image');
     const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>('1:1');
     const [platformContents, setPlatformContents] = useState<Record<string, string>>({});
@@ -4241,7 +4244,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     const [isPopulating, setIsPopulating] = useState<Record<string, boolean>>({});
     const manuallyEditedTemplates = useRef<Set<string>>(new Set());
 
-    const smartPopulateTemplate = async (platform: string, templateText: string) => {
+    const smartPopulateTemplate = async (platform: string, templateText: string, targetLanguage: string = contentLanguage) => {
       const apiBaseUrl = window.location.hostname !== 'localhost' ? '' : 'http://localhost:5000';
       const token = localStorage.getItem('authToken');
       
@@ -4257,7 +4260,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
             template: templateText,
             campaignName,
             campaignDescription,
-            objective
+            objective,
+            language: targetLanguage
           })
         });
         const data = await response.json();
@@ -4419,6 +4423,165 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     // Generate AI posts based on campaign details
     const [activeWeekTab, setActiveWeekTab] = useState(1);
     const [generationStatus, setGenerationStatus] = useState('');
+    const [isLocalizingPosts, setIsLocalizingPosts] = useState(false);
+
+    const getSupportedLanguageLabel = (value: string): string => {
+      const normalized = String(value || '').trim().toLowerCase();
+      const languageMap: Record<string, string> = {
+        english: 'English',
+        en: 'English',
+        hindi: 'Hindi',
+        hi: 'Hindi',
+        tamil: 'Tamil',
+        ta: 'Tamil',
+        telugu: 'Telugu',
+        te: 'Telugu',
+        malayalam: 'Malayalam',
+        ml: 'Malayalam',
+        kannada: 'Kannada',
+        kn: 'Kannada'
+      };
+      return languageMap[normalized] || 'English';
+    };
+    const handleContentLanguageChange = async (nextLanguageRaw: string) => {
+      const nextLanguage = getSupportedLanguageLabel(nextLanguageRaw);
+      const changed = nextLanguage !== contentLanguage;
+      setContentLanguage(nextLanguage);
+
+      if (!changed) return;
+      if (step !== 2) return;
+      if (!campaignName || !campaignDescription) return;
+      if (platforms.length === 0) return;
+
+      try {
+        await Promise.all(
+          platforms.map((platform) => {
+            const currentContent = String(platformContents[platform] || '').trim();
+            const template =
+              currentContent ||
+              applyTemplate(
+                (PLATFORM_CONTENT_TEMPLATES[platform]?.find(t => t.id === selectedTemplateIds[platform]) || PLATFORM_CONTENT_TEMPLATES[platform]?.[0])?.structure || '',
+                campaignName,
+                campaignDescription,
+                objective
+              );
+
+            if (!template) return Promise.resolve(null);
+            return smartPopulateTemplate(platform, template, nextLanguage);
+          })
+        );
+      } catch (error) {
+        console.error('Language regeneration failed:', error);
+      }
+    };
+
+    const normalizeHashtagList = (raw: any): string[] => {
+      const list = Array.isArray(raw) ? raw : String(raw || '').split(/\s+/);
+      return list
+        .map((tag: string) => String(tag || '').trim())
+        .filter(Boolean)
+        .map((tag: string) => (tag.startsWith('#') ? tag : `#${tag}`));
+    };
+    const getLocalizationCacheKey = (language: string, postId: string): string =>
+      String(language || '').trim().toLowerCase() + '::' + String(postId || '').trim();
+
+    const mapPlatformForLocalization = (platform: string): 'Instagram' | 'Facebook' | 'LinkedIn' => {
+      const normalized = String(platform || '').trim().toLowerCase();
+      if (normalized === 'facebook') return 'Facebook';
+      if (normalized === 'linkedin') return 'LinkedIn';
+      return 'Instagram';
+    };
+
+    const localizeGeneratedPosts = async (nextLanguageRaw: string) => {
+      const nextLanguage = getSupportedLanguageLabel(nextLanguageRaw);
+      if (nextLanguage === contentLanguage) return;
+      setContentLanguage(nextLanguage);
+
+      if (generatedPosts.length === 0) return;
+
+      setIsLocalizingPosts(true);
+      try {
+        const postsSnapshot = [...generatedPosts];
+
+        if (nextLanguage === 'English') {
+          setGeneratedPosts(prev =>
+            prev.map((post) => {
+              const base = englishBasePostsRef.current[post.id];
+              if (!base) return post;
+              return {
+                ...post,
+                caption: base.caption,
+                hashtags: base.hashtags
+              };
+            })
+          );
+          return;
+        }
+
+        const localizedById: Record<string, { caption: string; hashtags: string[] }> = {};
+
+        await Promise.all(
+          postsSnapshot.map(async (post) => {
+            const cacheKey = getLocalizationCacheKey(nextLanguage, post.id);
+            const cached = localizedPostsCacheRef.current[cacheKey];
+            if (cached) {
+              localizedById[post.id] = cached;
+              return;
+            }
+
+            const englishBase = englishBasePostsRef.current[post.id] || {
+              caption: String(post.caption || '').trim(),
+              hashtags: normalizeHashtagList(post.hashtags)
+            };
+
+            const localized = await apiService.localizeCampaignContent({
+              brandName: campaignName,
+              brandDescription: campaignDescription,
+              industry: '',
+              tone: contentTone,
+              writingStyle: 'platform-native, detail-preserving',
+              ctaStyle: 'direct',
+              visualStyle: 'modern',
+              audience: audienceDescription || (targetAge + ', ' + targetGender),
+              keyMessage: englishBase.caption,
+              baseCaption: englishBase.caption,
+              platform: mapPlatformForLocalization(post.platform),
+              region: targetLocation || 'Global',
+              language: nextLanguage
+            });
+
+            const localizedValue = {
+              caption: String(localized?.caption || '').trim() || englishBase.caption,
+              hashtags: normalizeHashtagList(
+                Array.isArray(localized?.hashtags) && localized.hashtags.length > 0
+                  ? localized.hashtags
+                  : englishBase.hashtags
+              )
+            };
+
+            localizedPostsCacheRef.current[cacheKey] = localizedValue;
+            localizedById[post.id] = localizedValue;
+          })
+        );
+
+        setGeneratedPosts(prev =>
+          prev.map((post) => {
+            const localized = localizedById[post.id];
+            if (!localized) return post;
+            return {
+              ...post,
+              caption: localized.caption,
+              hashtags: localized.hashtags
+            };
+          })
+        );
+      } catch (error) {
+        console.error('Language localization failed:', error);
+        alert('Failed to update post language. Please try again.');
+      } finally {
+        setIsLocalizingPosts(false);
+      }
+    };
 
     const handleGeneratePosts = async () => {
       if (isGenerating || generationRequestInFlightRef.current) return;
@@ -4440,6 +4603,8 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
 
       setIsGenerating(true);
       setGeneratedPosts([]);
+      englishBasePostsRef.current = {};
+      localizedPostsCacheRef.current = {};
       setActiveWeekTab(1);
       setGenerationStatus('Starting campaign generation...');
       setStep(5);
@@ -4453,6 +4618,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
         objective: objective || 'awareness',
         platforms,
         tone: contentTone || 'professional',
+        language: contentLanguage || 'English',
         aspectRatio: selectedAspectRatio || '1:1',
         keyMessages: platforms.map(p => `[${p.toUpperCase()} CONTENT FORMAT]\n${platformContents[p] || ''}`).join('\n\n---\n\n'),
         duration: campaignDuration || '1week',
@@ -4513,7 +4679,14 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                 } else if (currentEvent === 'generating') {
                   setGenerationStatus(data.message);
                 } else if (currentEvent === 'post') {
-                  setGeneratedPosts(prev => [...prev, { ...data, status: 'pending' }]);
+                  const streamedPost = { ...data, status: 'pending' };
+                  setGeneratedPosts(prev => [...prev, streamedPost]);
+                  if (streamedPost?.id) {
+                    englishBasePostsRef.current[streamedPost.id] = {
+                      caption: String(streamedPost.caption || '').trim(),
+                      hashtags: normalizeHashtagList(streamedPost.hashtags)
+                    };
+                  }
                 } else if (currentEvent === 'complete') {
                   setGenerationStatus('');
                 } else if (currentEvent === 'error') {
@@ -4539,7 +4712,18 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
     // Update a generated post
     const handleUpdatePost = (postId: string, updates: Partial<GeneratedPost>, closeEditor = false) => {
       setGeneratedPosts(prev => prev.map(post =>
-        post.id === postId ? { ...post, ...updates, status: updates.status || 'edited' } : post
+        post.id === postId
+          ? (() => {
+              const updatedPost = { ...post, ...updates, status: updates.status || 'edited' };
+              if (contentLanguage === 'English') {
+                englishBasePostsRef.current[postId] = {
+                  caption: String(updatedPost.caption || '').trim(),
+                  hashtags: normalizeHashtagList(updatedPost.hashtags)
+                };
+              }
+              return updatedPost;
+            })()
+          : post
       ));
       if (closeEditor) setEditingPostId(null);
     };
@@ -5012,6 +5196,26 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                 </div>
 
                                 <div>
+                                  <label className={labelClasses}>Post Language</label>
+                                  <p className={`text-xs mb-2 ${theme.textSecondary}`}>
+                                    Choose one language for captions, CTA, hashtags, and image text.
+                                  </p>
+                                  <select
+                                    value={contentLanguage}
+                                    onChange={(e) => handleContentLanguageChange(e.target.value)}
+                                    className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                                      isDarkMode ? 'bg-[#0d1117] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                    }`}
+                                  >
+                                    <option value="English">English</option>
+                                    <option value="Hindi">Hindi</option>
+                                    <option value="Tamil">Tamil</option>
+                                    <option value="Telugu">Telugu</option>
+                                    <option value="Malayalam">Malayalam</option>
+                                    <option value="Kannada">Kannada</option>
+                                  </select>
+                                </div>
+                                <div>
                                   <label className={labelClasses}>Aspect Ratio</label>
                                   <div className="grid grid-cols-6 gap-3 mt-2">
                                     {[
@@ -5334,9 +5538,9 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                 <div className={`p-4 rounded-xl border ${isDarkMode ? 'bg-[#161b22] border-slate-700/50' : 'bg-slate-50 border-slate-200'}`}>
                                   <h4 className={`font-bold ${theme.text} mb-3`}>ðŸ“‹ Campaign Summary</h4>
                                   <div className="grid grid-cols-2 gap-3 text-sm">
-                                    <div><span className={theme.textMuted}>Name:</span> <span className={theme.text}>{campaignName || 'â€”'}</span></div>
+                                    <div><span className={theme.textMuted}>Name:</span> <span className={theme.text}>{campaignName || '—'}</span></div>
                                     <div><span className={theme.textMuted}>Objective:</span> <span className={theme.text}>{objective}</span></div>
-                                    <div><span className={theme.textMuted}>Platforms:</span> <span className={theme.text}>{platforms.join(', ') || 'â€”'}</span></div>
+                                    <div><span className={theme.textMuted}>Platforms:</span> <span className={theme.text}>{platforms.join(', ') || '—'}</span></div>
                                     <div><span className={theme.textMuted}>Duration:</span> <span className={theme.text}>{campaignDuration === '2weeks' ? '2 Weeks' : '1 Week'}</span></div>
                                     <div><span className={theme.textMuted}>Total Posts:</span> <span className={theme.text}>{preferredDays.length * (campaignDuration === '2weeks' ? 2 : 1)}</span></div>
                                     <div><span className={theme.textMuted}>Target:</span> <span className={theme.text}>{targetAge}, {targetGender}</span></div>
@@ -5375,6 +5579,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                   )}
                                 </div>
 
+                                
                                 {/* Week Tabs (only for 2-week campaigns) */}
                                 {campaignDuration === '2weeks' && generatedPosts.length > 0 && (
                                   <div className="flex gap-2">
@@ -5571,7 +5776,7 @@ const CreateCampaignModal: React.FC<{ onClose: () => void; onSuccess: (c: Campai
                                                           const resp = await fetch(`${apiBaseUrl}/campaigns/generate-caption`, {
                                                             method: 'POST',
                                                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('authToken')}` },
-                                                            body: JSON.stringify({ platform: post.platform, imageDescription: post.imageDescription, campaignName, objective, tone: contentTone })
+                                                            body: JSON.stringify({ platform: post.platform, imageDescription: post.imageDescription, campaignName, objective, tone: contentTone, language: contentLanguage })
                                                           });
                                                           const data = await resp.json();
                                                           if (data.success) {
@@ -8402,3 +8607,4 @@ const UploadPublishModal: React.FC<UploadPublishModalProps> = ({ onClose, onSucc
 };
 
 export default Campaigns;
+
