@@ -2,10 +2,15 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_MODEL = 'fal-ai/ltx-2.3-22b/text-to-video';
-const IMAGE_TO_VIDEO_MODEL = 'fal-ai/ltx-2.3-22b/image-to-video';
-const DEFAULT_SEED = 149063119;
+const IMAGE_TO_VIDEO_MODEL = process.env.FAL_IMAGE_TO_VIDEO_MODEL || 'fal-ai/bytedance/seedance/v1/pro/image-to-video';
+const DEFAULT_SEED = Number.parseInt(String(process.env.FAL_VIDEO_SEED || '-1'), 10);
 const DEFAULT_NUM_FRAMES = 33;
-const VIDEO_SIZE = { width: 288, height: 512 };
+const VIDEO_SIZE = {
+  width: clamp(process.env.FAL_VIDEO_WIDTH || 576, 288, 1080),
+  height: clamp(process.env.FAL_VIDEO_HEIGHT || 1024, 512, 1920)
+};
+const FAL_VIDEO_RESOLUTION = String(process.env.FAL_VIDEO_RESOLUTION || '1080p').trim();
+const FAL_VIDEO_ASPECT_RATIO = String(process.env.FAL_VIDEO_ASPECT_RATIO || '9:16').trim();
 
 let falClientPromise = null;
 
@@ -16,7 +21,7 @@ function clamp(value, min, max) {
 }
 
 function getScenePrompt(scene = {}) {
-  return String(
+  const basePrompt = String(
     scene.video_prompt ||
       scene.videoPrompt ||
       scene.prompt ||
@@ -24,10 +29,33 @@ function getScenePrompt(scene = {}) {
       scene.title ||
       'Subtle cinematic motion for a short marketing video scene.'
   ).trim();
+
+  return [
+    basePrompt,
+    'Vertical 9:16 professional marketing video, high-detail 1080p look, sharp product details, clean edges, realistic materials, stable camera motion, natural lighting.',
+    'Use smooth cinematic motion with minimal shake. Keep faces, hands, product packaging, logos, and object geometry consistent from frame to frame.',
+    'Avoid pixelation, distortion, flicker, duplicated objects, warped text, noisy backgrounds, blur, compression artifacts, and low-resolution details.'
+  ].filter(Boolean).join(' ');
 }
 
 function getSceneImageUrl(scene = {}) {
   return String(scene.image_url || scene.imageUrl || '').trim();
+}
+
+function isSeedanceModel(model = '') {
+  return String(model || '').toLowerCase().includes('seedance');
+}
+
+function getSeedanceDuration(scene = {}) {
+  const duration = Number.parseInt(String(scene.durationSeconds || scene.duration || 5), 10);
+  return clamp(Number.isFinite(duration) ? duration : 5, 4, 12);
+}
+
+function getSeed(scene = {}) {
+  const sceneSeed = Number.parseInt(String(scene.seed || ''), 10);
+  if (Number.isFinite(sceneSeed)) return sceneSeed;
+  if (Number.isFinite(DEFAULT_SEED)) return DEFAULT_SEED;
+  return -1;
 }
 
 function getMimeType(filePath = '') {
@@ -114,19 +142,31 @@ async function generateVideoClip(scene = {}) {
   });
   const model = imageUrl ? IMAGE_TO_VIDEO_MODEL : DEFAULT_MODEL;
   const numFrames = clamp(scene.num_frames || scene.numFrames || DEFAULT_NUM_FRAMES, 25, 33);
-  const seed = Number.parseInt(String(scene.seed || DEFAULT_SEED), 10) || DEFAULT_SEED;
+  const seed = getSeed(scene);
+  const seedance = isSeedanceModel(model);
 
-  const input = {
-    prompt,
-    num_frames: numFrames,
-    video_size: VIDEO_SIZE,
-    fps: 25,
-    seed,
-    generate_audio: false,
-    use_multiscale: false
-  };
+  const input = seedance
+    ? {
+        prompt,
+        image_url: imageUrl,
+        aspect_ratio: FAL_VIDEO_ASPECT_RATIO,
+        resolution: FAL_VIDEO_RESOLUTION,
+        duration: String(getSeedanceDuration(scene)),
+        camera_fixed: false,
+        seed,
+        enable_safety_checker: true
+      }
+    : {
+        prompt,
+        num_frames: numFrames,
+        video_size: VIDEO_SIZE,
+        fps: 25,
+        seed,
+        generate_audio: false,
+        use_multiscale: true
+      };
 
-  if (imageUrl) {
+  if (imageUrl && !seedance) {
     input.image_url = imageUrl;
   }
 
@@ -145,9 +185,12 @@ async function generateVideoClip(scene = {}) {
     fal: {
       model,
       seed,
-      num_frames: numFrames,
-      width: VIDEO_SIZE.width,
-      height: VIDEO_SIZE.height
+      num_frames: seedance ? undefined : numFrames,
+      width: seedance ? undefined : VIDEO_SIZE.width,
+      height: seedance ? undefined : VIDEO_SIZE.height,
+      aspect_ratio: seedance ? FAL_VIDEO_ASPECT_RATIO : undefined,
+      resolution: seedance ? FAL_VIDEO_RESOLUTION : undefined,
+      duration: seedance ? getSeedanceDuration(scene) : undefined
     }
   };
 }

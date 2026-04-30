@@ -1,0 +1,440 @@
+{
+  "jobId": "494bf647-a4c7-4ddd-b72f-84902cd2dfcf",
+  "userId": "69c127ebf3d71c4d2070da39",
+  "createdAt": "2026-04-30T04:51:09.064Z",
+  "updatedAt": "2026-04-30T05:02:17.097Z",
+  "currentStep": 10,
+  "input": {
+    "description": "The modern premium running shoe features an ultra-lightweight, nitrogen-infused foam midsole for explosive energy return and a breathable, 3D-knit upper that provides a secure, \"disappearing\" fit for effortless miles.",
+    "durationSeconds": 30,
+    "sceneCount": 6,
+    "sourceImage": null,
+    "product": {
+      "_id": "69d49ae2059ce27bb254ef45",
+      "user": "69c127ebf3d71c4d2070da39",
+      "name": "Nike Running Shoes",
+      "price": 4999,
+      "currency": "INR",
+      "imageUrl": "https://images.unsplash.com/photo-1542291026-7eec264c27ff",
+      "description": "Comfortable sports shoes for daily running",
+      "stockStatus": "in-stock",
+      "stockQuantity": 40,
+      "category": "Footwear",
+      "tags": [
+        "shoes",
+        "nike",
+        "sports"
+      ],
+      "createdAt": "2026-04-07T05:49:22.181Z",
+      "updatedAt": "2026-04-07T05:49:22.182Z",
+      "__v": 0
+    },
+    "productId": "69d49ae2059ce27bb254ef45"
+  },
+  "prompt": {
+    "promptText": "The modern premium running shoe features an ultra-lightweight, nitrogen-infused foam midsole for explosive energy return and a breathable, 3D-knit upper that provides a secure, \"disappearing\" fit for effortless miles.\nProduct: Nike Running Shoes\nDetails: Comfortable sports shoes for daily running",
+    "structuredPrompt": "The modern premium running shoe features an ultra-lightweight, nitrogen-infused foam midsole for explosive energy return and a breathable, 3D-knit upper that provides a secure, \"disappearing\" fit for effortless miles.\nProduct: Nike Running Shoes\nDetails: Comfortable sports shoes for daily running",
+    "creativeDirection": {
+      "targetAudience": "general audience",
+      "tone": "professional",
+      "visualStyle": "clean cinematic vertical ad style",
+      "cta": "Learn more"
+    },
+    "generatedAt": "2026-04-30T04:51:43.992Z",
+    "edited": true,
+    "editedAt": "2026-04-30T04:52:47.997Z"
+  },
+  "scenes": {
+    "sceneData": [
+      {
+        "index": 1,
+        "sceneId": "scene_1",
+        "title": "Scene 1",
+        "durationSeconds": 5,
+        "startSec": 0,
+        "endSec": 5,
+        "imagePrompt": "The modern premium running shoe features an. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "The modern premium running shoe features an. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "The modern premium running shoe features an",
+        "onScreenText": "The modern premium running shoe features an"
+      },
+      {
+        "index": 2,
+        "sceneId": "scene_2",
+        "title": "Scene 2",
+        "durationSeconds": 5,
+        "startSec": 5,
+        "endSec": 10,
+        "imagePrompt": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy",
+        "onScreenText": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy"
+      },
+      {
+        "index": 3,
+        "sceneId": "scene_3",
+        "title": "Scene 3",
+        "durationSeconds": 5,
+        "startSec": 10,
+        "endSec": 15,
+        "imagePrompt": "return and a breathable, 3D-knit upper that. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "return and a breathable, 3D-knit upper that. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "return and a breathable, 3D-knit upper that",
+        "onScreenText": "return and a breathable, 3D-knit upper that"
+      },
+      {
+        "index": 4,
+        "sceneId": "scene_4",
+        "title": "Scene 4",
+        "durationSeconds": 5,
+        "startSec": 15,
+        "endSec": 20,
+        "imagePrompt": "provides a secure, \"disappearing\" fit for effortless. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "provides a secure, \"disappearing\" fit for effortless. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "provides a secure, \"disappearing\" fit for effortless",
+        "onScreenText": "provides a secure, \"disappearing\" fit for effortless"
+      },
+      {
+        "index": 5,
+        "sceneId": "scene_5",
+        "title": "Scene 5",
+        "durationSeconds": 5,
+        "startSec": 20,
+        "endSec": 25,
+        "imagePrompt": "miles. Product: Nike Running Shoes Details: Comfortable. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "miles. Product: Nike Running Shoes Details: Comfortable. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "miles. Product: Nike Running Shoes Details: Comfortable",
+        "onScreenText": "miles. Product: Nike Running Shoes Details: Comfortable"
+      },
+      {
+        "index": 6,
+        "sceneId": "scene_6",
+        "title": "Scene 6",
+        "durationSeconds": 5,
+        "startSec": 25,
+        "endSec": 30,
+        "imagePrompt": "sports shoes for daily running. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "sports shoes for daily running. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "sports shoes for daily running",
+        "onScreenText": "sports shoes for daily running"
+      }
+    ],
+    "voiceScript": "The modern premium running shoe features an ultra-lightweight, nitrogen-infused foam midsole for explosive energy return and a breathable, 3D-knit upper that provides a secure, \"disappearing\" fit for effortless miles. Product: Nike Running Shoes Details: Comfortable sports shoes for daily running",
+    "thumbnailPrompt": "The modern premium running shoe features an ultra-lightweight, nitrogen-infused foam midsole for explosive energy return and a breathable, 3D-knit upper that provides a secure, \"disappearing\" fit for effortless miles.\nProduct: Nike Running Shoes\nDetails: Comfortable sports shoes for daily running. Create an attention-grabbing vertical-video thumbnail.",
+    "globalVisualStyle": "Cinematic product-focused vertical ad, crisp details, stable motion, cohesive color palette, consistent lighting."
+  },
+  "images": {
+    "sceneData": [
+      {
+        "index": 1,
+        "sceneId": "scene_1",
+        "title": "Scene 1",
+        "durationSeconds": 5,
+        "startSec": 0,
+        "endSec": 5,
+        "imagePrompt": "The modern premium running shoe features an. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "The modern premium running shoe features an. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "The modern premium running shoe features an",
+        "onScreenText": "The modern premium running shoe features an",
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_1.jpg"
+      },
+      {
+        "index": 2,
+        "sceneId": "scene_2",
+        "title": "Scene 2",
+        "durationSeconds": 5,
+        "startSec": 5,
+        "endSec": 10,
+        "imagePrompt": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy",
+        "onScreenText": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy",
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_2.jpg"
+      },
+      {
+        "index": 3,
+        "sceneId": "scene_3",
+        "title": "Scene 3",
+        "durationSeconds": 5,
+        "startSec": 10,
+        "endSec": 15,
+        "imagePrompt": "return and a breathable, 3D-knit upper that. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "return and a breathable, 3D-knit upper that. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "return and a breathable, 3D-knit upper that",
+        "onScreenText": "return and a breathable, 3D-knit upper that",
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_3.jpg"
+      },
+      {
+        "index": 4,
+        "sceneId": "scene_4",
+        "title": "Scene 4",
+        "durationSeconds": 5,
+        "startSec": 15,
+        "endSec": 20,
+        "imagePrompt": "provides a secure, \"disappearing\" fit for effortless. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "provides a secure, \"disappearing\" fit for effortless. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "provides a secure, \"disappearing\" fit for effortless",
+        "onScreenText": "provides a secure, \"disappearing\" fit for effortless",
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_4.jpg"
+      },
+      {
+        "index": 5,
+        "sceneId": "scene_5",
+        "title": "Scene 5",
+        "durationSeconds": 5,
+        "startSec": 20,
+        "endSec": 25,
+        "imagePrompt": "miles. Product: Nike Running Shoes Details: Comfortable. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "miles. Product: Nike Running Shoes Details: Comfortable. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "miles. Product: Nike Running Shoes Details: Comfortable",
+        "onScreenText": "miles. Product: Nike Running Shoes Details: Comfortable",
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_5.jpg"
+      },
+      {
+        "index": 6,
+        "sceneId": "scene_6",
+        "title": "Scene 6",
+        "durationSeconds": 5,
+        "startSec": 25,
+        "endSec": 30,
+        "imagePrompt": "sports shoes for daily running. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "sports shoes for daily running. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "voiceLine": "sports shoes for daily running",
+        "onScreenText": "sports shoes for daily running",
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_6.jpg"
+      }
+    ],
+    "generatedAt": "2026-04-30T04:55:32.285Z"
+  },
+  "clips": {
+    "sceneData": [
+      {
+        "index": 1,
+        "sceneId": "scene_1",
+        "title": "Scene 1",
+        "durationSeconds": 5,
+        "startSec": 0,
+        "endSec": 5,
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_1.jpg",
+        "image_url": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_1.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a9849b7/xK2MdxVjXLv_RcRcBAWrE_video.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a9849b7/xK2MdxVjXLv_RcRcBAWrE_video.mp4",
+        "voiceLine": "The modern premium running shoe features an",
+        "onScreenText": "The modern premium running shoe features an",
+        "imagePrompt": "The modern premium running shoe features an. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "The modern premium running shoe features an. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "clipUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_1.mp4",
+        "fal": {
+          "model": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+          "seed": -1,
+          "aspect_ratio": "9:16",
+          "resolution": "1080p",
+          "duration": 5
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a9849b7/xK2MdxVjXLv_RcRcBAWrE_video.mp4"
+      },
+      {
+        "index": 2,
+        "sceneId": "scene_2",
+        "title": "Scene 2",
+        "durationSeconds": 5,
+        "startSec": 5,
+        "endSec": 10,
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_2.jpg",
+        "image_url": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_2.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a9849b5/DLuPPaUdvvGKE1yKY4Nt6_video.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a9849b5/DLuPPaUdvvGKE1yKY4Nt6_video.mp4",
+        "voiceLine": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy",
+        "onScreenText": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy",
+        "imagePrompt": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "ultra-lightweight, nitrogen-infused foam midsole for explosive energy. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "clipUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_2.mp4",
+        "fal": {
+          "model": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+          "seed": -1,
+          "aspect_ratio": "9:16",
+          "resolution": "1080p",
+          "duration": 5
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a9849b5/DLuPPaUdvvGKE1yKY4Nt6_video.mp4"
+      },
+      {
+        "index": 3,
+        "sceneId": "scene_3",
+        "title": "Scene 3",
+        "durationSeconds": 5,
+        "startSec": 10,
+        "endSec": 15,
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_3.jpg",
+        "image_url": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_3.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a9849b5/vAoMT8BBdpUOS9cgQ9jLz_video.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a9849b5/vAoMT8BBdpUOS9cgQ9jLz_video.mp4",
+        "voiceLine": "return and a breathable, 3D-knit upper that",
+        "onScreenText": "return and a breathable, 3D-knit upper that",
+        "imagePrompt": "return and a breathable, 3D-knit upper that. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "return and a breathable, 3D-knit upper that. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "clipUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_3.mp4",
+        "fal": {
+          "model": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+          "seed": -1,
+          "aspect_ratio": "9:16",
+          "resolution": "1080p",
+          "duration": 5
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a9849b5/vAoMT8BBdpUOS9cgQ9jLz_video.mp4"
+      },
+      {
+        "index": 4,
+        "sceneId": "scene_4",
+        "title": "Scene 4",
+        "durationSeconds": 5,
+        "startSec": 15,
+        "endSec": 20,
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_4.jpg",
+        "image_url": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_4.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a9849b4/IuQHRVWi6MijXAemDS-ny_video.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a9849b4/IuQHRVWi6MijXAemDS-ny_video.mp4",
+        "voiceLine": "provides a secure, \"disappearing\" fit for effortless",
+        "onScreenText": "provides a secure, \"disappearing\" fit for effortless",
+        "imagePrompt": "provides a secure, \"disappearing\" fit for effortless. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "provides a secure, \"disappearing\" fit for effortless. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "clipUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_4.mp4",
+        "fal": {
+          "model": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+          "seed": -1,
+          "aspect_ratio": "9:16",
+          "resolution": "1080p",
+          "duration": 5
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a9849b4/IuQHRVWi6MijXAemDS-ny_video.mp4"
+      },
+      {
+        "index": 5,
+        "sceneId": "scene_5",
+        "title": "Scene 5",
+        "durationSeconds": 5,
+        "startSec": 20,
+        "endSec": 25,
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_5.jpg",
+        "image_url": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_5.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a9849b3/wn0ToomVGiiQABLE5HXFZ_video.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a9849b3/wn0ToomVGiiQABLE5HXFZ_video.mp4",
+        "voiceLine": "miles. Product: Nike Running Shoes Details: Comfortable",
+        "onScreenText": "miles. Product: Nike Running Shoes Details: Comfortable",
+        "imagePrompt": "miles. Product: Nike Running Shoes Details: Comfortable. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "miles. Product: Nike Running Shoes Details: Comfortable. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "clipUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_5.mp4",
+        "fal": {
+          "model": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+          "seed": -1,
+          "aspect_ratio": "9:16",
+          "resolution": "1080p",
+          "duration": 5
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a9849b3/wn0ToomVGiiQABLE5HXFZ_video.mp4"
+      },
+      {
+        "index": 6,
+        "sceneId": "scene_6",
+        "title": "Scene 6",
+        "durationSeconds": 5,
+        "startSec": 25,
+        "endSec": 30,
+        "imageUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_6.jpg",
+        "image_url": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/images/scene_6.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a9849b6/o5qFlaW0t-sQIb7JCwDti_video.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a9849b6/o5qFlaW0t-sQIb7JCwDti_video.mp4",
+        "voiceLine": "sports shoes for daily running",
+        "onScreenText": "sports shoes for daily running",
+        "imagePrompt": "sports shoes for daily running. Feature Nike Running Shoes naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "sports shoes for daily running. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.",
+        "clipUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_6.mp4",
+        "fal": {
+          "model": "fal-ai/bytedance/seedance/v1/pro/image-to-video",
+          "seed": -1,
+          "aspect_ratio": "9:16",
+          "resolution": "1080p",
+          "duration": 5
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a9849b6/o5qFlaW0t-sQIb7JCwDti_video.mp4"
+      }
+    ],
+    "clipUrls": [
+      "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_1.mp4",
+      "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_2.mp4",
+      "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_3.mp4",
+      "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_4.mp4",
+      "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_5.mp4",
+      "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_6.mp4"
+    ],
+    "generatedAt": "2026-04-30T04:57:33.950Z"
+  },
+  "audio": {
+    "config": {
+      "enabled": true,
+      "mode": "auto",
+      "languageCode": "hi",
+      "tone": "luxury",
+      "voiceGender": "male",
+      "voiceVolume": 0.6,
+      "musicVolume": 1.1,
+      "manualAudioData": "",
+      "manualAudioUrl": "",
+      "soundEffectUrls": []
+    },
+    "tracks": {
+      "manualUrl": null,
+      "voiceUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/audio/voice_track.mp3",
+      "backgroundUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/audio/background_track.mp3",
+      "soundEffectUrls": []
+    },
+    "generatedAt": "2026-04-30T04:58:49.326Z"
+  },
+  "mix": {
+    "finalAudioUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/final/final_audio.mp3",
+    "mixedAt": "2026-04-30T04:58:58.321Z"
+  },
+  "merge": {
+    "finalVideoUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/final/final_video.mp4",
+    "finalOutputUrl": "http://localhost:5000/generated-media/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/final/final_output.mp4",
+    "subtitlesUrl": null,
+    "mergedAt": "2026-04-30T05:00:22.593Z"
+  },
+  "content": {
+    "thumbnailUrl": "https://res.cloudinary.com/dhe8jowyt/image/upload/v1777525279/nebula-campaign-posts/xrra8620xstiktabvrya.jpg",
+    "caption": "Experience explosive energy with every stride in your new Nike running shoes! Featuring ultra-lightweight, nitrogen-infused foam and a breathable 3D-knit upper for a fit so secure, it disappears. Elevate your daily runs.",
+    "hashtags": [
+      "#NikeRunning",
+      "#RunningShoes",
+      "#EnergyReturn",
+      "#LightweightShoes",
+      "#3DKnit",
+      "#EffortlessMiles",
+      "#DailyRunning",
+      "#PerformanceRunning",
+      "#RunHappy",
+      "#NewKicks"
+    ],
+    "generatedAt": "2026-04-30T05:01:55.377Z"
+  },
+  "platform": {
+    "selectedPlatforms": [
+      "instagram",
+      "facebook"
+    ]
+  },
+  "schedule": {
+    "publishNow": false,
+    "scheduledAt": "2026-04-30T06:00:00.000Z",
+    "status": "scheduled",
+    "updatedAt": "2026-04-30T05:02:17.096Z"
+  },
+  "outputs": {
+    "directories": {
+      "images": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\494bf647-a4c7-4ddd-b72f-84902cd2dfcf\\images",
+      "clips": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\494bf647-a4c7-4ddd-b72f-84902cd2dfcf\\clips",
+      "audio": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\494bf647-a4c7-4ddd-b72f-84902cd2dfcf\\audio",
+      "final": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\494bf647-a4c7-4ddd-b72f-84902cd2dfcf\\final"
+    }
+  }
+}

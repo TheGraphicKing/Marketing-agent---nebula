@@ -3192,6 +3192,10 @@ export const videoGenerationAPI = {
     return apiCall('/video-generation/drafts', { method: 'GET' }, true);
   },
 
+  deleteDraft: async (jobId: string): Promise<any> => {
+    return apiCall(`/video-generation/draft/${encodeURIComponent(jobId)}`, { method: 'DELETE' }, true);
+  },
+
   generatePrompt: async (payload: {
     jobId: string;
     promptText?: string;

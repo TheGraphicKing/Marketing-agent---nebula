@@ -9,7 +9,9 @@ import {
   Music2,
   Sparkles,
   RefreshCcw,
-  Mic
+  Mic,
+  ArrowLeft,
+  Trash2
 } from 'lucide-react';
 import { getThemeClasses, useTheme } from '../context/ThemeContext';
 import { inventoryAPI, videoGenerationAPI } from '../services/api';
@@ -59,6 +61,8 @@ const ReelGenerator: React.FC = () => {
   const [videoDrafts, setVideoDrafts] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<VideoStatusFilter>('all');
   const [showWizard, setShowWizard] = useState(false);
+  const [deletingDraftId, setDeletingDraftId] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -104,8 +108,13 @@ const ReelGenerator: React.FC = () => {
     [products, selectedProductId]
   );
 
-  const hasSceneImages = scenes.some((scene) => scene.imageUrl);
-  const hasSceneClips = scenes.some((scene) => scene.clipUrl);
+  const hasCompleteScenes = scenes.length > 0 && scenes.every((scene) => !!(
+    String(scene.title || '').trim()
+    && String(scene.imagePrompt || '').trim()
+    && String(scene.videoPrompt || '').trim()
+  ));
+  const hasSceneImages = scenes.length > 0 && scenes.every((scene) => scene.imageUrl);
+  const hasSceneClips = scenes.length > 0 && scenes.every((scene) => scene.clipUrl);
   const filteredVideoDrafts = useMemo(
     () => videoDrafts.filter((item) => statusFilter === 'all' || item.status === statusFilter),
     [videoDrafts, statusFilter]
@@ -253,6 +262,10 @@ const ReelGenerator: React.FC = () => {
   const step1Next = async () => withBusy(async () => {
     if (!description.trim()) {
       throw new Error('Description is required');
+    }
+    if (jobId) {
+      setStep(2);
+      return;
     }
     const response = await videoGenerationAPI.createDraft({
       description: description.trim(),
@@ -424,7 +437,10 @@ const ReelGenerator: React.FC = () => {
     setDraft(response?.draft || draft);
     await refreshDraft(jobId);
     await loadVideoDrafts();
-    setStep(11);
+    setSuccessMessage(response?.message || (publishNow ? 'Post queued for immediate publish.' : 'Post scheduled successfully.'));
+    setStatusFilter(publishNow ? 'posted' : 'scheduled');
+    setShowWizard(false);
+    setStep(1);
   });
 
   const togglePlatform = (platform: string) => {
@@ -458,6 +474,7 @@ const ReelGenerator: React.FC = () => {
     setScheduleDate('');
     setScheduleTime('');
     setError('');
+    setSuccessMessage('');
   };
 
   const openVideoDraft = async (id: string) => {
@@ -465,6 +482,30 @@ const ReelGenerator: React.FC = () => {
     setJobId(id);
     await refreshDraft(id);
     setStep(11);
+  };
+
+  const deleteVideoDraft = async (id: string, title = 'this AI video') => {
+    if (!id || deletingDraftId) return;
+    const ok = window.confirm(`Delete "${title}"? This will remove the draft and generated video files.`);
+    if (!ok) return;
+
+    setDeletingDraftId(id);
+    setError('');
+    try {
+      const response = await videoGenerationAPI.deleteDraft(id);
+      if (!response?.success) {
+        throw new Error(response?.message || 'Failed to delete AI video');
+      }
+      setVideoDrafts((prev) => prev.filter((item) => item.jobId !== id));
+      if (jobId === id) {
+        resetWizard();
+        setShowWizard(false);
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete AI video');
+    } finally {
+      setDeletingDraftId('');
+    }
   };
 
   const statusLabel = (status: string) => {
@@ -481,6 +522,25 @@ const ReelGenerator: React.FC = () => {
     return isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300';
   };
 
+  const primaryButtonClass = (disabled: boolean) => `px-6 py-3 rounded-xl font-bold transition-colors ${
+    disabled
+      ? (isDarkMode
+        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+        : 'bg-slate-200 text-slate-400 cursor-not-allowed')
+      : 'bg-[#ffcc29] text-black hover:bg-[#f0bd18]'
+  }`;
+
+  const canStep1Next = !busy && !!description.trim();
+  const canStep2Next = !busy && hasCompleteScenes;
+  const canStep3Next = !busy && hasSceneImages;
+  const canStep4Next = !busy && hasSceneClips;
+  const canStep5Next = !busy && (!audioEnabled || audioMode !== 'upload' || !!manualVoiceData);
+  const canStep6Next = !busy && (!audioEnabled || !!finalAudioUrl);
+  const canStep7Next = !busy && !!(finalOutputUrl || finalVideoUrl);
+  const canStep8Next = !busy && !!caption.trim();
+  const canStep9Next = !busy && selectedPlatforms.length > 0;
+  const canSchedule = !busy && !!scheduleDate && !!scheduleTime;
+
   return (
     <div className={`p-6 min-h-screen ${isDarkMode ? 'bg-[#070A12]' : 'bg-slate-50'}`}>
       <div className="max-w-6xl mx-auto space-y-6">
@@ -488,6 +548,16 @@ const ReelGenerator: React.FC = () => {
           <h1 className={`text-2xl font-bold ${theme.text}`}>AI Video Manager</h1>
           <p className={theme.textSecondary}>Create, schedule, and track your AI videos in one place.</p>
         </div>
+
+        {successMessage && (
+          <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+            isDarkMode
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}>
+            {successMessage}
+          </div>
+        )}
 
         <div className={`border-b overflow-x-auto ${isDarkMode ? 'border-slate-700/50' : 'border-slate-200'}`}>
           <div className="flex space-x-6 min-w-max">
@@ -511,6 +581,7 @@ const ReelGenerator: React.FC = () => {
                     } else {
                       setShowWizard(false);
                       setStatusFilter(tab.id as VideoStatusFilter);
+                      setSuccessMessage('');
                     }
                   }}
                   className={`pb-4 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
@@ -532,21 +603,47 @@ const ReelGenerator: React.FC = () => {
           {filteredVideoDrafts.length ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
               {filteredVideoDrafts.map((item) => (
-                <button
+                <div
                   key={item.jobId}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => openVideoDraft(item.jobId)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openVideoDraft(item.jobId);
+                    }
+                  }}
                   className={`text-left rounded-2xl border overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${
                     isDarkMode ? 'bg-[#161b22] border-slate-700/50 hover:border-[#ffcc29]/50' : 'bg-white border-slate-200 hover:border-[#ffcc29]/60'
                   }`}
                 >
-                  {item.thumbnailUrl ? (
-                    <img src={item.thumbnailUrl} alt={item.title} className="w-full h-44 object-cover" />
-                  ) : (
-                    <div className={`w-full h-44 flex items-center justify-center ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
-                      <Film className="w-8 h-8 text-slate-500" />
-                    </div>
-                  )}
+                  <div className="relative">
+                    {item.thumbnailUrl ? (
+                      <img src={item.thumbnailUrl} alt={item.title} className="w-full h-44 object-cover" />
+                    ) : (
+                      <div className={`w-full h-44 flex items-center justify-center ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                        <Film className="w-8 h-8 text-slate-500" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteVideoDraft(item.jobId, item.title);
+                      }}
+                      disabled={deletingDraftId === item.jobId}
+                      title="Delete AI video"
+                      aria-label="Delete AI video"
+                      className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/65 text-white flex items-center justify-center transition hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {deletingDraftId === item.jobId ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                   <div className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <p
@@ -568,7 +665,7 @@ const ReelGenerator: React.FC = () => {
                       <p className={`text-xs ${theme.textSecondary}`}>Scheduled for {new Date(item.scheduledAt).toLocaleString()}</p>
                     )}
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           ) : (
@@ -613,6 +710,22 @@ const ReelGenerator: React.FC = () => {
             })}
           </div>
         </div>
+
+        {step > 1 && step < 11 && (
+          <button
+            type="button"
+            onClick={() => setStep((current) => Math.max(1, current - 1))}
+            disabled={busy}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors ${
+              busy
+                ? (isDarkMode ? 'border-slate-800 text-slate-600 cursor-not-allowed' : 'border-slate-200 text-slate-400 cursor-not-allowed')
+                : (isDarkMode ? 'border-slate-600 text-slate-200 hover:border-[#ffcc29] hover:text-[#ffcc29]' : 'border-slate-300 text-slate-700 hover:border-[#ffcc29] hover:text-[#b88f00]')
+            }`}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+        )}
 
         {error && (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -671,7 +784,7 @@ const ReelGenerator: React.FC = () => {
               </select>
             </div>
 
-            <button onClick={step1Next} disabled={busy} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">
+            <button onClick={step1Next} disabled={!canStep1Next} className={primaryButtonClass(!canStep1Next)}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Next'}
             </button>
           </div>
@@ -709,7 +822,7 @@ const ReelGenerator: React.FC = () => {
               ))}
             </div>
 
-            <button onClick={saveStep2EditsAndNext} disabled={busy || !scenes.length} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">
+            <button onClick={saveStep2EditsAndNext} disabled={!canStep2Next} className={primaryButtonClass(!canStep2Next)}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Next'}
             </button>
           </div>
@@ -743,7 +856,7 @@ const ReelGenerator: React.FC = () => {
                 </div>
               ))}
             </div>
-            <button onClick={() => setStep(4)} disabled={busy || !hasSceneImages} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">Next</button>
+            <button onClick={() => setStep(4)} disabled={!canStep3Next} className={primaryButtonClass(!canStep3Next)}>Next</button>
           </div>
         )}
 
@@ -774,7 +887,7 @@ const ReelGenerator: React.FC = () => {
                 </div>
               ))}
             </div>
-            <button onClick={() => setStep(5)} disabled={busy || !hasSceneClips} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">Next</button>
+            <button onClick={() => setStep(5)} disabled={!canStep4Next} className={primaryButtonClass(!canStep4Next)}>Next</button>
           </div>
         )}
 
@@ -858,7 +971,7 @@ const ReelGenerator: React.FC = () => {
               </div>
             )}
 
-            <button onClick={generateAudioTracks} disabled={busy} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">
+            <button onClick={generateAudioTracks} disabled={!canStep5Next} className={primaryButtonClass(!canStep5Next)}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Next'}
             </button>
           </div>
@@ -888,32 +1001,36 @@ const ReelGenerator: React.FC = () => {
               )}
             </div>
 
-            <button onClick={mixAudio} disabled={busy} className="px-4 py-2 rounded-xl border border-[#ffcc29] text-[#ffcc29] font-semibold">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Mix Audio'}
-            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <button onClick={mixAudio} disabled={busy} className="px-5 py-3 rounded-xl border border-[#ffcc29] text-[#ffcc29] font-semibold disabled:opacity-60">
+                {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Mix Audio'}
+              </button>
+              <button onClick={() => setStep(7)} disabled={!canStep6Next} className={primaryButtonClass(!canStep6Next)}>Next</button>
+            </div>
             {finalAudioUrl && (
               <div className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-xl p-3`}>
                 <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>final_audio.mp3</p>
                 <audio controls src={finalAudioUrl} className="w-full mt-2" />
               </div>
             )}
-            <button onClick={() => setStep(7)} disabled={busy || (!finalAudioUrl && audioEnabled)} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">Next</button>
           </div>
         )}
 
         {step === 7 && (
           <div className={`${panelClass} p-6 space-y-4`}>
             <h2 className={`font-bold text-lg ${theme.text}`}>Step 7: Video + Audio Merge</h2>
-            <button onClick={mergeVideo} disabled={busy} className="px-4 py-2 rounded-xl border border-[#ffcc29] text-[#ffcc29] font-semibold">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Merge Video + Audio'}
-            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <button onClick={mergeVideo} disabled={busy} className="px-5 py-3 rounded-xl border border-[#ffcc29] text-[#ffcc29] font-semibold disabled:opacity-60">
+                {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Merge Video + Audio'}
+              </button>
+              <button onClick={() => setStep(8)} disabled={!canStep7Next} className={primaryButtonClass(!canStep7Next)}>Next</button>
+            </div>
             {(finalOutputUrl || finalVideoUrl) && (
               <div>
                 <video controls src={finalOutputUrl || finalVideoUrl} className="w-full rounded-lg max-h-[520px]" />
                 <p className={`text-xs mt-2 ${theme.textSecondary}`}>{finalOutputUrl ? 'final_output.mp4' : 'final_video.mp4'}</p>
               </div>
             )}
-            <button onClick={() => setStep(8)} disabled={busy || (!finalOutputUrl && !finalVideoUrl)} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">Next</button>
           </div>
         )}
 
@@ -945,7 +1062,7 @@ const ReelGenerator: React.FC = () => {
                 </div>
               </div>
             </div>
-            <button onClick={() => setStep(9)} disabled={busy || !caption} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">Next</button>
+            <button onClick={() => setStep(9)} disabled={!canStep8Next} className={primaryButtonClass(!canStep8Next)}>Next</button>
           </div>
         )}
 
@@ -972,7 +1089,7 @@ const ReelGenerator: React.FC = () => {
                 );
               })}
             </div>
-            <button onClick={() => setStep(10)} disabled={busy || !selectedPlatforms.length} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">Next</button>
+            <button onClick={() => setStep(10)} disabled={!canStep9Next} className={primaryButtonClass(!canStep9Next)}>Next</button>
           </div>
         )}
 
@@ -990,7 +1107,7 @@ const ReelGenerator: React.FC = () => {
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => schedulePost(false)} disabled={busy} className="px-6 py-3 rounded-xl bg-[#ffcc29] text-black font-bold">
+              <button onClick={() => schedulePost(false)} disabled={!canSchedule} className={primaryButtonClass(!canSchedule)}>
                 {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Post / Schedule'}
               </button>
               <button onClick={() => schedulePost(true)} disabled={busy} className="px-6 py-3 rounded-xl border border-slate-500 text-slate-200 font-semibold">

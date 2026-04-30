@@ -1,0 +1,6 @@
+file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_1.mp4'
+file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_2.mp4'
+file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_3.mp4'
+file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_4.mp4'
+file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_5.mp4'
+file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/clips/scene_6.mp4'

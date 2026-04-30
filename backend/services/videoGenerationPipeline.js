@@ -11,6 +11,8 @@ const { generateVideoClip } = require('./videoService');
 
 const STORAGE_ROOT = path.resolve(__dirname, '../storage/ai-videos');
 const VIDEO_TARGET = { width: 1080, height: 1920, fps: 30 };
+const VIDEO_ENCODE_PRESET = String(process.env.AI_VIDEO_ENCODE_PRESET || 'slow');
+const VIDEO_ENCODE_CRF = String(process.env.AI_VIDEO_ENCODE_CRF || '16');
 const MAX_SCENES = 10;
 const MIN_SCENES = 1;
 const DEFAULT_DURATION_SECONDS = 60;
@@ -243,7 +245,7 @@ function buildFallbackSceneSkeleton({
       startSec,
       endSec,
       imagePrompt: `${chunk}. ${productLine} Keep composition vertical 9:16 and premium.`,
-      videoPrompt: `${chunk}. Add subtle camera motion (slow push-in, pan, reveal).`,
+      videoPrompt: `${chunk}. Add subtle stable camera motion (slow push-in, pan, reveal). Keep details sharp and avoid warped objects, flicker, pixelation, and noisy artifacts.`,
       voiceLine: chunk,
       onScreenText: chunk.slice(0, 90)
     };
@@ -471,7 +473,7 @@ Rules:
     const thumbnailPrompt = String(parsed?.thumbnailPrompt || '').trim()
       || `${input.description}. Create an attention-grabbing vertical-video thumbnail.`;
     const globalVisualStyle = String(parsed?.globalVisualStyle || '').trim()
-      || 'Cinematic product-focused vertical ad, cohesive color palette, consistent lighting.';
+      || 'Cinematic product-focused vertical ad, crisp details, stable motion, cohesive color palette, consistent lighting.';
 
     return {
       sceneCount: effectiveSceneCount,
@@ -486,7 +488,7 @@ Rules:
     return {
       sceneCount,
       totalDurationSeconds: input.durationSeconds,
-      globalVisualStyle: 'Premium vertical ad style with consistent framing and lighting.',
+      globalVisualStyle: 'Premium vertical ad style with crisp details, clean product edges, stable motion, consistent framing and lighting.',
       thumbnailPrompt: `${input.description}. Design a compelling thumbnail for social video.`,
       voiceScript: input.description,
       scenes: fallbackScenes
@@ -624,8 +626,8 @@ async function createSceneVideoClip({ scene, outputPath }) {
     '-r', String(VIDEO_TARGET.fps),
     '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p',
-    '-preset', 'veryfast',
-    '-crf', '23',
+    '-preset', VIDEO_ENCODE_PRESET,
+    '-crf', VIDEO_ENCODE_CRF,
     '-an',
     outputPath
   ];
@@ -651,8 +653,8 @@ async function normalizeSceneVideoClip({ inputPath, outputPath, durationSeconds 
     '-r', String(VIDEO_TARGET.fps),
     '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p',
-    '-preset', 'veryfast',
-    '-crf', '20',
+    '-preset', VIDEO_ENCODE_PRESET,
+    '-crf', VIDEO_ENCODE_CRF,
     '-an',
     outputPath
   ];
@@ -732,8 +734,8 @@ async function mergeSceneVideos({
     '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p',
     '-r', String(VIDEO_TARGET.fps),
-    '-preset', 'veryfast',
-    '-crf', '22',
+    '-preset', VIDEO_ENCODE_PRESET,
+    '-crf', VIDEO_ENCODE_CRF,
     '-an',
     outputPath
   ];
@@ -1110,15 +1112,15 @@ async function mergeFinalOutput({
     args.push(
       '-vf', `subtitles='${ffmpegSubtitlePath(subtitles.path)}'`,
       '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-crf', '23'
+      '-preset', VIDEO_ENCODE_PRESET,
+      '-crf', VIDEO_ENCODE_CRF
     );
   } else {
     args.push('-c:v', 'copy');
   }
 
   if (mergedAudio?.path) {
-    args.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
+    args.push('-af', 'apad', '-c:a', 'aac', '-b:a', '192k', '-shortest');
   } else {
     args.push('-an');
   }

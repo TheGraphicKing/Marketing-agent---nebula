@@ -19,6 +19,7 @@ const {
   createDraft,
   listDraftsForUser,
   loadDraftForUser,
+  deleteDraftForUser,
   updateDraft,
   buildMediaUrl,
   toUserId,
@@ -369,6 +370,20 @@ router.get('/draft/:jobId', protect, async (req, res) => {
     return res.json({ success: true, draft });
   } catch (error) {
     return responseError(res, error, 'Failed to load draft');
+  }
+});
+
+router.delete('/draft/:jobId', protect, async (req, res) => {
+  try {
+    const userId = toUserId(req.user);
+    const draft = await deleteDraftForUser(req.params.jobId, userId);
+    return res.json({
+      success: true,
+      message: 'AI video draft deleted',
+      jobId: draft.jobId
+    });
+  } catch (error) {
+    return responseError(res, error, 'Failed to delete draft');
   }
 });
 

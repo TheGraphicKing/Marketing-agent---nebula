@@ -92,6 +92,20 @@ async function loadDraftForUser(jobId, userId = null) {
   return draft;
 }
 
+async function deleteDraftForUser(jobId, userId = null) {
+  const safeJobId = sanitizeSegment(jobId);
+  const draft = await loadDraftForUser(safeJobId, userId);
+  const root = path.resolve(STORAGE_ROOT);
+  const target = path.resolve(path.join(root, safeJobId));
+
+  if (target === root || !target.startsWith(`${root}${path.sep}`)) {
+    throw new Error('Invalid draft path');
+  }
+
+  await fs.promises.rm(target, { recursive: true, force: true });
+  return draft;
+}
+
 function resolveDraftStatus(draft = {}) {
   const scheduleStatus = String(draft?.schedule?.status || '').toLowerCase();
   if (scheduleStatus.includes('published')) return 'posted';
@@ -242,6 +256,7 @@ module.exports = {
   writeDraft,
   readDraft,
   loadDraftForUser,
+  deleteDraftForUser,
   updateDraft,
   saveDataUrlToJob,
   createDraft

@@ -1,0 +1,438 @@
+{
+  "jobId": "aa7f42d4-09d6-4493-b5ac-7d64a44f27f4",
+  "userId": "69c127ebf3d71c4d2070da39",
+  "createdAt": "2026-04-29T10:47:57.221Z",
+  "updatedAt": "2026-04-29T10:59:19.392Z",
+  "currentStep": 10,
+  "input": {
+    "description": "The Realme Narzo 70 5G is a high-value mid-range powerhouse featuring a smooth 120Hz AMOLED display, the capable Dimensity 7050 chipset, and ultra-fast 45W charging,",
+    "durationSeconds": 30,
+    "sceneCount": 6,
+    "sourceImage": null,
+    "product": {
+      "_id": "69d49ae1059ce27bb254ef3b",
+      "user": "69c127ebf3d71c4d2070da39",
+      "name": "Realme Narzo 70 Pro",
+      "price": 19999,
+      "currency": "INR",
+      "imageUrl": "https://images.unsplash.com/photo-1598327105666-5b89351aff97",
+      "description": "Mid range smartphone with smooth performance",
+      "stockStatus": "in-stock",
+      "stockQuantity": 60,
+      "category": "Electronics",
+      "tags": [
+        "mobile",
+        "realme",
+        "android"
+      ],
+      "createdAt": "2026-04-07T05:49:21.865Z",
+      "updatedAt": "2026-04-07T05:49:21.866Z",
+      "__v": 0
+    },
+    "productId": "69d49ae1059ce27bb254ef3b"
+  },
+  "prompt": {
+    "promptText": "The Realme Narzo 70 5G is a high-value mid-range powerhouse featuring a smooth 120Hz AMOLED display, the capable Dimensity 7050 chipset, and ultra-fast 45W charging,\nProduct: Realme Narzo 70 Pro\nDetails: Mid range smartphone with smooth performance",
+    "structuredPrompt": "The Realme Narzo 70 5G is a high-value mid-range powerhouse featuring a smooth 120Hz AMOLED display, the capable Dimensity 7050 chipset, and ultra-fast 45W charging,\nProduct: Realme Narzo 70 Pro\nDetails: Mid range smartphone with smooth performance",
+    "creativeDirection": {
+      "targetAudience": "general audience",
+      "tone": "professional",
+      "visualStyle": "clean cinematic vertical ad style",
+      "cta": "Learn more"
+    },
+    "generatedAt": "2026-04-29T10:48:09.096Z",
+    "edited": true,
+    "editedAt": "2026-04-29T10:48:39.998Z"
+  },
+  "scenes": {
+    "sceneData": [
+      {
+        "index": 1,
+        "sceneId": "scene_1",
+        "title": "The New Standard",
+        "durationSeconds": 5,
+        "startSec": 0,
+        "endSec": 5,
+        "imagePrompt": "A macro shot of the Realme Narzo 70 Pro slowly rotating, revealing its sleek glass back and modern design against a dark, abstract background with subtle light flares. 9:16 aspect ratio.",
+        "videoPrompt": "The Realme Narzo 70 Pro smartphone materializes from light particles, slowly rotating to reveal its sleek, modern design against a dark, abstract background. 9:16 aspect ratio.",
+        "voiceLine": "Introducing the new standard for mid-range performance: the Realme Narzo 70 Pro.",
+        "onScreenText": "Realme Narzo 70 Pro"
+      },
+      {
+        "index": 2,
+        "sceneId": "scene_2",
+        "title": "Fluid Display",
+        "durationSeconds": 5,
+        "startSec": 5,
+        "endSec": 10,
+        "imagePrompt": "An extreme close-up of the Realme Narzo 70 Pro's screen, showing a vibrant, colorful abstract liquid animation flowing smoothly across the 120Hz AMOLED display. The bezels are barely visible. 9:16 aspect ratio.",
+        "videoPrompt": "A dynamic swipe across the screen of the Realme Narzo 70 Pro, transitioning into a fluid, colorful abstract animation that highlights the smoothness of the display. 9:16 aspect ratio.",
+        "voiceLine": "Experience unparalleled smoothness on its stunning 120Hz AMOLED display.",
+        "onScreenText": "120Hz AMOLED Display"
+      },
+      {
+        "index": 3,
+        "sceneId": "scene_3",
+        "title": "Powerhouse Chipset",
+        "durationSeconds": 5,
+        "startSec": 10,
+        "endSec": 15,
+        "imagePrompt": "A stylized, futuristic visualization of the Dimensity 7050 chipset glowing with energy inside an outline of the phone, with abstract data streams flowing around it. 9:16 aspect ratio.",
+        "videoPrompt": "An animation zooming into the phone to reveal a glowing, powerful Dimensity 7050 chipset. Pulses of light emanate from it, representing high-speed performance. 9:16 aspect ratio.",
+        "voiceLine": "Powered by the formidable Dimensity 7050 chipset, it handles everything from intense gaming to seamless multitasking with ease.",
+        "onScreenText": "Dimensity 7050 5G"
+      },
+      {
+        "index": 4,
+        "sceneId": "scene_4",
+        "title": "Scene 4",
+        "durationSeconds": 5,
+        "startSec": 15,
+        "endSec": 20,
+        "imagePrompt": "and ultra-fast 45W charging, Product: Realme Narzo. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "and ultra-fast 45W charging, Product: Realme Narzo. Add subtle camera motion (slow push-in, pan, reveal).",
+        "voiceLine": "and ultra-fast 45W charging, Product: Realme Narzo",
+        "onScreenText": "and ultra-fast 45W charging, Product: Realme Narzo"
+      },
+      {
+        "index": 5,
+        "sceneId": "scene_5",
+        "title": "Scene 5",
+        "durationSeconds": 5,
+        "startSec": 20,
+        "endSec": 25,
+        "imagePrompt": "70 Pro Details: Mid range smartphone with. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "70 Pro Details: Mid range smartphone with. Add subtle camera motion (slow push-in, pan, reveal).",
+        "voiceLine": "70 Pro Details: Mid range smartphone with",
+        "onScreenText": "70 Pro Details: Mid range smartphone with"
+      },
+      {
+        "index": 6,
+        "sceneId": "scene_6",
+        "title": "Scene 6",
+        "durationSeconds": 5,
+        "startSec": 25,
+        "endSec": 30,
+        "imagePrompt": "smooth performance. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "smooth performance. Add subtle camera motion (slow push-in, pan, reveal).",
+        "voiceLine": "smooth performance",
+        "onScreenText": "smooth performance"
+      }
+    ],
+    "voiceScript": "Introducing the new standard for mid-range performance: the Realme Narzo 70 Pro. Experience unparalleled smoothness on its stunning 120Hz AMOLED display. Powered by the formidable Dimensity 7050 chipset, it handles everything from intense gaming to seamless multitasking with ease. Never slow down, with ultra-fast 45W charging that gets you back in the action in minutes. All this power is encased in a sleek, modern design that feels as good as it looks. The Realme Narzo 70 Pro: Unmatched power, undeniable value. Upgrade your experience today.",
+    "thumbnailPrompt": "An ultra-realistic hero shot of the Realme Narzo 70 Pro smartphone, angled to showcase its sleek design and glowing screen. The background is a dark, abstract environment with subtle neon blue and green light trails, creating a sense of speed and power. 9:16 aspect ratio.",
+    "globalVisualStyle": "Sleek and futuristic, with dynamic lighting, clean lines, and a dark, sophisticated color palette. Focus on high-tech aesthetics and smooth, fluid animations. 9:16 aspect ratio."
+  },
+  "images": {
+    "sceneData": [
+      {
+        "index": 1,
+        "sceneId": "scene_1",
+        "title": "The New Standard",
+        "durationSeconds": 5,
+        "startSec": 0,
+        "endSec": 5,
+        "imagePrompt": "A macro shot of the Realme Narzo 70 Pro slowly rotating, revealing its sleek glass back and modern design against a dark, abstract background with subtle light flares. 9:16 aspect ratio.",
+        "videoPrompt": "The Realme Narzo 70 Pro smartphone materializes from light particles, slowly rotating to reveal its sleek, modern design against a dark, abstract background. 9:16 aspect ratio.",
+        "voiceLine": "Introducing the new standard for mid-range performance: the Realme Narzo 70 Pro.",
+        "onScreenText": "Realme Narzo 70 Pro",
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_1.jpg"
+      },
+      {
+        "index": 2,
+        "sceneId": "scene_2",
+        "title": "Fluid Display",
+        "durationSeconds": 5,
+        "startSec": 5,
+        "endSec": 10,
+        "imagePrompt": "An extreme close-up of the Realme Narzo 70 Pro's screen, showing a vibrant, colorful abstract liquid animation flowing smoothly across the 120Hz AMOLED display. The bezels are barely visible. 9:16 aspect ratio.",
+        "videoPrompt": "A dynamic swipe across the screen of the Realme Narzo 70 Pro, transitioning into a fluid, colorful abstract animation that highlights the smoothness of the display. 9:16 aspect ratio.",
+        "voiceLine": "Experience unparalleled smoothness on its stunning 120Hz AMOLED display.",
+        "onScreenText": "120Hz AMOLED Display",
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_2.jpg"
+      },
+      {
+        "index": 3,
+        "sceneId": "scene_3",
+        "title": "Powerhouse Chipset",
+        "durationSeconds": 5,
+        "startSec": 10,
+        "endSec": 15,
+        "imagePrompt": "A stylized, futuristic visualization of the Dimensity 7050 chipset glowing with energy inside an outline of the phone, with abstract data streams flowing around it. 9:16 aspect ratio.",
+        "videoPrompt": "An animation zooming into the phone to reveal a glowing, powerful Dimensity 7050 chipset. Pulses of light emanate from it, representing high-speed performance. 9:16 aspect ratio.",
+        "voiceLine": "Powered by the formidable Dimensity 7050 chipset, it handles everything from intense gaming to seamless multitasking with ease.",
+        "onScreenText": "Dimensity 7050 5G",
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_3.jpg"
+      },
+      {
+        "index": 4,
+        "sceneId": "scene_4",
+        "title": "Scene 4",
+        "durationSeconds": 5,
+        "startSec": 15,
+        "endSec": 20,
+        "imagePrompt": "and ultra-fast 45W charging, Product: Realme Narzo. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "and ultra-fast 45W charging, Product: Realme Narzo. Add subtle camera motion (slow push-in, pan, reveal).",
+        "voiceLine": "and ultra-fast 45W charging, Product: Realme Narzo",
+        "onScreenText": "and ultra-fast 45W charging, Product: Realme Narzo",
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_4.jpg"
+      },
+      {
+        "index": 5,
+        "sceneId": "scene_5",
+        "title": "Scene 5",
+        "durationSeconds": 5,
+        "startSec": 20,
+        "endSec": 25,
+        "imagePrompt": "70 Pro Details: Mid range smartphone with. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "70 Pro Details: Mid range smartphone with. Add subtle camera motion (slow push-in, pan, reveal).",
+        "voiceLine": "70 Pro Details: Mid range smartphone with",
+        "onScreenText": "70 Pro Details: Mid range smartphone with",
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_5.jpg"
+      },
+      {
+        "index": 6,
+        "sceneId": "scene_6",
+        "title": "Scene 6",
+        "durationSeconds": 5,
+        "startSec": 25,
+        "endSec": 30,
+        "imagePrompt": "smooth performance. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "smooth performance. Add subtle camera motion (slow push-in, pan, reveal).",
+        "voiceLine": "smooth performance",
+        "onScreenText": "smooth performance",
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_6.jpg"
+      }
+    ],
+    "generatedAt": "2026-04-29T10:51:21.219Z"
+  },
+  "clips": {
+    "sceneData": [
+      {
+        "index": 1,
+        "sceneId": "scene_1",
+        "title": "The New Standard",
+        "durationSeconds": 5,
+        "startSec": 0,
+        "endSec": 5,
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_1.jpg",
+        "image_url": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_1.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a983049/gh9jNQLkxsTzm3cimAgNX_AH6bhMEz.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a983049/gh9jNQLkxsTzm3cimAgNX_AH6bhMEz.mp4",
+        "voiceLine": "Introducing the new standard for mid-range performance: the Realme Narzo 70 Pro.",
+        "onScreenText": "Realme Narzo 70 Pro",
+        "imagePrompt": "A macro shot of the Realme Narzo 70 Pro slowly rotating, revealing its sleek glass back and modern design against a dark, abstract background with subtle light flares. 9:16 aspect ratio.",
+        "videoPrompt": "The Realme Narzo 70 Pro smartphone materializes from light particles, slowly rotating to reveal its sleek, modern design against a dark, abstract background. 9:16 aspect ratio.",
+        "clipUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_1.mp4",
+        "fal": {
+          "model": "fal-ai/ltx-2.3-22b/image-to-video",
+          "seed": 149063119,
+          "num_frames": 33,
+          "width": 288,
+          "height": 512
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a983049/gh9jNQLkxsTzm3cimAgNX_AH6bhMEz.mp4"
+      },
+      {
+        "index": 2,
+        "sceneId": "scene_2",
+        "title": "Fluid Display",
+        "durationSeconds": 5,
+        "startSec": 5,
+        "endSec": 10,
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_2.jpg",
+        "image_url": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_2.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a98304c/-6bmPJ2UTyHE14SV94lqa_cHkL4bdZ.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a98304c/-6bmPJ2UTyHE14SV94lqa_cHkL4bdZ.mp4",
+        "voiceLine": "Experience unparalleled smoothness on its stunning 120Hz AMOLED display.",
+        "onScreenText": "120Hz AMOLED Display",
+        "imagePrompt": "An extreme close-up of the Realme Narzo 70 Pro's screen, showing a vibrant, colorful abstract liquid animation flowing smoothly across the 120Hz AMOLED display. The bezels are barely visible. 9:16 aspect ratio.",
+        "videoPrompt": "A dynamic swipe across the screen of the Realme Narzo 70 Pro, transitioning into a fluid, colorful abstract animation that highlights the smoothness of the display. 9:16 aspect ratio.",
+        "clipUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_2.mp4",
+        "fal": {
+          "model": "fal-ai/ltx-2.3-22b/image-to-video",
+          "seed": 149063119,
+          "num_frames": 33,
+          "width": 288,
+          "height": 512
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a98304c/-6bmPJ2UTyHE14SV94lqa_cHkL4bdZ.mp4"
+      },
+      {
+        "index": 3,
+        "sceneId": "scene_3",
+        "title": "Powerhouse Chipset",
+        "durationSeconds": 5,
+        "startSec": 10,
+        "endSec": 15,
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_3.jpg",
+        "image_url": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_3.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a983045/QpTJDqM46ogKsssLt9PXF_P2CEJicx.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a983045/QpTJDqM46ogKsssLt9PXF_P2CEJicx.mp4",
+        "voiceLine": "Powered by the formidable Dimensity 7050 chipset, it handles everything from intense gaming to seamless multitasking with ease.",
+        "onScreenText": "Dimensity 7050 5G",
+        "imagePrompt": "A stylized, futuristic visualization of the Dimensity 7050 chipset glowing with energy inside an outline of the phone, with abstract data streams flowing around it. 9:16 aspect ratio.",
+        "videoPrompt": "An animation zooming into the phone to reveal a glowing, powerful Dimensity 7050 chipset. Pulses of light emanate from it, representing high-speed performance. 9:16 aspect ratio.",
+        "clipUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_3.mp4",
+        "fal": {
+          "model": "fal-ai/ltx-2.3-22b/image-to-video",
+          "seed": 149063119,
+          "num_frames": 33,
+          "width": 288,
+          "height": 512
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a983045/QpTJDqM46ogKsssLt9PXF_P2CEJicx.mp4"
+      },
+      {
+        "index": 4,
+        "sceneId": "scene_4",
+        "title": "Scene 4",
+        "durationSeconds": 5,
+        "startSec": 15,
+        "endSec": 20,
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_4.jpg",
+        "image_url": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_4.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a98304b/0ZvXvf55C6IxxYdvGrMd__FZGf1sRu.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a98304b/0ZvXvf55C6IxxYdvGrMd__FZGf1sRu.mp4",
+        "voiceLine": "and ultra-fast 45W charging, Product: Realme Narzo",
+        "onScreenText": "and ultra-fast 45W charging, Product: Realme Narzo",
+        "imagePrompt": "and ultra-fast 45W charging, Product: Realme Narzo. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "and ultra-fast 45W charging, Product: Realme Narzo. Add subtle camera motion (slow push-in, pan, reveal).",
+        "clipUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_4.mp4",
+        "fal": {
+          "model": "fal-ai/ltx-2.3-22b/image-to-video",
+          "seed": 149063119,
+          "num_frames": 33,
+          "width": 288,
+          "height": 512
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a98304b/0ZvXvf55C6IxxYdvGrMd__FZGf1sRu.mp4"
+      },
+      {
+        "index": 5,
+        "sceneId": "scene_5",
+        "title": "Scene 5",
+        "durationSeconds": 5,
+        "startSec": 20,
+        "endSec": 25,
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_5.jpg",
+        "image_url": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_5.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a983048/gLG3-Ud3peffQGdoYkoRP_YM89RdmI.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a983048/gLG3-Ud3peffQGdoYkoRP_YM89RdmI.mp4",
+        "voiceLine": "70 Pro Details: Mid range smartphone with",
+        "onScreenText": "70 Pro Details: Mid range smartphone with",
+        "imagePrompt": "70 Pro Details: Mid range smartphone with. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "70 Pro Details: Mid range smartphone with. Add subtle camera motion (slow push-in, pan, reveal).",
+        "clipUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_5.mp4",
+        "fal": {
+          "model": "fal-ai/ltx-2.3-22b/image-to-video",
+          "seed": 149063119,
+          "num_frames": 33,
+          "width": 288,
+          "height": 512
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a983048/gLG3-Ud3peffQGdoYkoRP_YM89RdmI.mp4"
+      },
+      {
+        "index": 6,
+        "sceneId": "scene_6",
+        "title": "Scene 6",
+        "durationSeconds": 5,
+        "startSec": 25,
+        "endSec": 30,
+        "imageUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_6.jpg",
+        "image_url": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/images/scene_6.jpg",
+        "video_url": "https://v3b.fal.media/files/b/0a983047/_bQrPe2DJZTmwMRgyXCQQ_CO1pk5PB.mp4",
+        "videoUrl": "https://v3b.fal.media/files/b/0a983047/_bQrPe2DJZTmwMRgyXCQQ_CO1pk5PB.mp4",
+        "voiceLine": "smooth performance",
+        "onScreenText": "smooth performance",
+        "imagePrompt": "smooth performance. Feature Realme Narzo 70 Pro naturally in the frame. Keep composition vertical 9:16 and premium.",
+        "videoPrompt": "smooth performance. Add subtle camera motion (slow push-in, pan, reveal).",
+        "clipUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_6.mp4",
+        "fal": {
+          "model": "fal-ai/ltx-2.3-22b/image-to-video",
+          "seed": 149063119,
+          "num_frames": 33,
+          "width": 288,
+          "height": 512
+        },
+        "falVideoUrl": "https://v3b.fal.media/files/b/0a983047/_bQrPe2DJZTmwMRgyXCQQ_CO1pk5PB.mp4"
+      }
+    ],
+    "clipUrls": [
+      "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_1.mp4",
+      "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_2.mp4",
+      "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_3.mp4",
+      "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_4.mp4",
+      "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_5.mp4",
+      "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/clips/scene_6.mp4"
+    ],
+    "generatedAt": "2026-04-29T10:53:03.080Z"
+  },
+  "audio": {
+    "config": {
+      "enabled": true,
+      "mode": "auto",
+      "languageCode": "ta",
+      "tone": "simple",
+      "voiceGender": "male",
+      "voiceVolume": 1.5,
+      "musicVolume": 0.8,
+      "manualAudioData": "",
+      "manualAudioUrl": "",
+      "soundEffectUrls": []
+    },
+    "tracks": {
+      "manualUrl": null,
+      "voiceUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/audio/voice_track.mp3",
+      "backgroundUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/audio/background_track.mp3",
+      "soundEffectUrls": []
+    },
+    "generatedAt": "2026-04-29T10:54:19.569Z"
+  },
+  "mix": {
+    "finalAudioUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/final/final_audio.mp3",
+    "mixedAt": "2026-04-29T10:54:27.893Z"
+  },
+  "merge": {
+    "finalVideoUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/final/final_video.mp4",
+    "finalOutputUrl": "http://localhost:5000/generated-media/aa7f42d4-09d6-4493-b5ac-7d64a44f27f4/final/final_output.mp4",
+    "subtitlesUrl": null,
+    "mergedAt": "2026-04-29T10:55:08.189Z"
+  },
+  "content": {
+    "thumbnailUrl": "https://res.cloudinary.com/dhe8jowyt/image/upload/v1777460207/nebula-campaign-posts/u3m2dv61fknmwvcywk5w.jpg",
+    "caption": "Unleash smooth performance with the Realme Narzo 70 Pro! ✨ Enjoy a vibrant 120Hz AMOLED display, powerful Dimensity 7050, and ultra-fast 45W charging.\nUpgrade your mid-range experience today!",
+    "hashtags": [
+      "#RealmeNarzo70Pro",
+      "#Narzo70Pro",
+      "#MidRangePowerhouse",
+      "#120HzAMOLED",
+      "#Dimensity7050",
+      "#FastCharging",
+      "#RealmeTech",
+      "#Smartphone"
+    ],
+    "generatedAt": "2026-04-29T10:57:19.216Z"
+  },
+  "platform": {
+    "selectedPlatforms": [
+      "instagram",
+      "facebook"
+    ]
+  },
+  "schedule": {
+    "publishNow": true,
+    "scheduledAt": "2026-04-29T10:59:19.387Z",
+    "status": "published_pending_provider",
+    "updatedAt": "2026-04-29T10:59:19.390Z"
+  },
+  "outputs": {
+    "directories": {
+      "images": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\aa7f42d4-09d6-4493-b5ac-7d64a44f27f4\\images",
+      "clips": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\aa7f42d4-09d6-4493-b5ac-7d64a44f27f4\\clips",
+      "audio": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\aa7f42d4-09d6-4493-b5ac-7d64a44f27f4\\audio",
+      "final": "C:\\Users\\abine\\Desktop\\Office\\Nebulaa\\Marketing-agent---nebula\\backend\\storage\\ai-videos\\aa7f42d4-09d6-4493-b5ac-7d64a44f27f4\\final"
+    }
+  }
+}
