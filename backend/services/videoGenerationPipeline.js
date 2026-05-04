@@ -3,6 +3,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
+const { GoogleAuth } = require('google-auth-library');
 
 const Product = require('../models/Product');
 const { callGemini, parseGeminiJSON, generateCampaignImageNanoBanana } = require('./geminiAI');
@@ -13,6 +14,13 @@ const STORAGE_ROOT = path.resolve(__dirname, '../storage/ai-videos');
 const VIDEO_TARGET = { width: 1080, height: 1920, fps: 30 };
 const VIDEO_ENCODE_PRESET = String(process.env.AI_VIDEO_ENCODE_PRESET || 'slow');
 const VIDEO_ENCODE_CRF = String(process.env.AI_VIDEO_ENCODE_CRF || '16');
+const GOOGLE_TTS_PROJECT_ID = process.env.VERTEX_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT_ID || '';
+const GOOGLE_TTS_EN_MALE_VOICE = String(process.env.GOOGLE_TTS_EN_MALE_VOICE || 'en-US-Neural2-J').trim();
+const EDGE_TTS_ENABLED = String(process.env.EDGE_TTS_ENABLED || 'true').toLowerCase() !== 'false';
+const EDGE_TTS_MALE_VOICE = String(process.env.EDGE_TTS_MALE_VOICE || 'en-US-GuyNeural').trim();
+const ELEVENLABS_API_KEY = String(process.env.ELEVENLABS_API_KEY || '').trim();
+const ELEVENLABS_MALE_VOICE_ID = String(process.env.ELEVENLABS_MALE_VOICE_ID || '').trim();
+const ELEVENLABS_MODEL_ID = String(process.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2').trim();
 const MAX_SCENES = 10;
 const MIN_SCENES = 1;
 const DEFAULT_DURATION_SECONDS = 60;
@@ -46,6 +54,9 @@ function resolveFfmpegPath() {
 }
 
 const ffmpegPath = resolveFfmpegPath();
+let googleTtsAuth = null;
+let googleTtsAccessToken = null;
+let googleTtsTokenExpiry = 0;
 
 function clamp(n, min, max) {
   const value = Number.isFinite(n) ? n : min;
@@ -136,6 +147,24 @@ function runFfmpeg(args = []) {
   });
 }
 
+function runProcess(command, args = [], options = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      windowsHide: true,
+      ...options
+    });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout?.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr?.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (error) => reject(error));
+    proc.on('close', (code) => {
+      if (code === 0) return resolve({ stdout, stderr });
+      reject(new Error(`${command} exited with code ${code}: ${stderr.slice(-1200) || stdout.slice(-1200)}`));
+    });
+  });
+}
+
 async function runWithRetries(label, fn, maxRetries = 2, logger = null) {
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
@@ -178,6 +207,11 @@ function normalizeAudioOptions(raw = {}) {
     mode,
     languageCode: String(raw?.languageCode || 'en').toLowerCase(),
     tone: normalizeTone(raw?.tone) || 'professional',
+    voiceGender: ['male', 'female'].includes(String(raw?.voiceGender || '').toLowerCase())
+      ? String(raw.voiceGender).toLowerCase()
+      : 'female',
+    voiceVolume: Number.isFinite(Number(raw?.voiceVolume)) ? Number(raw.voiceVolume) : 1,
+    musicVolume: Number.isFinite(Number(raw?.musicVolume)) ? Number(raw.musicVolume) : 0.24,
     manualAudioData: typeof raw?.manualAudioData === 'string' ? raw.manualAudioData : '',
     manualAudioUrl: typeof raw?.manualAudioUrl === 'string' ? raw.manualAudioUrl.trim() : '',
     soundEffectUrls: Array.isArray(raw?.soundEffectUrls) ? raw.soundEffectUrls.filter(Boolean).map(String) : []
@@ -790,9 +824,242 @@ function toTtsLanguageCode(code = 'en') {
   return allowed.has(normalized) ? normalized : 'en';
 }
 
+function googleCloudTtsVoice(languageCode = 'en', voiceGender = 'female') {
+  const lang = toTtsLanguageCode(languageCode);
+  const gender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
+  const voices = {
+    en: {
+      languageCode: 'en-US',
+      male: GOOGLE_TTS_EN_MALE_VOICE || 'en-US-Neural2-J',
+      female: 'en-US-Neural2-F'
+    },
+    hi: {
+      languageCode: 'hi-IN',
+      male: 'hi-IN-Wavenet-B',
+      female: 'hi-IN-Wavenet-A'
+    },
+    ta: {
+      languageCode: 'ta-IN',
+      male: 'ta-IN-Wavenet-B',
+      female: 'ta-IN-Wavenet-A'
+    },
+    te: {
+      languageCode: 'te-IN',
+      male: 'te-IN-Standard-B',
+      female: 'te-IN-Standard-A'
+    },
+    kn: {
+      languageCode: 'kn-IN',
+      male: 'kn-IN-Standard-B',
+      female: 'kn-IN-Standard-A'
+    },
+    ml: {
+      languageCode: 'ml-IN',
+      male: 'ml-IN-Wavenet-B',
+      female: 'ml-IN-Wavenet-A'
+    }
+  };
+  const voice = voices[lang] || voices.en;
+  return {
+    languageCode: voice.languageCode,
+    name: voice[gender],
+    ssmlGender: gender === 'male' ? 'MALE' : 'FEMALE'
+  };
+}
+
+function googleCloudTtsAudioConfig(voiceGender = 'female') {
+  const gender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
+  return {
+    audioEncoding: 'MP3',
+    speakingRate: gender === 'male' ? 0.96 : 1,
+    pitch: gender === 'male' ? -2 : 0
+  };
+}
+
+function maleVoiceEnhancementFilter() {
+  return [
+    'asetrate=24000*0.88',
+    'aresample=24000',
+    'atempo=1.14',
+    'equalizer=f=120:t=q:w=1:g=2',
+    'equalizer=f=240:t=q:w=1:g=1.5'
+  ].join(',');
+}
+
+async function deepenMaleVoice(sourcePath, outputPath) {
+  await runFfmpeg([
+    '-y',
+    '-i', sourcePath,
+    '-af', maleVoiceEnhancementFilter(),
+    '-c:a', 'libmp3lame',
+    '-q:a', '2',
+    outputPath
+  ]);
+}
+
+async function getGoogleTtsAccessToken() {
+  const now = Date.now();
+  if (googleTtsAccessToken && googleTtsTokenExpiry > now + 300000) {
+    return googleTtsAccessToken;
+  }
+
+  const clientEmail = String(process.env.VERTEX_CLIENT_EMAIL || '').trim();
+  const privateKey = process.env.VERTEX_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  if (!GOOGLE_TTS_PROJECT_ID || !clientEmail || !privateKey) {
+    return null;
+  }
+
+  if (!googleTtsAuth) {
+    googleTtsAuth = new GoogleAuth({
+      credentials: {
+        type: 'service_account',
+        project_id: GOOGLE_TTS_PROJECT_ID,
+        client_email: clientEmail,
+        private_key: privateKey
+      },
+      scopes: ['https://www.googleapis.com/auth/cloud-platform']
+    });
+  }
+
+  const client = await googleTtsAuth.getClient();
+  const tokenResponse = await client.getAccessToken();
+  googleTtsAccessToken = tokenResponse.token;
+  googleTtsTokenExpiry = now + 3600000;
+  return googleTtsAccessToken;
+}
+
+async function synthesizeGoogleCloudTts({
+  text,
+  languageCode,
+  voiceGender,
+  outputPath
+}) {
+  if (!fetchImpl) return false;
+  const token = await getGoogleTtsAccessToken();
+  if (!token) return false;
+
+  const voice = googleCloudTtsVoice(languageCode, voiceGender);
+  const response = await fetchImpl('https://texttospeech.googleapis.com/v1/text:synthesize', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      input: { text },
+      voice,
+      audioConfig: googleCloudTtsAudioConfig(voiceGender)
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(`Google Cloud TTS HTTP ${response.status}: ${details.slice(0, 240)}`);
+  }
+
+  const data = await response.json();
+  const audioContent = String(data?.audioContent || '');
+  if (!audioContent) throw new Error('Google Cloud TTS returned no audioContent');
+  await fs.promises.writeFile(outputPath, Buffer.from(audioContent, 'base64'));
+  const stat = await fs.promises.stat(outputPath);
+  return stat.size > 1200;
+}
+
+function toTtsVoiceLocale(code = 'en', voiceGender = 'female') {
+  const normalized = toTtsLanguageCode(code);
+  const gender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
+  if (normalized === 'en') return gender === 'male' ? 'en-GB' : 'en-US';
+  return normalized;
+}
+
+function publicAudioUrl(context, fileName) {
+  return `${buildMediaUrl(context.baseUrl, context.jobId, ['audio', fileName])}?v=${Date.now()}`;
+}
+
+async function synthesizeEdgeTts({
+  text,
+  voiceGender,
+  outputPath,
+  logger = null
+}) {
+  if (!EDGE_TTS_ENABLED || String(voiceGender || '').toLowerCase() !== 'male') return false;
+  const voice = EDGE_TTS_MALE_VOICE || 'en-US-GuyNeural';
+  const attempts = [
+    {
+      command: 'python',
+      args: ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', outputPath]
+    },
+    {
+      command: 'py',
+      args: ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', outputPath]
+    },
+    {
+      command: 'edge-tts',
+      args: ['--voice', voice, '--text', text, '--write-media', outputPath]
+    }
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      await runProcess(attempt.command, attempt.args);
+      const stat = await fs.promises.stat(outputPath);
+      if (stat.size > 1200) return true;
+    } catch (error) {
+      if (logger) logger(`Edge TTS via ${attempt.command} failed: ${error.message || error}`);
+    }
+  }
+
+  return false;
+}
+
+async function synthesizeElevenLabsTts({
+  text,
+  languageCode,
+  voiceGender,
+  outputPath
+}) {
+  if (!fetchImpl || String(voiceGender || '').toLowerCase() !== 'male') return false;
+  if (!ELEVENLABS_API_KEY || !ELEVENLABS_MALE_VOICE_ID) return false;
+
+  const response = await fetchImpl(
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(ELEVENLABS_MALE_VOICE_ID)}?output_format=mp3_44100_128`,
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        model_id: ELEVENLABS_MODEL_ID,
+        language_code: toTtsLanguageCode(languageCode),
+        voice_settings: {
+          stability: 0.35,
+          similarity_boost: 1,
+          style: 0.75,
+          use_speaker_boost: true
+        }
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(`ElevenLabs TTS HTTP ${response.status}: ${details.slice(0, 240)}`);
+  }
+
+  const arrayBuffer = typeof response.arrayBuffer === 'function'
+    ? await response.arrayBuffer()
+    : await response.buffer();
+  await fs.promises.writeFile(outputPath, Buffer.from(arrayBuffer));
+  const stat = await fs.promises.stat(outputPath);
+  return stat.size > 1200;
+}
+
 async function synthesizeVoiceTrack({
   voiceScript,
   languageCode,
+  voiceGender = 'female',
   context,
   logger = null
 }) {
@@ -801,13 +1068,62 @@ async function synthesizeVoiceTrack({
   if (!fetchImpl) return null;
 
   const chunkPaths = [];
-  const lang = toTtsLanguageCode(languageCode);
+  const normalizedGender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
+  const lang = toTtsVoiceLocale(languageCode, normalizedGender);
+  const finalVoiceFileName = `voice_track_${normalizedGender}.mp3`;
+  const finalVoicePath = path.join(context.dirs.audio, finalVoiceFileName);
+  let usedOnlyNaturalMaleProvider = normalizedGender === 'male';
 
   for (let i = 0; i < chunks.length; i += 1) {
     const text = chunks[i];
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`;
     const outPath = path.join(context.dirs.audio, `voice_chunk_${i + 1}.mp3`);
     try {
+      const edgeOk = await synthesizeEdgeTts({
+        text,
+        voiceGender: normalizedGender,
+        outputPath: outPath,
+        logger
+      });
+      if (edgeOk) {
+        chunkPaths.push(outPath);
+        continue;
+      }
+    } catch (error) {
+      if (logger) logger(`Edge TTS male voice chunk ${i + 1} failed: ${error.message || error}`);
+    }
+
+    try {
+      const elevenLabsOk = await synthesizeElevenLabsTts({
+        text,
+        languageCode,
+        voiceGender: normalizedGender,
+        outputPath: outPath
+      });
+      if (elevenLabsOk) {
+        chunkPaths.push(outPath);
+        continue;
+      }
+    } catch (error) {
+      if (logger) logger(`ElevenLabs male voice chunk ${i + 1} failed: ${error.message || error}`);
+    }
+
+    try {
+      const cloudOk = await synthesizeGoogleCloudTts({
+        text,
+        languageCode,
+        voiceGender: normalizedGender,
+        outputPath: outPath
+      });
+      if (cloudOk) {
+        chunkPaths.push(outPath);
+        continue;
+      }
+    } catch (error) {
+      if (logger) logger(`Google Cloud TTS chunk ${i + 1} failed: ${error.message || error}`);
+    }
+
+    try {
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`;
       const response = await fetchImpl(ttsUrl, {
         method: 'GET',
         headers: {
@@ -824,24 +1140,33 @@ async function synthesizeVoiceTrack({
       await fs.promises.writeFile(outPath, Buffer.from(arrayBuffer));
       const stat = await fs.promises.stat(outPath);
       if (stat.size < 1200) throw new Error('TTS chunk too small');
+      usedOnlyNaturalMaleProvider = false;
       chunkPaths.push(outPath);
     } catch (error) {
+      usedOnlyNaturalMaleProvider = false;
       if (logger) logger(`Voice chunk ${i + 1} failed: ${error.message || error}`);
     }
   }
 
   if (!chunkPaths.length) return null;
   if (chunkPaths.length === 1) {
-    const voiceOutputPath = path.join(context.dirs.audio, 'voice_track.mp3');
+    const voiceOutputPath = path.join(context.dirs.audio, normalizedGender === 'male' ? 'voice_track_male_source.mp3' : finalVoiceFileName);
     await fs.promises.copyFile(chunkPaths[0], voiceOutputPath);
+    if (normalizedGender === 'male') {
+      if (usedOnlyNaturalMaleProvider) {
+        await fs.promises.copyFile(voiceOutputPath, finalVoicePath);
+      } else {
+        await deepenMaleVoice(voiceOutputPath, finalVoicePath);
+      }
+    }
     return {
-      path: voiceOutputPath,
-      url: buildMediaUrl(context.baseUrl, context.jobId, ['audio', 'voice_track.mp3'])
+      path: finalVoicePath,
+      url: publicAudioUrl(context, finalVoiceFileName)
     };
   }
 
   const concatListPath = path.join(context.dirs.temp, 'voice_chunks_concat.txt');
-  const concatOutput = path.join(context.dirs.audio, 'voice_track.mp3');
+  const concatOutput = path.join(context.dirs.audio, normalizedGender === 'male' ? 'voice_track_male_source.mp3' : finalVoiceFileName);
   await fs.promises.writeFile(concatListPath, buildConcatListContent(chunkPaths), 'utf8');
 
   try {
@@ -866,9 +1191,17 @@ async function synthesizeVoiceTrack({
     ]);
   }
 
+  if (normalizedGender === 'male') {
+    if (usedOnlyNaturalMaleProvider) {
+      await fs.promises.copyFile(concatOutput, finalVoicePath);
+    } else {
+      await deepenMaleVoice(concatOutput, finalVoicePath);
+    }
+  }
+
   return {
-    path: concatOutput,
-    url: buildMediaUrl(context.baseUrl, context.jobId, ['audio', 'voice_track.mp3'])
+    path: finalVoicePath,
+    url: publicAudioUrl(context, finalVoiceFileName)
   };
 }
 
@@ -967,6 +1300,7 @@ async function generateAudioTracks({
     voice = await synthesizeVoiceTrack({
       voiceScript: plan.voiceScript || input.description,
       languageCode: audioOptions.languageCode,
+      voiceGender: audioOptions.voiceGender,
       context,
       logger
     });
@@ -985,11 +1319,13 @@ async function generateAudioTracks({
   };
 }
 
-function ffmpegInputsForTracks(audioTracks) {
+function ffmpegInputsForTracks(audioTracks, audioOptions = {}) {
   const ordered = [];
-  if (audioTracks?.manual?.path) ordered.push({ label: 'manual', path: audioTracks.manual.path, volume: 1.0 });
-  if (audioTracks?.voice?.path) ordered.push({ label: 'voice', path: audioTracks.voice.path, volume: 1.0 });
-  if (audioTracks?.background?.path) ordered.push({ label: 'background', path: audioTracks.background.path, volume: 0.24 });
+  const voiceVolume = clamp(Number(audioOptions.voiceVolume), 0, 2);
+  const musicVolume = clamp(Number(audioOptions.musicVolume), 0, 2);
+  if (audioTracks?.manual?.path) ordered.push({ label: 'manual', path: audioTracks.manual.path, volume: voiceVolume });
+  if (audioTracks?.voice?.path) ordered.push({ label: 'voice', path: audioTracks.voice.path, volume: voiceVolume });
+  if (audioTracks?.background?.path) ordered.push({ label: 'background', path: audioTracks.background.path, volume: musicVolume, loop: true });
   const sfx = Array.isArray(audioTracks?.soundEffects) ? audioTracks.soundEffects : [];
   for (const item of sfx) {
     if (item?.path) ordered.push({ label: 'sfx', path: item.path, volume: 0.45 });
@@ -1000,9 +1336,11 @@ function ffmpegInputsForTracks(audioTracks) {
 async function mergeAudioTracks({
   audioTracks,
   durationSeconds,
-  context
+  context,
+  audioOptions = {}
 }) {
-  const inputTracks = ffmpegInputsForTracks(audioTracks);
+  const normalizedAudioOptions = normalizeAudioOptions(audioOptions || {});
+  const inputTracks = ffmpegInputsForTracks(audioTracks, normalizedAudioOptions);
   if (!inputTracks.length) return null;
 
   const outputPath = path.join(context.dirs.final, 'final_audio.mp3');
@@ -1010,20 +1348,27 @@ async function mergeAudioTracks({
   const safeDuration = clamp(Number.parseInt(String(durationSeconds || 0), 10), 3, 1800);
 
   if (inputTracks.length === 1) {
-    await runFfmpeg([
-      '-y',
-      '-i', inputTracks[0].path,
+    const args = ['-y'];
+    if (inputTracks[0].loop) args.push('-stream_loop', '-1');
+    args.push('-i', inputTracks[0].path);
+    const filter = inputTracks[0].loop
+      ? `volume=${inputTracks[0].volume.toFixed(2)}`
+      : `volume=${inputTracks[0].volume.toFixed(2)},apad`;
+    args.push(
       '-vn',
+      '-af', filter,
       '-c:a', 'libmp3lame',
       '-q:a', '2',
       '-t', String(safeDuration),
       outputPath
-    ]);
+    );
+    await runFfmpeg(args);
     return { path: outputPath, url: outputUrl };
   }
 
   const args = ['-y'];
   inputTracks.forEach((track) => {
+    if (track.loop) args.push('-stream_loop', '-1');
     args.push('-i', track.path);
   });
 
@@ -1031,7 +1376,7 @@ async function mergeAudioTracks({
     .map((track, idx) => `[${idx}:a]volume=${track.volume.toFixed(2)}[a${idx}]`)
     .join(';');
   const mixedInputs = inputTracks.map((_, idx) => `[a${idx}]`).join('');
-  const filterComplex = `${volumeStages};${mixedInputs}amix=inputs=${inputTracks.length}:duration=longest:dropout_transition=2[mix]`;
+  const filterComplex = `${volumeStages};${mixedInputs}amix=inputs=${inputTracks.length}:duration=longest:dropout_transition=2,apad[mix]`;
 
   args.push(
     '-filter_complex', filterComplex,
@@ -1265,7 +1610,8 @@ async function runCreateVideoPipeline({
     mergedAudio = await mergeAudioTracks({
       audioTracks: audioTracks.tracks,
       durationSeconds: input.durationSeconds,
-      context
+      context,
+      audioOptions: input.audio
     });
   }
 
@@ -1457,7 +1803,8 @@ async function runGenerateAudio({
     ? await mergeAudioTracks({
       audioTracks: audioTracks.tracks,
       durationSeconds: input.durationSeconds,
-      context
+      context,
+      audioOptions: input.audio
     })
     : null;
 
@@ -1526,7 +1873,8 @@ async function runMergeAudio({
   const mergedAudio = await mergeAudioTracks({
     audioTracks: trackConfig,
     durationSeconds: safeDuration,
-    context
+    context,
+    audioOptions: payload?.audio || payload?.audioConfig || {}
   });
 
   return {

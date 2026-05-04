@@ -784,7 +784,8 @@ router.post('/mixAudio', protect, checkTrial, async (req, res) => {
           voiceUrl: mergedTracks?.voiceUrl || '',
           backgroundUrl: mergedTracks?.backgroundUrl || ''
         },
-        soundEffectUrls: Array.isArray(mergedTracks?.soundEffectUrls) ? mergedTracks.soundEffectUrls : []
+        soundEffectUrls: Array.isArray(mergedTracks?.soundEffectUrls) ? mergedTracks.soundEffectUrls : [],
+        audio: draft?.audio?.config || {}
       },
       baseUrl: reqBaseUrl(req)
     });

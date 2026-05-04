@@ -211,14 +211,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
 
       {/* Sidebar */}
       <aside 
-        className={`fixed inset-y-0 left-0 z-30 w-64 ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-[#ffcc29]'} border-r transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto ${
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-[#ffcc29] border-r transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex flex-col h-full">
             <div className="p-6">
-                <div className={`flex items-center gap-3 mb-2 ${isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}`}>
-                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className={`w-12 h-12 ${isDarkMode ? 'brightness-0 invert' : ''}`} />
+                <div className="flex items-center gap-3 mb-2 text-[#070A12]">
+                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className="w-12 h-12" />
                     <div className="flex flex-col">
                         <span className="font-bold text-xl tracking-tight leading-tight">Nebulaa</span>
                         <span className="font-semibold text-lg tracking-tight leading-tight">Gravity</span>
@@ -226,7 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                 </div>
                 {/* Show user's business name if available */}
                 {user?.businessProfile?.name && (
-                  <p className={`text-xs mb-6 pl-[60px] truncate ${isDarkMode ? 'text-[#ededed]/60' : 'text-[#070A12]/70'}`} title={user.businessProfile.name}>
+                  <p className="text-xs mb-6 pl-[60px] truncate text-[#070A12]/70" title={user.businessProfile.name}>
                     for {user.businessProfile.name}
                   </p>
                 )}
@@ -242,54 +242,39 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                         to={item.path}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium ${
                             isActive 
-                            ? isDarkMode 
-                              ? 'bg-[#ffcc29]/20 text-[#ffcc29]' 
-                              : 'bg-[#070A12] text-white'
-                            : isDarkMode
-                              ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]'
-                              : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
+                            ? 'bg-[#070A12] text-white'
+                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
                         }`}
                         onClick={() => setSidebarOpen(false)}
                         >
-                        <Icon className={`w-5 h-5 ${isActive ? (isDarkMode ? 'text-[#ffcc29]' : 'text-white') : (isDarkMode ? 'text-[#ededed]/50' : 'text-[#070A12]/60')}`} />
+                        <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-[#070A12]/60'}`} />
                         <span>{item.label}</span>
                         </Link>
                     );
                     })}
                 </nav>
-            </div>
 
-            <div className="mt-auto p-6">
-                
                 <nav className="space-y-1">
                     <Link
                         to="/settings"
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium ${
                             location.pathname === '/settings'
-                            ? isDarkMode 
-                              ? 'bg-[#ffcc29]/20 text-[#ffcc29]' 
-                              : 'bg-[#070A12] text-white'
-                            : isDarkMode
-                              ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]'
-                              : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
+                            ? 'bg-[#070A12] text-white'
+                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
                         }`}
                         onClick={() => setSidebarOpen(false)}
                     >
-                        <Settings className={`w-5 h-5 ${location.pathname === '/settings' ? (isDarkMode ? 'text-[#ffcc29]' : 'text-white') : (isDarkMode ? 'text-[#ededed]/50' : 'text-[#070A12]/60')}`} />
+                        <Settings className={`w-5 h-5 ${location.pathname === '/settings' ? 'text-white' : 'text-[#070A12]/60'}`} />
                         <span>Settings</span>
                     </Link>
                     <button
                         type="button"
                         onClick={toggleTheme}
-                        className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full ${
-                          isDarkMode
-                            ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]'
-                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
-                        }`}
+                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]"
                     >
                         <span className="flex items-center gap-3">
                           {isDarkMode ? (
-                            <Moon className="w-5 h-5 text-[#ededed]/50" />
+                            <Moon className="w-5 h-5 text-[#070A12]/60" />
                           ) : (
                             <Sun className="w-5 h-5 text-[#070A12]/60" />
                           )}
@@ -297,7 +282,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                         </span>
                         <span
                           className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                            isDarkMode ? 'bg-[#ffcc29]' : 'bg-[#070A12]/25'
+                            isDarkMode ? 'bg-[#070A12]' : 'bg-[#070A12]/25'
                           }`}
                           aria-hidden="true"
                         >
@@ -310,13 +295,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                     </button>
                     <button 
                         onClick={handleLogout}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full ${
-                          isDarkMode 
-                            ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]' 
-                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
-                        }`}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]"
                     >
-                        <LogOut className={`w-5 h-5 ${isDarkMode ? 'text-[#ededed]/50' : 'text-[#070A12]/60'}`} />
+                        <LogOut className="w-5 h-5 text-[#070A12]/60" />
                         <span>Logout</span>
                     </button>
                 </nav>

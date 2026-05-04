@@ -1,2 +1,0 @@
-file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/audio/voice_chunk_1.mp3'
-file 'C:/Users/abine/Desktop/Office/Nebulaa/Marketing-agent---nebula/backend/storage/ai-videos/494bf647-a4c7-4ddd-b72f-84902cd2dfcf/audio/voice_chunk_2.mp3'

@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "create:male-voice": "node scripts/create-elevenlabs-male-voice.js"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.958.0",
