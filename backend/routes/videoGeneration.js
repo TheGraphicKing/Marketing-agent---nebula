@@ -58,6 +58,76 @@ function normalizedDurationSeconds(raw, fallback = 60) {
   return Math.max(6, Math.min(180, n));
 }
 
+function normalizeAudioLanguageCode(code = 'en') {
+  const normalized = String(code || '').toLowerCase().trim().split(/[-_]/)[0];
+  const allowed = new Set(['en', 'hi', 'ta', 'te', 'kn', 'ml']);
+  return allowed.has(normalized) ? normalized : 'en';
+}
+
+function audioLanguageLabel(code = 'en') {
+  const labels = {
+    en: 'English',
+    hi: 'Hindi',
+    ta: 'Tamil',
+    te: 'Telugu',
+    kn: 'Kannada',
+    ml: 'Malayalam'
+  };
+  return labels[normalizeAudioLanguageCode(code)] || labels.en;
+}
+
+function audioScriptLabel(code = 'en') {
+  const labels = {
+    en: 'Latin',
+    hi: 'Devanagari',
+    ta: 'Tamil',
+    te: 'Telugu',
+    kn: 'Kannada',
+    ml: 'Malayalam'
+  };
+  return labels[normalizeAudioLanguageCode(code)] || labels.en;
+}
+
+async function localizeAudioScript({ text, languageCode }) {
+  const source = String(text || '').replace(/\s+/g, ' ').trim();
+  const normalizedLanguage = normalizeAudioLanguageCode(languageCode);
+  if (!source || normalizedLanguage === 'en') return source;
+
+  const language = audioLanguageLabel(normalizedLanguage);
+  const script = audioScriptLabel(normalizedLanguage);
+  const prompt = `Translate and adapt this short reel voiceover for text-to-speech.
+
+Target language: ${language}
+Target script: ${script}
+
+Rules:
+- Return only the final voiceover text. No markdown, labels, or quotes.
+- Translate the narration into ${language}; do not return English for this target language.
+- Keep brand names, product names, prices, URLs, and technical model names unchanged when needed.
+- Keep it natural for a short social media reel.
+
+Voiceover:
+${source}`;
+
+  try {
+    const localized = await callGemini(prompt, {
+      skipCache: true,
+      temperature: 0.25,
+      maxTokens: 900,
+      timeout: 45000
+    });
+    const clean = String(localized || '')
+      .replace(/^```(?:\w+)?/i, '')
+      .replace(/```$/i, '')
+      .replace(/^\s*(?:voiceover|translation|translated text)\s*:\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return clean || source;
+  } catch (_) {
+    return source;
+  }
+}
+
 function sanitizeSceneData(sceneData = [], totalDurationSeconds = 60) {
   const input = Array.isArray(sceneData) ? sceneData : [];
   if (!input.length) return [];
@@ -716,15 +786,31 @@ router.post('/generateAudio', protect, checkTrial, async (req, res) => {
 
     const userId = toUserId(req.user);
     const draft = await loadDraftForUser(jobId, userId);
+    const requestedLanguageCode = normalizeAudioLanguageCode(audio?.languageCode || 'en');
+    const sourceVoiceScript = String(
+      audio?.voiceScript ||
+        draft?.scenes?.voiceScript ||
+        (Array.isArray(draft?.scenes?.sceneData)
+          ? draft.scenes.sceneData.map((scene) => scene?.voiceLine).filter(Boolean).join(' ')
+          : '') ||
+        draft?.input?.description ||
+        ''
+    ).trim();
+    const effectiveVoiceScript = await localizeAudioScript({
+      text: sourceVoiceScript,
+      languageCode: requestedLanguageCode
+    });
+
     const audioConfig = {
       enabled: audio?.enabled !== false,
       mode: String(audio?.mode || 'auto').toLowerCase(),
-      languageCode: String(audio?.languageCode || 'en').toLowerCase(),
+      languageCode: requestedLanguageCode,
       tone: String(audio?.tone || 'professional').toLowerCase(),
       voiceGender: String(audio?.voiceGender || 'female').toLowerCase(),
       voiceVolume: Number.isFinite(Number(audio?.voiceVolume)) ? Number(audio.voiceVolume) : 1,
       musicVolume: Number.isFinite(Number(audio?.musicVolume)) ? Number(audio.musicVolume) : 0.24,
-      voiceScript: typeof audio?.voiceScript === 'string' ? audio.voiceScript.trim() : '',
+      voiceScript: effectiveVoiceScript,
+      sourceVoiceScript,
       manualAudioData: typeof audio?.manualAudioData === 'string' ? audio.manualAudioData : '',
       manualAudioUrl: typeof audio?.manualAudioUrl === 'string' ? audio.manualAudioUrl : '',
       soundEffectUrls: Array.isArray(audio?.soundEffectUrls) ? audio.soundEffectUrls : []
@@ -734,8 +820,8 @@ router.post('/generateAudio', protect, checkTrial, async (req, res) => {
       payload: {
         jobId,
         skipMix: true,
-        description: String(audioConfig.voiceScript || draft?.scenes?.voiceScript || draft?.input?.description || ''),
-        voiceScript: String(audioConfig.voiceScript || ''),
+        description: String(audioConfig.voiceScript || sourceVoiceScript || draft?.input?.description || ''),
+        voiceScript: String(audioConfig.voiceScript || sourceVoiceScript || ''),
         durationSeconds: draft?.input?.durationSeconds || 60,
         audio: audioConfig
       },
