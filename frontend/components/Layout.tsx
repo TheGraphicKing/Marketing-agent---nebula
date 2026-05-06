@@ -22,7 +22,8 @@ import {
   ImageIcon,
   MessageSquare,
   PenTool,
-  Layers
+  Layers,
+  PlayCircle
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { User } from '../types';
@@ -56,7 +57,7 @@ const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
 };
 
 const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, toggleTheme } = useTheme();
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [trialInfo, setTrialInfo] = useState<TrialData | null>(null);
   const [showCreditPanel, setShowCreditPanel] = useState(false);
@@ -124,6 +125,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
+    { path: '/reels', label: 'AI Reels', icon: PlayCircle },
     { path: '/ad-campaigns', label: 'Ad Campaigns', icon: Layers },
     { path: '/competitors', label: 'Competitors', icon: Users },
     { path: '/connect-socials', label: 'Connect Socials', icon: Link2 },
@@ -137,7 +139,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
       return {
         title: 'Campaigns',
         subtitle: 'Create and manage campaign posts with on-brand content.',
-        actions: [{ label: 'Create Ad Campaign', path: '/ad-campaigns' }]
+        actions: [
+          { label: 'Generate Reel', path: '/reels' },
+          { label: 'Create Ad Campaign', path: '/ad-campaigns' }
+        ]
+      };
+    }
+    if (pathname.startsWith('/reels')) {
+      return {
+        title: 'AI Reels',
+        subtitle: 'Generate full AI videos from description, uploaded images, or inventory products.',
+        actions: [{ label: 'Go to Campaigns', path: '/campaigns' }]
       };
     }
     if (pathname.startsWith('/ad-campaigns')) {
@@ -167,6 +179,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
       subtitle: 'Track campaigns, ad activity, and performance from one place.',
       actions: [
         { label: 'Create Campaign', path: '/campaigns' },
+        { label: 'Generate Reel', path: '/reels' },
         { label: 'Create Ad Campaign', path: '/ad-campaigns' }
       ]
     };
@@ -198,14 +211,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
 
       {/* Sidebar */}
       <aside 
-        className={`fixed inset-y-0 left-0 z-30 w-64 ${isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-[#ffcc29]'} border-r transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto ${
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-[#ffcc29] border-r transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex flex-col h-full">
             <div className="p-6">
-                <div className={`flex items-center gap-3 mb-2 ${isDarkMode ? 'text-[#ededed]' : 'text-[#070A12]'}`}>
-                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className={`w-12 h-12 ${isDarkMode ? 'brightness-0 invert' : ''}`} />
+                <div className="flex items-center gap-3 mb-2 text-[#070A12]">
+                    <img src="/assets/logo.png" alt="Nebulaa Gravity" className="w-12 h-12" />
                     <div className="flex flex-col">
                         <span className="font-bold text-xl tracking-tight leading-tight">Nebulaa</span>
                         <span className="font-semibold text-lg tracking-tight leading-tight">Gravity</span>
@@ -213,7 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                 </div>
                 {/* Show user's business name if available */}
                 {user?.businessProfile?.name && (
-                  <p className={`text-xs mb-6 pl-[60px] truncate ${isDarkMode ? 'text-[#ededed]/60' : 'text-[#070A12]/70'}`} title={user.businessProfile.name}>
+                  <p className="text-xs mb-6 pl-[60px] truncate text-[#070A12]/70" title={user.businessProfile.name}>
                     for {user.businessProfile.name}
                   </p>
                 )}
@@ -229,51 +242,62 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
                         to={item.path}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium ${
                             isActive 
-                            ? isDarkMode 
-                              ? 'bg-[#ffcc29]/20 text-[#ffcc29]' 
-                              : 'bg-[#070A12] text-white'
-                            : isDarkMode
-                              ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]'
-                              : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
+                            ? 'bg-[#070A12] text-white'
+                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
                         }`}
                         onClick={() => setSidebarOpen(false)}
                         >
-                        <Icon className={`w-5 h-5 ${isActive ? (isDarkMode ? 'text-[#ffcc29]' : 'text-white') : (isDarkMode ? 'text-[#ededed]/50' : 'text-[#070A12]/60')}`} />
+                        <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-[#070A12]/60'}`} />
                         <span>{item.label}</span>
                         </Link>
                     );
                     })}
                 </nav>
-            </div>
 
-            <div className={`mt-auto p-6 border-t ${isDarkMode ? 'border-slate-700/50' : 'border-[#070A12]/20'}`}>
-                
-                <nav className="space-y-1 mb-4">
+                <nav className="space-y-1">
                     <Link
                         to="/settings"
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium ${
                             location.pathname === '/settings'
-                            ? isDarkMode 
-                              ? 'bg-[#ffcc29]/20 text-[#ffcc29]' 
-                              : 'bg-[#070A12] text-white'
-                            : isDarkMode
-                              ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]'
-                              : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
+                            ? 'bg-[#070A12] text-white'
+                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
                         }`}
                         onClick={() => setSidebarOpen(false)}
                     >
-                        <Settings className={`w-5 h-5 ${location.pathname === '/settings' ? (isDarkMode ? 'text-[#ffcc29]' : 'text-white') : (isDarkMode ? 'text-[#ededed]/50' : 'text-[#070A12]/60')}`} />
+                        <Settings className={`w-5 h-5 ${location.pathname === '/settings' ? 'text-white' : 'text-[#070A12]/60'}`} />
                         <span>Settings</span>
                     </Link>
+                    <button
+                        type="button"
+                        onClick={toggleTheme}
+                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]"
+                    >
+                        <span className="flex items-center gap-3">
+                          {isDarkMode ? (
+                            <Moon className="w-5 h-5 text-[#070A12]/60" />
+                          ) : (
+                            <Sun className="w-5 h-5 text-[#070A12]/60" />
+                          )}
+                          <span>Theme</span>
+                        </span>
+                        <span
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                            isDarkMode ? 'bg-[#070A12]' : 'bg-[#070A12]/25'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                              isDarkMode ? 'translate-x-5' : 'translate-x-1'
+                            }`}
+                          />
+                        </span>
+                    </button>
                     <button 
                         onClick={handleLogout}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full ${
-                          isDarkMode 
-                            ? 'text-[#ededed]/70 hover:bg-[#ffcc29]/10 hover:text-[#ffcc29]' 
-                            : 'text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]'
-                        }`}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium w-full text-[#070A12]/80 hover:bg-[#070A12]/10 hover:text-[#070A12]"
                     >
-                        <LogOut className={`w-5 h-5 ${isDarkMode ? 'text-[#ededed]/50' : 'text-[#070A12]/60'}`} />
+                        <LogOut className="w-5 h-5 text-[#070A12]/60" />
                         <span>Logout</span>
                     </button>
                 </nav>
@@ -396,7 +420,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
 
                 {/* Dropdown Panel */}
                 {showCreditPanel && (
-                  <div className={`absolute top-full left-0 mt-2 w-80 rounded-2xl shadow-2xl border z-50 overflow-hidden ${
+                  <div className={`absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl border z-50 overflow-hidden ${
                     isDarkMode ? 'bg-[#0d1117] border-slate-700/50' : 'bg-white border-gray-200'
                   }`} style={{ animation: 'fadeSlideDown 0.2s ease-out' }}>
                     {/* Header */}

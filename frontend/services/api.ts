@@ -1213,6 +1213,66 @@ export const apiService = {
     return { campaign: response.campaign };
   },
 
+  getReelGenerationOptions: async (): Promise<{
+    success: boolean;
+    promptTypes: Array<{ key: string; label: string; description: string }>;
+    languages: Array<{ code: string; label: string; nativeLabel?: string }>;
+    durations: number[];
+  }> => {
+    const response = await apiCall<any>(
+      '/campaigns/reel/options',
+      { method: 'GET' },
+      true
+    );
+    return response;
+  },
+
+  generateImageReel: async (payload: {
+    imageData?: string;
+    imageUrl?: string;
+    promptType: string;
+    language: string;
+    durationSeconds: number;
+    customPrompt?: string;
+  }): Promise<{
+    success: boolean;
+    message?: string;
+    campaign?: Campaign;
+    reel?: {
+      promptType: string;
+      promptLabel: string;
+      promptTemplate: string;
+      language: { code: string; label: string; nativeLabel?: string };
+      durationSeconds: number;
+      sourceImageUrl: string;
+      videoUrl: string;
+      audioUrl: string;
+      audioMode?: string;
+      caption: string;
+      cta: string;
+      hashtags: string[];
+      voiceoverScript: string;
+      scenePlan: Array<{
+        sceneTitle: string;
+        startSec: number;
+        endSec: number;
+        visualDirection: string;
+        caption: string;
+      }>;
+      videoMetadata?: any;
+      videoValidation?: any;
+    };
+    creditsRemaining?: number;
+    error?: string;
+  }> => {
+    const response = await apiCall<any>(
+      '/campaigns/reel/generate',
+      { method: 'POST', body: JSON.stringify(payload) },
+      true
+    );
+    return response;
+  },
+
   // ============================================
   // TEMPLATE POSTER GENERATION (Nano Banana Pro)
   // ============================================
@@ -3065,6 +3125,165 @@ export const inventoryAPI = {
       }),
     }, true);
   },
+};
+
+// ================================
+// AI Video Generation API
+// ================================
+export const videoGenerationAPI = {
+  createVideo: async (payload: {
+    description: string;
+    durationSeconds: number;
+    sceneCount?: number;
+    imageData?: string;
+    imageUrl?: string;
+    productId?: string;
+    product?: any;
+    styleHint?: string;
+    voiceHint?: string;
+    subtitles?: { enabled?: boolean };
+    audio?: {
+      enabled?: boolean;
+      mode?: 'off' | 'auto' | 'upload';
+      languageCode?: string;
+      tone?: string;
+      manualAudioData?: string;
+      manualAudioUrl?: string;
+      soundEffectUrls?: string[];
+    };
+  }): Promise<{
+    success: boolean;
+    message?: string;
+    jobId?: string;
+    status?: string;
+    progress?: number;
+    currentStep?: string;
+  }> => {
+    return apiCall('/video-generation/createVideo', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  getJobStatus: async (jobId: string): Promise<any> => {
+    return apiCall(`/video-generation/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' }, true);
+  },
+
+  createDraft: async (payload: {
+    description: string;
+    durationSeconds?: number;
+    sceneCount?: number;
+    imageData?: string;
+    imageUrl?: string;
+    productId?: string;
+    product?: any;
+  }): Promise<any> => {
+    return apiCall('/video-generation/createDraft', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  getDraft: async (jobId: string): Promise<any> => {
+    return apiCall(`/video-generation/draft/${encodeURIComponent(jobId)}`, { method: 'GET' }, true);
+  },
+
+  getDrafts: async (): Promise<any> => {
+    return apiCall('/video-generation/drafts', { method: 'GET' }, true);
+  },
+
+  deleteDraft: async (jobId: string): Promise<any> => {
+    return apiCall(`/video-generation/draft/${encodeURIComponent(jobId)}`, { method: 'DELETE' }, true);
+  },
+
+  generatePrompt: async (payload: {
+    jobId: string;
+    promptText?: string;
+    saveOnly?: boolean;
+  }): Promise<any> => {
+    return apiCall('/video-generation/generatePrompt', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  generateScenes: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/generateScenes', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  generateImages: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/generateImages', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  generateClips: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/generateClips', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  generateVideoClips: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/generateVideoClips', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  generateAudio: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/generateAudio', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  mergeAudio: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/mergeAudio', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  mixAudio: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/mixAudio', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  mergeVideo: async (payload: any): Promise<any> => {
+    return apiCall('/video-generation/mergeVideo', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  generateContent: async (payload: {
+    jobId: string;
+    selectedPlatforms?: string[];
+  }): Promise<any> => {
+    return apiCall('/video-generation/generateContent', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  },
+
+  schedulePost: async (payload: {
+    jobId: string;
+    selectedPlatforms: string[];
+    scheduledAt?: string;
+    publishNow?: boolean;
+  }): Promise<any> => {
+    return apiCall('/video-generation/schedulePost', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }, true);
+  }
 };
 
 // ============================================
