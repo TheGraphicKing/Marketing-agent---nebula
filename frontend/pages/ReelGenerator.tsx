@@ -34,6 +34,15 @@ const WIZARD_STEPS = [
   'Final Output'
 ];
 
+const AUDIO_PREVIEW_TEXT_BY_LANGUAGE: Record<string, string> = {
+  en: 'This is an audio preview test for the selected voice and music settings.',
+  hi: 'यह चुनी हुई आवाज और संगीत सेटिंग्स के लिए ऑडियो प्रीव्यू टेस्ट है।',
+  ta: 'தேர்ந்தெடுத்த குரல் மற்றும் இசை அமைப்புகளுக்கான ஆடியோ முன்னோட்ட சோதனை இது.',
+  te: 'ఎంచుకున్న వాయిస్ మరియు మ్యూజిక్ సెట్టింగ్స్ కోసం ఇది ఆడియో ప్రివ్యూ టెస్ట్.',
+  kn: 'ಆಯ್ಕೆ ಮಾಡಿದ ಧ್ವನಿ ಮತ್ತು ಸಂಗೀತ ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗಾಗಿ ಇದು ಆಡಿಯೋ ಪ್ರಿವ್ಯೂ ಪರೀಕ್ಷೆ.',
+  ml: 'തിരഞ്ഞെടുത്ത ശബ്ദവും സംഗീത ക്രമീകരണങ്ങളും പരിശോധിക്കുന്ന ഓഡിയോ പ്രിവ്യൂ ടെസ്റ്റാണിത്.'
+};
+
 function fileToDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -259,7 +268,7 @@ const ReelGenerator: React.FC = () => {
     setIsRecording(false);
   };
 
-  const buildAudioPayload = () => ({
+  const buildAudioPayload = (overrides: Record<string, any> = {}) => ({
     enabled: audioEnabled,
     mode: audioEnabled ? audioMode : 'off',
     languageCode: audioLanguageCode,
@@ -267,7 +276,8 @@ const ReelGenerator: React.FC = () => {
     voiceGender,
     voiceVolume,
     musicVolume,
-    manualAudioData: audioMode === 'upload' ? manualVoiceData : undefined
+    manualAudioData: audioMode === 'upload' ? manualVoiceData : undefined,
+    ...overrides
   });
 
   const ensureDraftForAudioTest = async (fallbackDescription = '') => {
@@ -373,10 +383,11 @@ const ReelGenerator: React.FC = () => {
   });
 
   const generateAudioPreview = async () => withBusy(async () => {
-    const audioJobId = await ensureDraftForAudioTest('This is an audio preview test for the selected voice and music settings.');
+    const previewText = AUDIO_PREVIEW_TEXT_BY_LANGUAGE[audioLanguageCode] || AUDIO_PREVIEW_TEXT_BY_LANGUAGE.en;
+    const audioJobId = await ensureDraftForAudioTest(previewText);
     const response = await videoGenerationAPI.generateAudio({
       jobId: audioJobId,
-      audio: buildAudioPayload()
+      audio: buildAudioPayload({ voiceScript: previewText })
     });
     if (!response?.success) throw new Error(response?.message || 'Audio generation failed');
     setGeneratedTracks(response?.audio?.tracks || null);
@@ -803,124 +814,6 @@ const ReelGenerator: React.FC = () => {
               </select>
             </div>
 
-            <div className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-xl p-4 space-y-4`}>
-              <h3 className={`font-semibold ${theme.text}`}>Audio Test</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Audio</label>
-                  <button type="button" onClick={() => setAudioEnabled((v) => !v)} className={`${inputClass} mt-2 text-left`}>
-                    {audioEnabled ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-                <div>
-                  <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Voice Mode</label>
-                  <select value={audioMode} onChange={(e) => setAudioMode(e.target.value as AudioMode)} className={`${inputClass} mt-2`} disabled={!audioEnabled}>
-                    <option value="auto">TTS</option>
-                    <option value="upload">Upload Voice</option>
-                    <option value="off">No Voice</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Music</label>
-                  <select value={audioTone} onChange={(e) => setAudioTone(e.target.value)} className={`${inputClass} mt-2`} disabled={!audioEnabled}>
-                    <option value="professional">Professional</option>
-                    <option value="normal">Normal</option>
-                    <option value="fun">Fun</option>
-                    <option value="luxury">Luxury</option>
-                    <option value="simple">Simple</option>
-                  </select>
-                </div>
-              </div>
-
-              {audioEnabled && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Language</label>
-                    <select value={audioLanguageCode} onChange={(e) => setAudioLanguageCode(e.target.value)} className={`${inputClass} mt-2`}>
-                      <option value="en">English</option>
-                      <option value="hi">Hindi</option>
-                      <option value="ta">Tamil</option>
-                      <option value="te">Telugu</option>
-                      <option value="kn">Kannada</option>
-                      <option value="ml">Malayalam</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Voice</label>
-                    <select value={voiceGender} onChange={(e) => setVoiceGender(e.target.value as 'male' | 'female')} className={`${inputClass} mt-2`}>
-                      <option value="female">Female</option>
-                      <option value="male">Male </option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Voice Volume</label>
-                    <input type="range" min={0} max={2} step={0.1} value={voiceVolume} onChange={(e) => setVoiceVolume(Number(e.target.value))} className="mt-3 w-full" />
-                  </div>
-                  <div>
-                    <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Music Volume</label>
-                    <input type="range" min={0} max={2} step={0.1} value={musicVolume} onChange={(e) => setMusicVolume(Number(e.target.value))} className="mt-3 w-full" />
-                  </div>
-                </div>
-              )}
-
-              {audioEnabled && audioMode === 'upload' && (
-                <div className={`${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200'} border rounded-xl p-3 space-y-3`}>
-                  <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Upload Voice / Record Voice</label>
-                  <input type="file" accept="audio/*" onChange={(e) => onManualVoiceUpload(e.target.files?.[0])} className="text-sm" />
-                  <div className="flex gap-2">
-                    {!isRecording ? (
-                      <button onClick={startVoiceRecording} className="px-3 py-2 rounded-lg border border-slate-500 text-slate-200 text-sm">
-                        <Mic className="w-4 h-4 inline mr-1" /> Start Recording
-                      </button>
-                    ) : (
-                      <button onClick={stopVoiceRecording} className="px-3 py-2 rounded-lg border border-red-500 text-red-300 text-sm">
-                        Stop Recording
-                      </button>
-                    )}
-                  </div>
-                  {manualVoiceName && <p className={`text-xs ${theme.textSecondary}`}>{manualVoiceName}</p>}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-3">
-                <button onClick={generateAudioPreview} disabled={!canAudioPreview} className="px-4 py-2 rounded-xl border border-[#ffcc29] text-[#ffcc29] font-semibold disabled:opacity-60">
-                  {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Generate Audio Preview'}
-                </button>
-                <button onClick={mixAudio} disabled={busy || !generatedTracks} className="px-4 py-2 rounded-xl border border-slate-500 text-slate-300 font-semibold disabled:opacity-60">
-                  Mix Preview
-                </button>
-              </div>
-
-              {(generatedTracks?.voiceUrl || generatedTracks?.backgroundUrl || generatedTracks?.manualUrl || finalAudioUrl) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {generatedTracks?.voiceUrl && (
-                    <div>
-                      <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Voice Preview</p>
-                      <audio controls src={generatedTracks.voiceUrl} className="w-full mt-2" />
-                    </div>
-                  )}
-                  {generatedTracks?.backgroundUrl && (
-                    <div>
-                      <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Music Preview</p>
-                      <audio controls src={generatedTracks.backgroundUrl} className="w-full mt-2" />
-                    </div>
-                  )}
-                  {generatedTracks?.manualUrl && (
-                    <div>
-                      <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Manual Voice Preview</p>
-                      <audio controls src={generatedTracks.manualUrl} className="w-full mt-2" />
-                    </div>
-                  )}
-                  {finalAudioUrl && (
-                    <div>
-                      <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Mixed Preview</p>
-                      <audio controls src={finalAudioUrl} className="w-full mt-2" />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
             <button onClick={step1Next} disabled={!canStep1Next} className={primaryButtonClass(!canStep1Next)}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Next'}
             </button>
@@ -1074,8 +967,8 @@ const ReelGenerator: React.FC = () => {
                 <div>
                   <label className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Voice</label>
                   <select value={voiceGender} onChange={(e) => setVoiceGender(e.target.value as 'male' | 'female')} className={`${inputClass} mt-2`}>
-                    <option value="female">Female</option>
-                    <option value="male">Male (Natural)</option>
+                    <option value="female">Female (Edge Neural)</option>
+                    <option value="male">Male (Edge Neural)</option>
                   </select>
                 </div>
                 <div>
@@ -1108,9 +1001,46 @@ const ReelGenerator: React.FC = () => {
               </div>
             )}
 
-            <button onClick={generateAudioTracks} disabled={!canStep5Next} className={primaryButtonClass(!canStep5Next)}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Next'}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={generateAudioPreview} disabled={!canAudioPreview} className="px-4 py-2 rounded-xl border border-[#ffcc29] text-[#ffcc29] font-semibold disabled:opacity-60">
+                {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Generate Audio Preview'}
+              </button>
+              <button onClick={mixAudio} disabled={busy || !generatedTracks} className="px-4 py-2 rounded-xl border border-slate-500 text-slate-300 font-semibold disabled:opacity-60">
+                Mix Preview
+              </button>
+              <button onClick={generateAudioTracks} disabled={!canStep5Next} className={primaryButtonClass(!canStep5Next)}>
+                {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Next'}
+              </button>
+            </div>
+
+            {(generatedTracks?.voiceUrl || generatedTracks?.backgroundUrl || generatedTracks?.manualUrl || finalAudioUrl) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {generatedTracks?.voiceUrl && (
+                  <div className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-xl p-3`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Voice Preview</p>
+                    <audio controls src={generatedTracks.voiceUrl} className="w-full mt-2" />
+                  </div>
+                )}
+                {generatedTracks?.backgroundUrl && (
+                  <div className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-xl p-3`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Music Preview</p>
+                    <audio controls src={generatedTracks.backgroundUrl} className="w-full mt-2" />
+                  </div>
+                )}
+                {generatedTracks?.manualUrl && (
+                  <div className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-xl p-3`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Manual Voice Preview</p>
+                    <audio controls src={generatedTracks.manualUrl} className="w-full mt-2" />
+                  </div>
+                )}
+                {finalAudioUrl && (
+                  <div className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'} border rounded-xl p-3`}>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${theme.textMuted}`}>Mixed Preview</p>
+                    <audio controls src={finalAudioUrl} className="w-full mt-2" />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

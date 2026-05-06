@@ -15,9 +15,11 @@ const VIDEO_TARGET = { width: 1080, height: 1920, fps: 30 };
 const VIDEO_ENCODE_PRESET = String(process.env.AI_VIDEO_ENCODE_PRESET || 'slow');
 const VIDEO_ENCODE_CRF = String(process.env.AI_VIDEO_ENCODE_CRF || '16');
 const GOOGLE_TTS_PROJECT_ID = process.env.VERTEX_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT_ID || '';
-const GOOGLE_TTS_EN_MALE_VOICE = String(process.env.GOOGLE_TTS_EN_MALE_VOICE || 'en-US-Neural2-J').trim();
+const GOOGLE_TTS_EN_MALE_VOICE = String(process.env.GOOGLE_TTS_EN_MALE_VOICE || 'en-US-Wavenet-D').trim();
+const GOOGLE_TTS_EN_FEMALE_VOICE = String(process.env.GOOGLE_TTS_EN_FEMALE_VOICE || 'en-US-Wavenet-F').trim();
 const EDGE_TTS_ENABLED = String(process.env.EDGE_TTS_ENABLED || 'true').toLowerCase() !== 'false';
-const EDGE_TTS_MALE_VOICE = String(process.env.EDGE_TTS_MALE_VOICE || 'en-US-GuyNeural').trim();
+const EDGE_TTS_MALE_VOICE = String(process.env.EDGE_TTS_MALE_VOICE || '').trim();
+const EDGE_TTS_FEMALE_VOICE = String(process.env.EDGE_TTS_FEMALE_VOICE || '').trim();
 const ELEVENLABS_API_KEY = String(process.env.ELEVENLABS_API_KEY || '').trim();
 const ELEVENLABS_MALE_VOICE_ID = String(process.env.ELEVENLABS_MALE_VOICE_ID || '').trim();
 const ELEVENLABS_MODEL_ID = String(process.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2').trim();
@@ -819,9 +821,76 @@ function chunkTextForTts(text, maxLen = 170) {
 }
 
 function toTtsLanguageCode(code = 'en') {
-  const normalized = String(code || '').toLowerCase().trim();
+  const normalized = String(code || '').toLowerCase().trim().split(/[-_]/)[0];
   const allowed = new Set(['en', 'hi', 'ta', 'te', 'kn', 'ml']);
   return allowed.has(normalized) ? normalized : 'en';
+}
+
+function ttsLanguageLabel(code = 'en') {
+  const labels = {
+    en: 'English',
+    hi: 'Hindi',
+    ta: 'Tamil',
+    te: 'Telugu',
+    kn: 'Kannada',
+    ml: 'Malayalam'
+  };
+  return labels[toTtsLanguageCode(code)] || labels.en;
+}
+
+function targetScriptName(code = 'en') {
+  const scripts = {
+    en: 'Latin',
+    hi: 'Devanagari',
+    ta: 'Tamil',
+    te: 'Telugu',
+    kn: 'Kannada',
+    ml: 'Malayalam'
+  };
+  return scripts[toTtsLanguageCode(code)] || scripts.en;
+}
+
+async function localizeVoiceScriptForTts({ text, languageCode, logger = null }) {
+  const source = String(text || '').replace(/\s+/g, ' ').trim();
+  const lang = toTtsLanguageCode(languageCode);
+  if (!source || lang === 'en') return source;
+
+  const language = ttsLanguageLabel(lang);
+  const script = targetScriptName(lang);
+  const prompt = `Translate and adapt this short video voiceover for Edge or Google Text-to-Speech.
+
+Target language: ${language}
+Target script: ${script}
+
+Rules:
+- Return only the final voiceover text. No markdown, labels, or quotes.
+- At least 80% of the words must be in ${language}.
+- If the source is English, translate it. Do not return English for this target language.
+- Keep brand names, product names, prices, URLs, and technical model names unchanged when needed.
+- Keep it natural for a 30-60 second social media reel.
+- Do not mix in English filler words unless absolutely necessary.
+
+Voiceover:
+${source}`;
+
+  try {
+    const localized = await callGemini(prompt, {
+      skipCache: true,
+      temperature: 0.25,
+      maxTokens: 700,
+      timeout: 45000
+    });
+    const clean = String(localized || '')
+      .replace(/^```(?:\w+)?/i, '')
+      .replace(/```$/i, '')
+      .replace(/^\s*(?:voiceover|translation|translated text)\s*:\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return clean || source;
+  } catch (error) {
+    if (logger) logger(`Voice script localization failed for ${language}: ${error.message || error}`);
+    return source;
+  }
 }
 
 function googleCloudTtsVoice(languageCode = 'en', voiceGender = 'female') {
@@ -830,8 +899,8 @@ function googleCloudTtsVoice(languageCode = 'en', voiceGender = 'female') {
   const voices = {
     en: {
       languageCode: 'en-US',
-      male: GOOGLE_TTS_EN_MALE_VOICE || 'en-US-Neural2-J',
-      female: 'en-US-Neural2-F'
+      male: GOOGLE_TTS_EN_MALE_VOICE,
+      female: GOOGLE_TTS_EN_FEMALE_VOICE
     },
     hi: {
       languageCode: 'hi-IN',
@@ -845,13 +914,13 @@ function googleCloudTtsVoice(languageCode = 'en', voiceGender = 'female') {
     },
     te: {
       languageCode: 'te-IN',
-      male: 'te-IN-Standard-B',
-      female: 'te-IN-Standard-A'
+      male: 'te-IN-Wavenet-B',
+      female: 'te-IN-Wavenet-A'
     },
     kn: {
       languageCode: 'kn-IN',
-      male: 'kn-IN-Standard-B',
-      female: 'kn-IN-Standard-A'
+      male: 'kn-IN-Wavenet-B',
+      female: 'kn-IN-Wavenet-A'
     },
     ml: {
       languageCode: 'ml-IN',
@@ -871,18 +940,38 @@ function googleCloudTtsAudioConfig(voiceGender = 'female') {
   const gender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
   return {
     audioEncoding: 'MP3',
-    speakingRate: gender === 'male' ? 0.96 : 1,
-    pitch: gender === 'male' ? -2 : 0
+    speakingRate: gender === 'male' ? 0.9 : 1,
+    pitch: gender === 'male' ? -6 : 0
   };
+}
+
+function getEdgeVoice(languageCode = 'en', voiceGender = 'female') {
+  const language = toTtsLanguageCode(languageCode);
+  const gender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
+  const voices = {
+    en: { male: 'en-US-GuyNeural', female: 'en-US-JennyNeural' },
+    hi: { male: 'hi-IN-MadhurNeural', female: 'hi-IN-SwaraNeural' },
+    ta: { male: 'ta-IN-ValluvarNeural', female: 'ta-IN-PallaviNeural' },
+    te: { male: 'te-IN-MohanNeural', female: 'te-IN-ShrutiNeural' },
+    kn: { male: 'kn-IN-GaganNeural', female: 'kn-IN-SapnaNeural' },
+    ml: { male: 'ml-IN-MidhunNeural', female: 'ml-IN-SobhanaNeural' }
+  };
+  const configuredOverride = language === 'en'
+    ? (gender === 'male' ? EDGE_TTS_MALE_VOICE : EDGE_TTS_FEMALE_VOICE)
+    : '';
+  return configuredOverride || voices[language]?.[gender] || voices.en[gender];
 }
 
 function maleVoiceEnhancementFilter() {
   return [
-    'asetrate=24000*0.88',
-    'aresample=24000',
-    'atempo=1.14',
-    'equalizer=f=120:t=q:w=1:g=2',
-    'equalizer=f=240:t=q:w=1:g=1.5'
+    'aresample=44100',
+    'asetrate=44100*0.90',
+    'atempo=1.11',
+    'highpass=f=70',
+    'equalizer=f=140:t=q:w=1:g=1.5',
+    'equalizer=f=3000:t=q:w=1:g=1.2',
+    'loudnorm=I=-16:TP=-1.5:LRA=11',
+    'aresample=44100'
   ].join(',');
 }
 
@@ -978,12 +1067,13 @@ function publicAudioUrl(context, fileName) {
 
 async function synthesizeEdgeTts({
   text,
+  languageCode,
   voiceGender,
   outputPath,
   logger = null
 }) {
-  if (!EDGE_TTS_ENABLED || String(voiceGender || '').toLowerCase() !== 'male') return false;
-  const voice = EDGE_TTS_MALE_VOICE || 'en-US-GuyNeural';
+  if (!EDGE_TTS_ENABLED) return false;
+  const voice = getEdgeVoice(languageCode, voiceGender);
   const attempts = [
     {
       command: 'python',
@@ -1005,7 +1095,7 @@ async function synthesizeEdgeTts({
       const stat = await fs.promises.stat(outputPath);
       if (stat.size > 1200) return true;
     } catch (error) {
-      if (logger) logger(`Edge TTS via ${attempt.command} failed: ${error.message || error}`);
+      if (logger) logger(`Edge TTS ${voice} via ${attempt.command} failed: ${error.message || error}`);
     }
   }
 
@@ -1063,16 +1153,19 @@ async function synthesizeVoiceTrack({
   context,
   logger = null
 }) {
-  const chunks = chunkTextForTts(voiceScript, 170);
+  const localizedVoiceScript = await localizeVoiceScriptForTts({
+    text: voiceScript,
+    languageCode,
+    logger
+  });
+  const chunks = chunkTextForTts(localizedVoiceScript, 170);
   if (!chunks.length) return null;
-  if (!fetchImpl) return null;
 
   const chunkPaths = [];
   const normalizedGender = String(voiceGender || 'female').toLowerCase() === 'male' ? 'male' : 'female';
   const lang = toTtsVoiceLocale(languageCode, normalizedGender);
   const finalVoiceFileName = `voice_track_${normalizedGender}.mp3`;
   const finalVoicePath = path.join(context.dirs.audio, finalVoiceFileName);
-  let usedOnlyNaturalMaleProvider = normalizedGender === 'male';
 
   for (let i = 0; i < chunks.length; i += 1) {
     const text = chunks[i];
@@ -1080,6 +1173,7 @@ async function synthesizeVoiceTrack({
     try {
       const edgeOk = await synthesizeEdgeTts({
         text,
+        languageCode,
         voiceGender: normalizedGender,
         outputPath: outPath,
         logger
@@ -1089,7 +1183,7 @@ async function synthesizeVoiceTrack({
         continue;
       }
     } catch (error) {
-      if (logger) logger(`Edge TTS male voice chunk ${i + 1} failed: ${error.message || error}`);
+      if (logger) logger(`Edge TTS chunk ${i + 1} failed: ${error.message || error}`);
     }
 
     try {
@@ -1140,10 +1234,8 @@ async function synthesizeVoiceTrack({
       await fs.promises.writeFile(outPath, Buffer.from(arrayBuffer));
       const stat = await fs.promises.stat(outPath);
       if (stat.size < 1200) throw new Error('TTS chunk too small');
-      usedOnlyNaturalMaleProvider = false;
       chunkPaths.push(outPath);
     } catch (error) {
-      usedOnlyNaturalMaleProvider = false;
       if (logger) logger(`Voice chunk ${i + 1} failed: ${error.message || error}`);
     }
   }
@@ -1153,11 +1245,7 @@ async function synthesizeVoiceTrack({
     const voiceOutputPath = path.join(context.dirs.audio, normalizedGender === 'male' ? 'voice_track_male_source.mp3' : finalVoiceFileName);
     await fs.promises.copyFile(chunkPaths[0], voiceOutputPath);
     if (normalizedGender === 'male') {
-      if (usedOnlyNaturalMaleProvider) {
-        await fs.promises.copyFile(voiceOutputPath, finalVoicePath);
-      } else {
-        await deepenMaleVoice(voiceOutputPath, finalVoicePath);
-      }
+      await deepenMaleVoice(voiceOutputPath, finalVoicePath);
     }
     return {
       path: finalVoicePath,
@@ -1192,11 +1280,7 @@ async function synthesizeVoiceTrack({
   }
 
   if (normalizedGender === 'male') {
-    if (usedOnlyNaturalMaleProvider) {
-      await fs.promises.copyFile(concatOutput, finalVoicePath);
-    } else {
-      await deepenMaleVoice(concatOutput, finalVoicePath);
-    }
+    await deepenMaleVoice(concatOutput, finalVoicePath);
   }
 
   return {

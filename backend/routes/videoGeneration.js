@@ -724,6 +724,7 @@ router.post('/generateAudio', protect, checkTrial, async (req, res) => {
       voiceGender: String(audio?.voiceGender || 'female').toLowerCase(),
       voiceVolume: Number.isFinite(Number(audio?.voiceVolume)) ? Number(audio.voiceVolume) : 1,
       musicVolume: Number.isFinite(Number(audio?.musicVolume)) ? Number(audio.musicVolume) : 0.24,
+      voiceScript: typeof audio?.voiceScript === 'string' ? audio.voiceScript.trim() : '',
       manualAudioData: typeof audio?.manualAudioData === 'string' ? audio.manualAudioData : '',
       manualAudioUrl: typeof audio?.manualAudioUrl === 'string' ? audio.manualAudioUrl : '',
       soundEffectUrls: Array.isArray(audio?.soundEffectUrls) ? audio.soundEffectUrls : []
@@ -733,7 +734,8 @@ router.post('/generateAudio', protect, checkTrial, async (req, res) => {
       payload: {
         jobId,
         skipMix: true,
-        description: String(draft?.scenes?.voiceScript || draft?.input?.description || ''),
+        description: String(audioConfig.voiceScript || draft?.scenes?.voiceScript || draft?.input?.description || ''),
+        voiceScript: String(audioConfig.voiceScript || ''),
         durationSeconds: draft?.input?.durationSeconds || 60,
         audio: audioConfig
       },
